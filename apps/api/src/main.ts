@@ -2,14 +2,17 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import { resolve } from 'path';
+import * as fs from 'fs';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['error', 'warn', 'log', 'debug'],
   });
 
@@ -31,6 +34,18 @@ async function bootstrap() {
 
   // ── Global prefix ─────────────────────────────────
   app.setGlobalPrefix('api');
+
+  // ── Static uploads ────────────────────────────────
+  // Serve locally-stored uploads (avatars etc.) at /uploads
+  const uploadDir = resolve(process.cwd(), configService.get<string>('UPLOAD_DIR', './uploads'));
+  fs.mkdirSync(uploadDir, { recursive: true });
+  app.useStaticAssets(uploadDir, {
+    prefix: '/uploads',
+    index: false,
+    fallthrough: false,
+    maxAge: '1d',
+  });
+  logger.log(`Uploads served from ${uploadDir} at /uploads`);
 
   // ── Validation ────────────────────────────────────
   app.useGlobalPipes(

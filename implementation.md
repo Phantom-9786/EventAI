@@ -52,7 +52,7 @@
 ---
 
 ## Phase 2 — Core Platform
-**Status: IN PROGRESS — Authentication & RBAC complete; profiles + event system next**
+**Status: IN PROGRESS — Authentication, Authorization, and User Profiles complete; Event System next**
 
 ### Authentication
 - [x] Registration (email/password)
@@ -72,11 +72,11 @@
 - [x] Backend-enforced authorization (global guards; role checks applied per-route as features land)
 
 ### User Profiles
-- [x] User profile retrieval (`GET /api/auth/me`)
-- [ ] User profile CRUD (update profile, `/users` module)
-- [ ] Profile image upload
-- [ ] Preferences
-- [ ] Account settings
+- [x] User profile retrieval (`GET /api/users/me`, plus `GET /api/auth/me`)
+- [x] User profile CRUD (`PATCH /api/users/me` — firstName/lastName/username/bio/location, unique-username conflict handling; `GET /api/users/:id` public profile)
+- [x] Profile image upload (`POST /api/users/me/avatar` — Multer, 5 MB limit, JPEG/PNG/WebP/GIF, stored in `UPLOAD_DIR`, served at `/uploads/*`, previous local avatar replaced)
+- [x] Preferences (`PATCH /api/users/me/preferences` — JSON key merge into `users.preferences`)
+- [x] Account settings (`DELETE /api/users/me` — deactivates account and revokes all sessions; login blocked for deactivated users)
 
 ### Event System
 - [ ] Event model (title, slug, description, category, images, dates, venue, policies, FAQs, status)

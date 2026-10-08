@@ -82,6 +82,14 @@ Phase 2 — Authentication & RBAC (COMPLETE):
 - Global guards: ThrottlerGuard (rate limiting via `RATE_LIMIT_TTL`/`RATE_LIMIT_MAX`), JwtAuthGuard (all routes require JWT unless `@Public()`), RolesGuard (enforces `@Roles()`); auth endpoints are stricter-limited to 10 req/min per IP
 - `JwtStrategy` (passport-jwt) validates the user exists and is active on every request
 
+Phase 2 — User Profiles (COMPLETE, `apps/api/src/modules/users/`):
+- `GET /api/users/me` full own profile (email, preferences, verification state); `PATCH /api/users/me` updates firstName/lastName/username/bio/location with P2002 → 409 on taken usernames
+- `PATCH /api/users/me/preferences` merges keys into the `users.preferences` JSON (string/boolean/number values)
+- `POST /api/users/me/avatar`: Multer multipart upload, 5 MB limit, JPEG/PNG/WebP/GIF only (415 otherwise); stored under `UPLOAD_DIR` as `<userId>-<random><ext>`, served statically at `/uploads/*` via `useStaticAssets` in `main.ts`; previous locally-stored avatar deleted on replacement
+- `GET /api/users/:id` (@Public, UUID-parsed): public profile only — never email/preferences; inactive users 404
+- `DELETE /api/users/me`: deactivates the account (`isActive=false`) and revokes all sessions in one transaction; idempotent; deactivated users fail JWT validation and login
+- Validation schemas in `packages/validation/src/user.ts` (`updateProfileSchema`, `updatePreferencesSchema`, `usernameSchema`: 3–30 chars, `[a-zA-Z0-9_]`)
+
 ## Current Database Schema
 
 Complete Phase 1+ schema in `packages/database/prisma/schema.prisma` (see "Implemented Features"). Migration `20261008195519_init` applied (all 18 tables + enums + FKs). `search_vector` on Event is `Unsupported("tsvector")`: the column is created by Prisma in the migration; a trigger (`events_search_vector_trigger`, weights title=A, tags=B, short_description=C, description=D) and a GIN index (`events_search_vector_idx`, declared in the schema via `@@index([searchVector], type: Gin)`) are appended in the same migration. Verified end-to-end with a rolled-back insert + `websearch_to_tsquery` match. Prisma client generated (v6.19.3).
@@ -120,7 +128,7 @@ Not yet implemented (Phase 5).
 
 ## Security Architecture
 
-Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global ValidationPipe (whitelist + forbidNonWhitelisted), consistent error envelope (no stack leaks), fail-fast env validation, Zod-based body validation (`ZodValidationPipe` + `@eventai/validation`), Argon2id password hashing, hashed-at-rest refresh/session/reset tokens, httpOnly refresh cookie, global rate limiting (ThrottlerGuard; 10 req/min on auth), JWT auth with `@Public()` opt-out, RBAC via `@Roles()` + RolesGuard.
+Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global ValidationPipe (whitelist + forbidNonWhitelisted), consistent error envelope (no stack leaks), fail-fast env validation, Zod-based body validation (`ZodValidationPipe` + `@eventai/validation`), Argon2id password hashing, hashed-at-rest refresh/session/reset tokens, httpOnly refresh cookie, global rate limiting (ThrottlerGuard; 10 req/min on auth), JWT auth with `@Public()` opt-out, RBAC via `@Roles()` + RolesGuard. Avatar uploads: mimetype allow-list + 5 MB cap enforced in the service (415/413 responses); uploads served with 1-day cache; only `/uploads/*` static prefix is exposed.
 
 ## Current Environment Configuration
 
@@ -129,7 +137,7 @@ Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global Validatio
 ## Testing Status
 
 - Jest configured in `apps/api` (unit) with `test/jest-e2e.json` for e2e
-- 9 passing unit tests (health controller: 3; auth service: register/login/password-reset paths: 6)
+- 23 passing unit tests (health controller: 3; auth service: 6; users service: 14 — profile CRUD/conflicts, public-profile field exposure, preferences merge, avatar mimetype/size rejection, deactivation idempotency)
 - No tests yet in web/worker/packages
 
 ## Deployment Status
@@ -141,6 +149,7 @@ Docker Compose infra services + per-app Dockerfiles exist. No CI/CD workflow yet
 - A native Windows PostgreSQL service occupies host port 5432, so docker-compose maps the container to host port **5433** (`DATABASE_URL` uses 5433 accordingly).
 - Shared packages (`types`, `validation`, `database`) now emit CommonJS to `dist/` with `main` pointing there (previously `main` pointed at raw TS sources, which broke `node dist/main.js`). Packages are built before apps via turbo `dependsOn: ["^build"]` — run `npm run build` (or `turbo run build`) before starting any app directly.
 - `apps/api` previously had no `tsconfig.build.json`, so `nest build` silently produced no output; fixed, and `incremental` is disabled for production builds to avoid the deleted-outDir/no-emit pitfall.
+- turbo `type-check` depends on `["^build", "build"]` (not just `^build`) because `apps/web` includes `.next/types/**` which only `next build` generates — without the own-package dependency, web type-check raced its build and failed intermittently.
 - npm install-scripts approval list configured (argon2 native build, prisma, esbuild, etc.) — new native deps will need approval.
 
 ## Current Limitations
@@ -156,16 +165,16 @@ See `docs/architecture-decisions.md` (ADRs 001–013).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Authentication & RBAC (COMPLETE; profiles/user CRUD pending). 
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform: Authentication & RBAC (COMPLETE), User Profiles (COMPLETE), Event System (next).
 
 ## Current Task
 
-Phase 2 auth module implemented and verified end-to-end (register → me → refresh → logout → forgot/reset password → rate limiting), initial DB migration applied with FTS trigger + GIN index, shared packages emit CJS dist, `nest build` fixed. Full monorepo pipeline green: 21/21 tasks (type-check, lint, test, build across 7 packages).
+User Profiles implemented and verified end-to-end (get/update profile → preferences merge → avatar upload + static serve + mimetype rejection → public profile without auth → deactivate → 401/login-blocked). Full monorepo pipeline green: 21/21 tasks, 23 unit tests passing.
 
 ## Next Task
 
-Phase 2 continuation: User Profiles (profile CRUD, `/users` module, profile image upload, preferences, account settings), then the Event System (event CRUD for organizers, publishing, category management).
+Phase 2 continuation: Event System — event CRUD for organizers (`/events` module with `@Roles(ORGANIZER)`), event publishing workflow, category management, event image upload, public event browsing/search (FTS via `search_vector`).
 
 ## Last Completed Checkpoint
 
-Phase 2 — Authentication & RBAC complete and verified against the running PostgreSQL/Redis stack.
+Phase 2 — User Profiles complete (commit "feat: complete user profiles module"); prior checkpoint "feat: complete authentication module" (0c051b7).
