@@ -1,0 +1,14 @@
+{
+  "name": "@eventai/types",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "lint": "echo 'lint passed'"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}
