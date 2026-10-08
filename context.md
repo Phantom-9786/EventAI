@@ -90,6 +90,16 @@ Phase 2 — User Profiles (COMPLETE, `apps/api/src/modules/users/`):
 - `DELETE /api/users/me`: deactivates the account (`isActive=false`) and revokes all sessions in one transaction; idempotent; deactivated users fail JWT validation and login
 - Validation schemas in `packages/validation/src/user.ts` (`updateProfileSchema`, `updatePreferencesSchema`, `usernameSchema`: 3–30 chars, `[a-zA-Z0-9_]`)
 
+Phase 2 — Event System (COMPLETE, `apps/api/src/modules/{events,organizers,categories}/`):
+- Organizer onboarding: `POST /api/organizers` creates the Organizer profile and upgrades the user role to ORGANIZER in one transaction; `GET /api/organizers/me` (profile + event/venue counts), `GET /api/organizers/me/events` (all statuses, paginated)
+- Organizer venues: `POST /api/organizers/venues` + `GET /api/organizers/venues` (venue creation is a prerequisite for events; full Venue Management remains a separate roadmap item)
+- Event CRUD (all organizer-only via `@Roles('ORGANIZER')` + ownership checks; id-or-slug addressing): `POST /api/events` (DRAFT, unique slug `slugified-title-hex`, future start date required, category must be active and venue must belong to the organizer), `PATCH /api/events/:idOrSlug` (blocked on CANCELLED/COMPLETED; end>start enforced against effective dates), `DELETE /api/events/:idOrSlug` (DRAFT only — 409 otherwise)
+- Publishing workflow: `POST .../publish` (DRAFT→PUBLISHED, rejects past start dates), `POST .../cancel` (DRAFT/PUBLISHED→CANCELLED)
+- Categories: 8 seeded via `packages/database/prisma/seed.ts` (`npm run db:seed`); `GET /api/categories` public with published-event counts; create/update/deactivate are ADMIN-only (deactivate = soft delete)
+- Public search `GET /api/events` (@Public): parameterised raw SQL over `events e JOIN venues v` — FTS via `search_vector @@ websearch_to_tsquery('english', $query)` with `ts_rank` relevance ordering when `query` is present; filters: categoryId, city (ILIKE), dateFrom/dateTo, priceMin/priceMax (min ticket price subquery), isFeatured; sorting: relevance (search) or date/price/popularity (booking count)/createdAt with sortDir; page/limit pagination with total/pages; ids selected via `Prisma.sql` fragments (injection-safe), hydrated through Prisma with category/venue/organizer and computed minPrice/maxPrice
+- Drafts and non-PUBLISHED events are invisible to the public routes (search + `GET /api/events/:idOrSlug` 404); organizers view their own via `GET /api/events/:idOrSlug/manage` or the own-events list
+- `Roles()` decorator now accepts string literals; `eventSearchSchema.isFeatured` uses an explicit preprocess (plain `z.coerce.boolean()` treats the string "false" as true)
+
 ## Current Database Schema
 
 Complete Phase 1+ schema in `packages/database/prisma/schema.prisma` (see "Implemented Features"). Migration `20261008195519_init` applied (all 18 tables + enums + FKs). `search_vector` on Event is `Unsupported("tsvector")`: the column is created by Prisma in the migration; a trigger (`events_search_vector_trigger`, weights title=A, tags=B, short_description=C, description=D) and a GIN index (`events_search_vector_idx`, declared in the schema via `@@index([searchVector], type: Gin)`) are appended in the same migration. Verified end-to-end with a rolled-back insert + `websearch_to_tsquery` match. Prisma client generated (v6.19.3).
@@ -137,7 +147,7 @@ Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global Validatio
 ## Testing Status
 
 - Jest configured in `apps/api` (unit) with `test/jest-e2e.json` for e2e
-- 23 passing unit tests (health controller: 3; auth service: 6; users service: 14 — profile CRUD/conflicts, public-profile field exposure, preferences merge, avatar mimetype/size rejection, deactivation idempotency)
+- 42 passing unit tests (health: 3; auth service: 6; users service: 14; events service: 19 — CRUD, ownership, publish/cancel/delete transitions, FTS raw-SQL shape + hydration order, draft-hiding)
 - No tests yet in web/worker/packages
 
 ## Deployment Status
@@ -154,7 +164,10 @@ Docker Compose infra services + per-app Dockerfiles exist. No CI/CD workflow yet
 
 ## Current Limitations
 
-- Events, bookings, payments, and AI features not yet implemented (schema-ready only)
+- Bookings, payments, and AI features not yet implemented (schema-ready only)
+- Venue management is partial: organizers can create/list venues, but update/delete/public venue browsing and seating configuration are not built yet
+- Event image upload not implemented (images/coverImage are URL arrays, schema-ready)
+- Ticket types are not implemented yet, so price filters/sorts operate over empty ticket sets (events with no tickets are excluded by price filters; minPrice/maxPrice are null)
 - Landing page uses placeholder content; no API integration yet
 - API boot requires reachable PostgreSQL (PrismaService fails fast)
 - Password reset email delivery not wired (token logged in dev; email worker planned for Phase 4)
@@ -165,16 +178,16 @@ See `docs/architecture-decisions.md` (ADRs 001–013).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform: Authentication & RBAC (COMPLETE), User Profiles (COMPLETE), Event System (next).
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform: Authentication & RBAC (COMPLETE), User Profiles (COMPLETE), Event System incl. FTS discovery backend (COMPLETE). Remaining in Phase 2: venue completion (update/delete/public browse, seating), ticket types, frontend event pages.
 
 ## Current Task
 
-User Profiles implemented and verified end-to-end (get/update profile → preferences merge → avatar upload + static serve + mimetype rejection → public profile without auth → deactivate → 401/login-blocked). Full monorepo pipeline green: 21/21 tasks, 23 unit tests passing.
+Event System implemented and verified end-to-end: register → become organizer → create venue → create draft (hidden publicly) → publish → FTS search finds it with correct filters/sorting → update → cancel → delete rules enforced; customer role 403 on organizer routes; categories seeded and admin-gated. Full monorepo pipeline green: 21/21 tasks, 42 unit tests.
 
 ## Next Task
 
-Phase 2 continuation: Event System — event CRUD for organizers (`/events` module with `@Roles(ORGANIZER)`), event publishing workflow, category management, event image upload, public event browsing/search (FTS via `search_vector`).
+Phase 2 continuation: Ticket Types (CRUD for organizers on their events, sale windows, quantity/availability) and Venue completion (update/delete, public venue browse, seating sections), then frontend event listing/detail pages hitting the new APIs.
 
 ## Last Completed Checkpoint
 
-Phase 2 — User Profiles complete (commit "feat: complete user profiles module"); prior checkpoint "feat: complete authentication module" (0c051b7).
+Phase 2 — Event System complete (commit "feat: complete event system with FTS search"); prior checkpoints: user profiles (990e83f), authentication (0c051b7).

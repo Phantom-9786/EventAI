@@ -41,7 +41,9 @@ export const eventSearchSchema = z.object({
   status: z.enum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED', 'SOLDOUT']).optional(),
   sortBy: z.enum(['date', 'price', 'popularity', 'createdAt']).optional(),
   sortDir: z.enum(['asc', 'desc']).optional(),
-  isFeatured: z.coerce.boolean().optional(),
+  isFeatured: z
+    .preprocess((v) => v === true || v === 'true' || v === '1', z.boolean())
+    .optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -53,7 +55,12 @@ export const createCategorySchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Invalid hex color').optional(),
 });
 
+export const updateCategorySchema = createCategorySchema
+  .partial()
+  .extend({ isActive: z.boolean().optional() });
+
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 export type EventSearchInput = z.infer<typeof eventSearchSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;

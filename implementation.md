@@ -52,7 +52,7 @@
 ---
 
 ## Phase 2 — Core Platform
-**Status: IN PROGRESS — Authentication, Authorization, and User Profiles complete; Event System next**
+**Status: IN PROGRESS — Authentication, Authorization, User Profiles, Event System (organizer CRUD + publishing + categories + FTS discovery backend) complete; venue completion, ticket types, and frontend integration next**
 
 ### Authentication
 - [x] Registration (email/password)
@@ -79,25 +79,27 @@
 - [x] Account settings (`DELETE /api/users/me` — deactivates account and revokes all sessions; login blocked for deactivated users)
 
 ### Event System
-- [ ] Event model (title, slug, description, category, images, dates, venue, policies, FAQs, status)
-- [ ] Event CRUD (organizer)
-- [ ] Event publishing/unpublishing
-- [ ] Category management
+- [x] Event model (title, slug, description, category, images, dates, venue, policies, FAQs, status)
+- [x] Organizer onboarding (`POST /api/organizers` creates profile + upgrades role to ORGANIZER; `GET /api/organizers/me`, `GET /api/organizers/me/events`)
+- [x] Organizer venue creation (`POST/GET /api/organizers/venues` — prerequisite for event creation; full Venue Management stays its own roadmap item)
+- [x] Event CRUD (organizer: create draft with unique slug, update with ownership checks, delete drafts only; by id or slug)
+- [x] Event publishing/unpublishing (`POST /api/events/:idOrSlug/publish` DRAFT→PUBLISHED with future-date guard; `POST /api/events/:idOrSlug/cancel` DRAFT/PUBLISHED→CANCELLED)
+- [x] Category management (8 categories seeded via `prisma/seed.ts`; public `GET /api/categories` with published-event counts; admin-only create/update/soft-deactivate)
 
-### Event Discovery
-- [ ] PostgreSQL Full-Text Search
-- [ ] Category filtering
-- [ ] Location filtering
-- [ ] Date filtering
-- [ ] Price filtering
-- [ ] Sorting
-- [ ] Pagination
+### Event Discovery (backend)
+- [x] PostgreSQL Full-Text Search (parameterised raw SQL over `search_vector` with `websearch_to_tsquery` + `ts_rank` relevance ordering)
+- [x] Category filtering
+- [x] Location filtering (venue city ILIKE)
+- [x] Date filtering (dateFrom on start_date, dateTo on end_date)
+- [x] Price filtering (min ticket price subquery)
+- [x] Sorting (relevance when searching; date/price/popularity/createdAt otherwise, with sortDir)
+- [x] Pagination (page/limit + total/pages)
 - [ ] Event detail page (frontend)
 
 ### Venues
-- [ ] Venue model
-- [ ] Venue CRUD
-- [ ] Map coordinates
+- [x] Venue model
+- [x] Venue CRUD (organizer-owned create/list; update/delete + public browse pending)
+- [ ] Map coordinates (schema-ready: latitude/longitude)
 - [ ] Leaflet + OpenStreetMap integration
 - [ ] Seating configuration
 

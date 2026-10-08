@@ -38,6 +38,17 @@ export const updatePreferencesSchema = z.object({
   ),
 });
 
+export const becomeOrganizerSchema = z.object({
+  organizationName: z
+    .string()
+    .min(2, 'Organization name must be at least 2 characters')
+    .max(100, 'Organization name must be at most 100 characters')
+    .trim(),
+  description: z.string().max(2000).optional(),
+  website: z.string().url('Invalid website URL').max(500).optional(),
+  phone: z.string().max(20).optional(),
+});
+
 export type Username = z.infer<typeof usernameSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type UpdatePreferencesInput = z.infer<typeof updatePreferencesSchema>;
