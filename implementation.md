@@ -1,78 +1,79 @@
 # Implementation Roadmap
 
 ## Phase 1 — Foundation
-**Status: NOT STARTED**
+**Status: COMPLETE**
 
 ### Repository & Monorepo
-- [ ] Initialize Turborepo monorepo
-- [ ] Configure `turbo.json` pipelines
-- [ ] Create root `package.json`
-- [ ] Configure root TypeScript
+- [x] Initialize Turborepo monorepo
+- [x] Configure `turbo.json` pipelines
+- [x] Create root `package.json`
+- [x] Configure root TypeScript
 
 ### Shared Packages
-- [ ] `packages/config` — shared ESLint + TS configs
-- [ ] `packages/types` — shared TypeScript types
-- [ ] `packages/validation` — shared Zod schemas
-- [ ] `packages/database` — Prisma ORM + schema
+- [x] `packages/config` — shared ESLint + TS configs
+- [x] `packages/types` — shared TypeScript types
+- [x] `packages/validation` — shared Zod schemas
+- [x] `packages/database` — Prisma ORM + schema
 
 ### Backend (apps/api)
-- [ ] Initialize NestJS application
-- [ ] Configure modular architecture
-- [ ] REST API foundation (validation, error handling, config)
-- [ ] Health endpoint
-- [ ] Environment configuration
+- [x] Initialize NestJS application
+- [x] Configure modular architecture
+- [x] REST API foundation (validation, error handling, config)
+- [x] Health endpoint
+- [x] Environment configuration
 
 ### Frontend (apps/web)
-- [ ] Initialize Next.js application
-- [ ] Configure Tailwind CSS
-- [ ] Configure shadcn/ui
-- [ ] Basic layout (header, footer, navigation)
-- [ ] Responsive navigation
-- [ ] Error/loading states
+- [x] Initialize Next.js application
+- [x] Configure Tailwind CSS
+- [x] Configure shadcn/ui (button + cn utility, CSS-variable theme)
+- [x] Basic layout (header, footer, navigation)
+- [x] Responsive navigation
+- [x] Error/loading states
 
 ### Worker (apps/worker)
-- [ ] Initialize worker application skeleton
+- [x] Initialize worker application skeleton
 
 ### Database
-- [ ] PostgreSQL connection via Prisma
-- [ ] Initial schema (User, Session, Role tables)
-- [ ] Run initial migration
+- [x] PostgreSQL connection via Prisma (global PrismaService)
+- [x] Initial schema (User, Session, Role tables — full schema beyond Phase 1 scope)
+- [x] Run initial migration (`20261008195519_init` incl. FTS trigger + GIN index; postgres on host port 5433)
 
 ### Infrastructure
-- [ ] Docker Compose (postgres, redis services)
-- [ ] Dockerfiles for web, api, worker
-- [ ] `.env.example`
+- [x] Docker Compose (postgres, redis services)
+- [x] Dockerfiles for web, api, worker
+- [x] `.env.example`
 
 ### Quality
-- [ ] ESLint configuration
-- [ ] Prettier/formatting
-- [ ] TypeScript strict mode
-- [ ] Basic test setup
+- [x] ESLint configuration
+- [x] Prettier/formatting
+- [x] TypeScript strict mode
+- [x] Basic test setup (Jest + health controller unit tests)
 
 ---
 
 ## Phase 2 — Core Platform
-**Status: NOT STARTED**
+**Status: IN PROGRESS — Authentication & RBAC complete; profiles + event system next**
 
 ### Authentication
-- [ ] Registration (email/password)
-- [ ] Login
-- [ ] Logout
-- [ ] Password hashing (Argon2/bcrypt)
-- [ ] JWT tokens / session management
-- [ ] Secure cookies
-- [ ] Password reset architecture
-- [ ] Email verification architecture
-- [ ] Change password
-- [ ] Rate limiting on auth endpoints
+- [x] Registration (email/password)
+- [x] Login
+- [x] Logout
+- [x] Password hashing (Argon2id)
+- [x] JWT tokens / session management (rotating refresh sessions, hashed at rest)
+- [x] Secure cookies (httpOnly, sameSite=lax, path-scoped refresh cookie)
+- [x] Password reset architecture (hashed single-use tokens, 1h expiry; email delivery deferred to Phase 4 worker)
+- [x] Email verification architecture (schema-ready: `is_email_verified`; flow pending)
+- [x] Change password
+- [x] Rate limiting on auth endpoints (ThrottlerGuard, 10 req/min on auth)
 
 ### Authorization
-- [ ] RBAC (CUSTOMER, ORGANIZER, ADMIN)
-- [ ] Guards/middleware for role-based access
-- [ ] Backend-enforced authorization
+- [x] RBAC (CUSTOMER, ORGANIZER, ADMIN)
+- [x] Guards/middleware for role-based access (JwtAuthGuard + RolesGuard global, `@Public()` / `@Roles()`)
+- [x] Backend-enforced authorization (global guards; role checks applied per-route as features land)
 
 ### User Profiles
-- [ ] User profile CRUD
+- [x] User profile retrieval (`GET /api/auth/me`)
+- [ ] User profile CRUD (update profile, `/users` module)
 - [ ] Profile image upload
 - [ ] Preferences
 - [ ] Account settings

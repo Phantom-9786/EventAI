@@ -78,6 +78,7 @@ Thumbs.db
 .cache/
 
 # Sensitive files (auto-detected)
-.env.example
+.env.local
+.env.*.local
 node_modules
 

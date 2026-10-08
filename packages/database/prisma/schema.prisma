@@ -176,6 +176,7 @@ model Event {
   @@index([startDate])
   @@index([status])
   @@index([isFeatured])
+  @@index([searchVector], type: Gin, map: "events_search_vector_idx")
   @@map("events")
 }
 
