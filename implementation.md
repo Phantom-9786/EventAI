@@ -52,7 +52,7 @@
 ---
 
 ## Phase 2 — Core Platform
-**Status: COMPLETE — Authentication (incl. Google OAuth 2.0, live login pending real Google Cloud credentials), Authorization, User Profiles, Event System, Ticket Types, Venue completion (incl. Leaflet maps), and the full public frontend (event listing/detail, categories, venues, auth pages, AI assistant page, organizer dashboard) complete**
+**Status: COMPLETE — Authentication (incl. Google OAuth 2.0, live-verified up to Google's consent screen; the final consent→session round-trip awaits one real user sign-in), Authorization, User Profiles, Event System, Ticket Types, Venue completion (incl. Leaflet maps), and the full public frontend (event listing/detail, categories, venues, auth pages, AI assistant page, organizer dashboard) complete**
 
 ### Authentication
 - [x] Registration (email/password)
@@ -65,7 +65,7 @@
 - [x] Email verification flow: `EmailVerificationToken` model (hashed single-use token, 24h expiry, one per user) + migration `20261009150000_email_verification`; `POST /api/auth/verify-email` (public, single-use transaction) + `POST /api/auth/resend-verification` (authenticated); register issues a token, Google-linked accounts skip verification; `/verify-email` page + `EmailVerificationBanner` (resend + dismiss); verified live (register → resend → verify → `isEmailVerified:true`, reuse rejected)
 - [x] Change password
 - [x] Rate limiting on auth endpoints (ThrottlerGuard, 10 req/min on auth)
-- [x] Google OAuth 2.0 sign-in (authorization-code flow, server-side `verifyIdToken`, HMAC-signed CSRF state, verified-email-only account linking, passwordless accounts; frontend buttons + `/auth/callback`; feature-gated 503 without credentials — live login pending real Google Cloud credentials, see `docs/google-oauth.md`)
+- [x] Google OAuth 2.0 sign-in (authorization-code flow, server-side `verifyIdToken`, HMAC-signed CSRF state, verified-email-only account linking, passwordless accounts; frontend buttons + `/auth/callback`; feature-gated 503 without credentials, see `docs/google-oauth.md`). Live-verified 2026-10-09 with real Cloud Console credentials: auth redirect carries the registered `redirect_uri` + signed state; all callback failure paths exercised (`google_state_mismatch`/`google_cancelled`/`google_failed` incl. a real token-exchange rejection with a fake code); frontend button + error mapping confirmed; empty-`GOOGLE_CALLBACK_URL` default bug fixed (86481ed). Final consent→create/link→session round-trip still requires a real user sign-in.
 
 ### Authorization
 - [x] RBAC (CUSTOMER, ORGANIZER, ADMIN)
