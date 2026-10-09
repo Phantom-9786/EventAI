@@ -52,7 +52,7 @@
 ---
 
 ## Phase 2 — Core Platform
-**Status: IN PROGRESS — Authentication, Authorization, User Profiles, Event System (organizer CRUD + publishing + categories + FTS discovery backend) complete; venue completion, ticket types, and frontend integration next**
+**Status: IN PROGRESS — Authentication, Authorization, User Profiles, Event System (organizer CRUD + publishing + categories + FTS discovery backend), Ticket Types, Venue completion, and frontend event pages complete; booking engine (Phase 3) next**
 
 ### Authentication
 - [x] Registration (email/password)
@@ -94,19 +94,27 @@
 - [x] Price filtering (min ticket price subquery)
 - [x] Sorting (relevance when searching; date/price/popularity/createdAt otherwise, with sortDir)
 - [x] Pagination (page/limit + total/pages)
-- [ ] Event detail page (frontend)
+- [x] Event detail page (frontend) — see "Frontend Event Pages"
 
 ### Venues
 - [x] Venue model
-- [x] Venue CRUD (organizer-owned create/list; update/delete + public browse pending)
-- [ ] Map coordinates (schema-ready: latitude/longitude)
+- [x] Venue CRUD (organizer-owned create/list + update/delete guarded against venues with events)
+- [x] Public venue browse (`GET /api/venues` city/name filter + pagination; `GET /api/venues/:id` with seat sections + organizer)
+- [ ] Map coordinates (schema-ready: latitude/longitude; Leaflet integration pending)
 - [ ] Leaflet + OpenStreetMap integration
-- [ ] Seating configuration
+- [x] Seating configuration (organizer seat sections with bulk seat generation, Excel-style row letters)
 
 ### Ticket Types
-- [ ] Ticket type model (name, price, quantity, sale dates, limits)
-- [ ] Ticket type CRUD
-- [ ] Availability tracking
+- [x] Ticket type model (name, price, quantity, sale dates, limits)
+- [x] Ticket type CRUD (organizer-only on owned events; quantity edits preserve sold stock; delete blocked once booked)
+- [x] Availability tracking (availableQuantity derived on create/update; sold-out and low-stock surfaced in public event detail)
+
+### Frontend Event Pages
+- [x] API client (`apps/web/src/lib/api.ts` — typed fetchers, `NEXT_PUBLIC_API_URL` override, paise→₹ formatting, date formatting)
+- [x] Events listing page (`/events` — search, city filter, category chips from live API, sorting, pagination; server-rendered)
+- [x] Event detail page (`/events/[slug]` — venue/date info, ticket types with availability and sale windows, FAQs, policies, organizer card, generateMetadata)
+- [ ] Categories/Venues/AI/signin pages (header links exist; pages pending)
+- [ ] Auth integration on the frontend (Phase 2 backend ready; UI pending)
 
 ---
 

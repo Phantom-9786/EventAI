@@ -100,6 +100,26 @@ Phase 2 — Event System (COMPLETE, `apps/api/src/modules/{events,organizers,cat
 - Drafts and non-PUBLISHED events are invisible to the public routes (search + `GET /api/events/:idOrSlug` 404); organizers view their own via `GET /api/events/:idOrSlug/manage` or the own-events list
 - `Roles()` decorator now accepts string literals; `eventSearchSchema.isFeatured` uses an explicit preprocess (plain `z.coerce.boolean()` treats the string "false" as true)
 
+Phase 2 — Ticket Types (COMPLETE, `apps/api/src/modules/tickets/`):
+- Organizer-only CRUD on owned events: `POST /api/events/:idOrSlug/tickets`, `GET /api/events/:idOrSlug/tickets` (incl. inactive, manage view), `PATCH /api/ticket-types/:id`, `DELETE /api/ticket-types/:id` (delete refused once any tickets are booked — deactivate instead)
+- Guarded creation: no tickets on CANCELLED/COMPLETED events; sale window validated (end > start, end ≤ event start); `sectionId` must belong to the event's venue
+- Availability tracking: `availableQuantity` initialised to `totalQuantity` on create and derived on quantity edits (`newAvailable = newTotal − sold`), so booked stock is never oversold; reduction below sold count is a 409
+- Prices are integers in paise with per-type `currency`; `maxPerBooking` (1–10, default 5); `isActive` soft-hides types from the public event detail (manage view still sees them)
+- Public event detail returns only active ticket types with availability, sale windows, section names — the search/listing endpoints expose `minPrice`/`maxPrice` over those
+
+Phase 2 — Venue Completion (COMPLETE, `apps/api/src/modules/{organizers,venues}/`):
+- Organizer venue management: `PATCH /api/organizers/venues/:venueId`, `DELETE /api/organizers/venues/:venueId` (409 when events reference the venue; sections cascade), seat sections `POST/GET /api/organizers/venues/:venueId/sections`
+- Seat generation: sections create `rows × seatsPerRow` seats in one call via chunked `createMany` (1000/batch) with Excel-style row labels (A…Z, AA…) and stable `label` = `RowNumber`
+- Public venue discovery (`@Public`): `GET /api/venues` (name/city ILIKE filters + pagination, published-event counts) and `GET /api/venues/:id` (venue + organizer + seat sections); validation in `venueSearchSchema`
+- Map coordinates remain schema-only (Leaflet integration is still pending — see Current Limitations)
+
+Phase 2 — Frontend Event Pages (COMPLETE, `apps/web/src/app/events/`):
+- API client `apps/web/src/lib/api.ts`: typed fetchers for events search/detail/categories, `cache: 'no-store'`, base URL from `NEXT_PUBLIC_API_URL` (default `http://localhost:4000/api`), paise→₹ and en-IN date formatters
+- `/events` listing (server component): full-text search box, city filter, sort dropdown (date/price/popularity × direction), category chips from the live categories API, result count, empty state, prev/next pagination preserving filters; API failures degrade to an empty result set
+- `/events/[slug]` detail (server component): hero image/category/tags, date & venue cards, description, ticket table with per-type availability (sold-out / low-stock "Only N left"), max-per-booking, sale-window notes, paise prices; FAQs (native `<details>`), policies, sticky booking sidebar with "from" price (booking button disabled until Phase 3), organizer card with verified badge; `generateMetadata` per event and `notFound()` on missing/unpublished events
+- `EventCard` shared component in `apps/web/src/components/events/event-card.tsx`
+- Header links to `/categories`, `/venues`, `/signin`, `/signup` still have no pages — intentionally out of scope for this task
+
 ## Current Database Schema
 
 Complete Phase 1+ schema in `packages/database/prisma/schema.prisma` (see "Implemented Features"). Migration `20261008195519_init` applied (all 18 tables + enums + FKs). `search_vector` on Event is `Unsupported("tsvector")`: the column is created by Prisma in the migration; a trigger (`events_search_vector_trigger`, weights title=A, tags=B, short_description=C, description=D) and a GIN index (`events_search_vector_idx`, declared in the schema via `@@index([searchVector], type: Gin)`) are appended in the same migration. Verified end-to-end with a rolled-back insert + `websearch_to_tsquery` match. Prisma client generated (v6.19.3).
@@ -147,7 +167,7 @@ Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global Validatio
 ## Testing Status
 
 - Jest configured in `apps/api` (unit) with `test/jest-e2e.json` for e2e
-- 42 passing unit tests (health: 3; auth service: 6; users service: 14; events service: 19 — CRUD, ownership, publish/cancel/delete transitions, FTS raw-SQL shape + hydration order, draft-hiding)
+- 65 passing unit tests (health: 3; auth service: 6; users service: 14; events service: 19 — CRUD, ownership, publish/cancel/delete transitions, FTS raw-SQL shape + hydration order, draft-hiding; tickets service: 7 — creation guards, sale windows, section-venue checks, availability derivation on quantity edits, delete-with-bookings refusal; organizers service: 8 — venue update/delete guards, seat-section generation incl. Excel row labels and chunking; venues service: 5 — public search filters/pagination, detail include shape, 404)
 - No tests yet in web/worker/packages
 
 ## Deployment Status
@@ -165,11 +185,12 @@ Docker Compose infra services + per-app Dockerfiles exist. No CI/CD workflow yet
 ## Current Limitations
 
 - Bookings, payments, and AI features not yet implemented (schema-ready only)
-- Venue management is partial: organizers can create/list venues, but update/delete/public venue browsing and seating configuration are not built yet
-- Event image upload not implemented (images/coverImage are URL arrays, schema-ready)
-- Ticket types are not implemented yet, so price filters/sorts operate over empty ticket sets (events with no tickets are excluded by price filters; minPrice/maxPrice are null)
-- Landing page uses placeholder content; no API integration yet
-- API boot requires reachable PostgreSQL (PrismaService fails fast)
+- Venue map coordinates are schema-only: no Leaflet/OpenStreetMap rendering anywhere yet
+- Seat sections generate physical seats, but no seat-level ticket assignment or seat-selection UX exists (Phase 3 scope)
+- Event image upload not implemented (images/coverImage are URL arrays, schema-ready); event cards fall back to a placeholder icon
+- Frontend covers only `/events` listing + `/events/[slug]` detail; `/categories`, `/venues`, `/ai`, `/signin`, `/signup` header links have no pages yet and no auth state is wired into the UI
+- Landing page uses placeholder content; not yet backed by the API
+- API boot requires reachable PostgreSQL (PrismaService fails fast); frontend pages degrade gracefully to empty states when the API is unreachable
 - Password reset email delivery not wired (token logged in dev; email worker planned for Phase 4)
 
 ## Important Architecture Decisions
@@ -178,16 +199,16 @@ See `docs/architecture-decisions.md` (ADRs 001–013).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform: Authentication & RBAC (COMPLETE), User Profiles (COMPLETE), Event System incl. FTS discovery backend (COMPLETE). Remaining in Phase 2: venue completion (update/delete/public browse, seating), ticket types, frontend event pages.
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform: Authentication & RBAC (COMPLETE), User Profiles (COMPLETE), Event System incl. FTS discovery backend (COMPLETE), Ticket Types (COMPLETE), Venue completion (COMPLETE), Frontend event pages (COMPLETE). Next: Phase 3 — Booking Engine (seats, bookings, payments, digital tickets).
 
 ## Current Task
 
-Event System implemented and verified end-to-end: register → become organizer → create venue → create draft (hidden publicly) → publish → FTS search finds it with correct filters/sorting → update → cancel → delete rules enforced; customer role 403 on organizer routes; categories seeded and admin-gated. Full monorepo pipeline green: 21/21 tasks, 42 unit tests.
+Ticket Types + Venue completion + frontend event pages implemented and verified: organizer ticket CRUD with sale windows, availability derivation and booking-aware delete rules; venue update/delete with event-attachment guard, seat-section generation (chunked, Excel-style rows) and public venue browse/detail APIs; `/events` listing (search/city/category/sort/pagination from live API) and `/events/[slug]` detail (tickets with availability, FAQs, policies, organizer card) in Next.js. Full monorepo pipeline green: lint 9/9, type-check 12/12, 65/65 unit tests, build 6/6.
 
 ## Next Task
 
-Phase 2 continuation: Ticket Types (CRUD for organizers on their events, sale windows, quantity/availability) and Venue completion (update/delete, public venue browse, seating sections), then frontend event listing/detail pages hitting the new APIs.
+Phase 3 — Booking Engine: seat states + holds (Redis/BullMQ), booking creation with concurrency protection, Razorpay sandbox payments, digital ticket generation — or, before that, remaining Phase 2 UI (auth pages wiring the existing backend, categories/venues browse pages, organizer dashboard) if the priority is a complete customer journey.
 
 ## Last Completed Checkpoint
 
-Phase 2 — Event System complete (commit "feat: complete event system with FTS search"); prior checkpoints: user profiles (990e83f), authentication (0c051b7).
+Phase 2 — Ticket Types + Venue completion + frontend event pages (commit "feat: complete ticket types, venues, and frontend event pages"); prior checkpoints: event system (052363e "feat: complete event system", c59b01f "feat: complete event system with FTS search"), user profiles (990e83f), authentication (0c051b7).

@@ -54,6 +54,7 @@ describe('TicketsService', () => {
     name: 'General Admission',
     price: 150000, // ₹1,500 in paise
     totalQuantity: 100,
+    maxPerBooking: 5,
   };
 
   describe('create', () => {
