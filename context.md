@@ -82,6 +82,14 @@ Phase 2 — Authentication & RBAC (COMPLETE):
 - Global guards: ThrottlerGuard (rate limiting via `RATE_LIMIT_TTL`/`RATE_LIMIT_MAX`), JwtAuthGuard (all routes require JWT unless `@Public()`), RolesGuard (enforces `@Roles()`); auth endpoints are stricter-limited to 10 req/min per IP
 - `JwtStrategy` (passport-jwt) validates the user exists and is active on every request
 
+Phase 2 — Google OAuth 2.0 (COMPLETE, unverified against real Google credentials):
+- `GET /api/auth/google` (redirect to Google consent) + `GET /api/auth/google/callback` (code exchange, server-side `verifyIdToken` — signature/audience/expiry — then the same session mechanism as password login); feature-gated: 503 when `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are unset
+- Account linking: match on `googleId` first; auto-link an existing email/password account ONLY when Google reports `email_verified`; new users are created passwordless (`users.passwordHash` is now nullable, `users.google_id` unique — migration `20261009120000_google_oauth`)
+- CSRF: HMAC-SHA256-signed state (10-min expiry) mirrored via an httpOnly cookie; post-login redirect restricted to same-site relative paths; access token returned in the URL fragment (never sent to servers)
+- Frontend: "Continue with Google" on `/signin` + `/signup`, `/auth/callback` consumer, `/signin?error=google_*` error mapping; Google-only accounts get clean errors on password login/change-password
+- Full flow + setup steps documented in `docs/google-oauth.md` (login has NOT yet been performed with real Google Cloud credentials)
+- 14 unit tests (auth service google cases + google-oauth service: state CSRF/tamper/expiry, feature gating, code exchange, payload normalization)
+
 Phase 2 — User Profiles (COMPLETE, `apps/api/src/modules/users/`):
 - `GET /api/users/me` full own profile (email, preferences, verification state); `PATCH /api/users/me` updates firstName/lastName/username/bio/location with P2002 → 409 on taken usernames
 - `PATCH /api/users/me/preferences` merges keys into the `users.preferences` JSON (string/boolean/number values)
@@ -111,7 +119,7 @@ Phase 2 — Venue Completion (COMPLETE, `apps/api/src/modules/{organizers,venues
 - Organizer venue management: `PATCH /api/organizers/venues/:venueId`, `DELETE /api/organizers/venues/:venueId` (409 when events reference the venue; sections cascade), seat sections `POST/GET /api/organizers/venues/:venueId/sections`
 - Seat generation: sections create `rows × seatsPerRow` seats in one call via chunked `createMany` (1000/batch) with Excel-style row labels (A…Z, AA…) and stable `label` = `RowNumber`
 - Public venue discovery (`@Public`): `GET /api/venues` (name/city ILIKE filters + pagination, published-event counts) and `GET /api/venues/:id` (venue + organizer + seat sections); validation in `venueSearchSchema`
-- Map coordinates remain schema-only (Leaflet integration is still pending — see Current Limitations)
+- Map coordinates: rendered with Leaflet + OpenStreetMap (`apps/web/src/components/venues/venue-map.tsx`) on the venue detail page (marker popup, graceful fallback when coordinates are absent)
 
 Phase 2 — Frontend Event Pages (COMPLETE, `apps/web/src/app/events/`):
 - API client `apps/web/src/lib/api.ts`: typed fetchers for events search/detail/categories, `cache: 'no-store'`, base URL from `NEXT_PUBLIC_API_URL` (default `http://localhost:4000/api`), paise→₹ and en-IN date formatters
@@ -128,7 +136,7 @@ Phase 2 — Frontend Auth & Browse Pages (COMPLETE, `apps/web/src/app/{signin,si
 
 ## Current Database Schema
 
-Complete Phase 1+ schema in `packages/database/prisma/schema.prisma` (see "Implemented Features"). Migration `20261008195519_init` applied (all 18 tables + enums + FKs). `search_vector` on Event is `Unsupported("tsvector")`: the column is created by Prisma in the migration; a trigger (`events_search_vector_trigger`, weights title=A, tags=B, short_description=C, description=D) and a GIN index (`events_search_vector_idx`, declared in the schema via `@@index([searchVector], type: Gin)`) are appended in the same migration. Verified end-to-end with a rolled-back insert + `websearch_to_tsquery` match. Prisma client generated (v6.19.3).
+Complete Phase 1+ schema in `packages/database/prisma/schema.prisma` (see "Implemented Features"). Migrations applied: `20261008195519_init` (all 18 tables + enums + FKs) and `20261009120000_google_oauth` (`users.passwordHash` nullable + `users.google_id` unique). `search_vector` on Event is `Unsupported("tsvector")`: the column is created by Prisma in the migration; a trigger (`events_search_vector_trigger`, weights title=A, tags=B, short_description=C, description=D) and a GIN index (`events_search_vector_idx`, declared in the schema via `@@index([searchVector], type: Gin)`) are appended in the same migration. Verified end-to-end with a rolled-back insert + `websearch_to_tsquery` match. Prisma client generated (v6.19.3).
 
 ## Authentication
 
@@ -155,7 +163,7 @@ Not yet implemented (deferred). Socket.IO dependencies installed in API.
 
 ## Redis Usage
 
-Worker skeleton connects via `REDIS_URL` (ioredis, BullMQ-compatible). No application usage yet — booking expiry runs on an in-process cron instead (see Background Jobs); Redis caching deferred.
+Redis caching is live in the API via `CacheService` (`apps/api/src/common/cache/cache.service.ts`, ioredis): events list/search and categories are cached with TTL + pattern-based invalidation on writes. The worker skeleton connects via `REDIS_URL` (BullMQ-compatible). BullMQ worker split remains deferred.
 
 ## Background Jobs
 
@@ -177,16 +185,17 @@ Deferred by design: similar-event recommendations use a Postgres-based scoring q
 
 ## Security Architecture
 
-Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global ValidationPipe (whitelist + forbidNonWhitelisted), consistent error envelope (no stack leaks), fail-fast env validation, Zod-based body validation (`ZodValidationPipe` + `@eventai/validation`), Argon2id password hashing, hashed-at-rest refresh/session/reset tokens, httpOnly refresh cookie, global rate limiting (ThrottlerGuard; 10 req/min on auth), JWT auth with `@Public()` opt-out, RBAC via `@Roles()` + RolesGuard. Avatar uploads: mimetype allow-list + 5 MB cap enforced in the service (415/413 responses); uploads served with 1-day cache; only `/uploads/*` static prefix is exposed.
+Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global ValidationPipe (whitelist + forbidNonWhitelisted), consistent error envelope (no stack leaks), fail-fast env validation, Zod-based body validation (`ZodValidationPipe` + `@eventai/validation`), Argon2id password hashing, hashed-at-rest refresh/session/reset tokens, httpOnly refresh cookie, global rate limiting (ThrottlerGuard; 10 req/min on auth), JWT auth with `@Public()` opt-out, RBAC via `@Roles()` + RolesGuard. Google OAuth: server-side `verifyIdToken`, HMAC-signed CSRF state cookie, verified-email-only account linking (ADR-014). Avatar uploads: mimetype allow-list + 5 MB cap enforced in the service (415/413 responses); uploads served with 1-day cache; only `/uploads/*` static prefix is exposed.
 
 ## Current Environment Configuration
 
-`.env.example` covers: NODE_ENV, PORT, FRONTEND_URL, DATABASE_URL, REDIS_URL, JWT_SECRET/JWT_EXPIRY/REFRESH_TOKEN_EXPIRY, Razorpay, Grok, Pinecone, Resend, uploads, rate limiting, seat hold TTL. Copy to `.env` before running. Env validation requires real `DATABASE_URL` and non-placeholder `JWT_SECRET` (>= 16 chars). On this machine, `.env` copies exist at the repo root, `packages/database/` (Prisma CLI) and `apps/api/` (NestJS ConfigModule reads from each app's cwd). DATABASE_URL uses host port 5433 (see Known Issues).
+`.env.example` covers: NODE_ENV, PORT, FRONTEND_URL, DATABASE_URL, REDIS_URL, JWT_SECRET/JWT_EXPIRY/REFRESH_TOKEN_EXPIRY, Razorpay, Grok, Pinecone, Resend, uploads, rate limiting, seat hold TTL, Google OAuth (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_CALLBACK_URL` — optional, feature-gated). Copy to `.env` before running. Env validation requires real `DATABASE_URL` and non-placeholder `JWT_SECRET` (>= 16 chars). On this machine, `.env` copies exist at the repo root, `packages/database/` (Prisma CLI) and `apps/api/` (NestJS ConfigModule reads from each app's cwd). DATABASE_URL uses host port 5433 (see Known Issues).
 
 ## Testing Status
 
 - Jest configured in `apps/api` (unit) with `test/jest-e2e.json` for e2e
-- 106 passing unit tests across 10 suites (health: 3; auth service: 6; users service: 14; events service: 19 — CRUD, ownership, publish/cancel/delete transitions, FTS raw-SQL shape + hydration order, draft-hiding; tickets service: 7 — creation guards, sale windows, section-venue checks, availability derivation on quantity edits, delete-with-bookings refusal; organizers service: 13 — venue update/delete guards, seat-section generation incl. Excel row labels and chunking, ticket validation (VALID→USED, already-used 409) and per-status ticket stats; venues service: 5 — public search filters/pagination, detail include shape, 404; bookings service: 14 — idempotency fast-path + foreign-key rejection, event/ticket guards, started-event refusal, maxPerBooking merge, sale windows, conditional decrement + server-side pricing, mid-transaction stock-failure rollback, cross-user booking hiding, cancel/closed/confirmed rules, confirmed-cancel refund delegation; payments service: 19 — order reuse on retry, new-order creation + PAYMENT_PENDING, paid/expired booking refusal, signature confirm + ticket minting, tampered-signature rejection, idempotent re-verify, cross-user hiding, webhook captured/failed/invalid-signature/duplicate/unknown-order, QR data URL + cross-user ticket hiding, refund (Razorpay refund call before state tx, double-refund prevention, ticket cancellation, stock restore); AI service: 3 — catalog-grounded prompt building, unconfigured-key 503, upstream error mapping)
+- 132 passing unit tests across 12 suites (health, auth service incl. Google cases, google-oauth service, users, events, tickets, organizers, venues, bookings, payments, ai, admin — covering the previously documented cases plus: google-oauth feature gating, state CSRF/tamper/expiry/open-redirect refusal, code exchange + payload normalization; Google account creation/linking/refusals; passwordless-account login + change-password guards; admin stats)
+- Playwright smoke suite (`e2e/smoke.spec.ts`, `npx playwright test` with auto-started dev web server): 7/7 passing against the seeded stack — landing, discovery, search narrowing, event detail + ticket table, categories/venues, seeded sign-in, unauthenticated tickets gate. Requires PostgreSQL + Redis (docker compose up), seeded DB (`npm run db:seed`), and the API on :4000
 - No tests yet in web/worker/packages
 
 ## Deployment Status
@@ -203,11 +212,9 @@ Docker Compose infra services + per-app Dockerfiles exist. GitHub Actions CI wor
 
 ## Current Limitations
 
-- AI chat requires a real `GROK_API_KEY` (currently a placeholder in `.env`) — the endpoint returns a clear 503 until configured; confirmation emails are skipped with a dev log until a real `RESEND_API_KEY` is set (both documented credential blockers)
-- Venue map coordinates are schema-only: no Leaflet/OpenStreetMap rendering anywhere yet
+- AI chat requires a real `GROK_API_KEY` (currently a placeholder in `.env`) — the endpoint returns a clear 503 until configured; confirmation emails are skipped with a dev log until a real `RESEND_API_KEY` is set; Google sign-in is implemented but requires `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` + one manual login to verify (all documented credential blockers)
 - Seat sections generate physical seats, but no seat-level ticket assignment or seat-selection UX exists (intentionally deferred)
 - Event image upload not implemented (images/coverImage are URL arrays, schema-ready); event cards fall back to a placeholder icon
-- Frontend routes: `/`, `/events`, `/events/[slug]`, `/categories`, `/venues`, `/venues/[id]`, `/signin`, `/signup`, `/tickets`, `/dashboard`, `/ai`; missing: admin dashboard UI, organizer scanner UI
 - Frontend has no tests yet (API client, auth provider, pages are untested; web `test` script is a placeholder)
 - Landing page uses placeholder content; not yet backed by the API
 - API boot requires reachable PostgreSQL (PrismaService fails fast); frontend pages degrade gracefully to empty states when the API is unreachable
@@ -229,20 +236,20 @@ Implemented (`apps/api/src/modules/payments/` + booking confirm path), complete 
 
 ## Important Architecture Decisions
 
-See `docs/architecture-decisions.md` (ADRs 001–013).
+See `docs/architecture-decisions.md` (ADRs 001–014).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE except Leaflet maps, deferred). Phase 3 — Booking Engine (COMPLETE except seat-level selection, deferred and documented): booking core + Razorpay payments + refunds + digital tickets with QR + check-in + booking UI. Phase 4 — Platform Engineering (PARTIAL): expiry cron, Resend confirmation emails, organizer stats + dashboard UI shipped; Redis caching and BullMQ worker split deferred. Phase 5 — AI Layer (PARTIAL): catalog-grounded Grok chat + similar-event recommendations + `/ai` page shipped (blocked on a real `GROK_API_KEY`); Pinecone RAG and tool-calling deferred. Phase 6 — Production Polish (PARTIAL): 106 unit tests, CI workflow, docs updates shipped; e2e tests, observability tooling, and the remaining docs/ set pending.
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE): auth incl. Google OAuth (live login pending real Google Cloud credentials), RBAC, profiles, events/FTS, ticket types, venues + Leaflet maps, frontend pages. Phase 3 — Booking Engine (COMPLETE except seat-level selection, deferred and documented): booking core + Razorpay payments + refunds + digital tickets with QR + check-in + booking UI. Phase 4 — Platform Engineering (PARTIAL): expiry cron, Resend confirmation emails, organizer stats + dashboard + attendee list, door scanner UI, admin dashboard (stats), Redis caching via CacheService shipped; BullMQ worker split deferred. Phase 5 — AI Layer (PARTIAL): catalog-grounded Grok chat + similar-event recommendations + `/ai` page shipped (blocked on a real `GROK_API_KEY`); Pinecone RAG and tool-calling deferred. Phase 6 — Production Polish (PARTIAL): 132 unit tests + Playwright smoke suite 7/7, CI workflow, docs/ set complete; observability tooling, admin management endpoints, and live third-party verification pending.
 
 ## Current Task
 
-Docs and CI checkpoint: `context.md`/`implementation.md` updated to reflect refunds, ticket check-in, My Tickets page, expiry cron, notifications, organizer stats/dashboard, AI assistant + recommendations, the `/ai` page, the 106-test suite, the credential blockers (placeholder `GROK_API_KEY` / `RESEND_API_KEY`), and the CI workflow.
+Phase 6 e2e checkpoint: Google OAuth 2.0 feature (backend + frontend + docs + tests), Playwright smoke suite green (7/7 — fixed a stale `.next` dev-server artifact and a `google_id` column-name mismatch between the migration and the schema `@map`), `context.md`/`implementation.md`/ADRs synced, `.env.example` extended with `GOOGLE_*`.
 
 ## Next Task
 
-Optional remaining polish (all documented in implementation.md): Playwright e2e tests, Helmet/CSRF/CORS production audit, observability tooling, admin dashboard UI, organizer scanner UI, and the docs/ set. Live payment/AI behavior requires real Razorpay sandbox keys, a real `GROK_API_KEY`, and a `RESEND_API_KEY` in `.env`.
+Remaining Phase 4/6 work: admin management endpoints (user/event moderation) + admin UI beyond stats, password-reset email delivery wiring, then observability tooling and the production-readiness checklist. Credential-blocked verifications (Razorpay sandbox, real `GROK_API_KEY`, `RESEND_API_KEY`, Google Cloud OAuth client) continue to be documented until keys are provided.
 
 ## Last Completed Checkpoint
 
-Phase 6 partial — docs update + CI workflow (commit "chore: update docs and add CI workflow"); prior checkpoints this phase: AI assistant + recommendations + `/ai` page (638a9a3), expiry cron + notifications + organizer stats/dashboard (1216b3d), refunds + ticket check-in + My Tickets page (7463023), Razorpay payments + digital tickets (b4e06a2); earlier: booking engine core (f7551e0), frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).
+Phase 6 e2e + Google OAuth (this session, uncommitted until the next checkpoint commit); prior checkpoints: door scanner + attendee list + admin dashboard + Redis caching + venue maps + docs (e399ecb), AI assistant + recommendations + `/ai` page (638a9a3), expiry cron + notifications + organizer stats/dashboard (1216b3d), refunds + ticket check-in + My Tickets page (7463023), Razorpay payments + digital tickets (b4e06a2), booking engine core (f7551e0), frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).

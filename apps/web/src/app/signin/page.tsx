@@ -1,12 +1,23 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { ApiError } from '@/lib/auth';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Button } from '@/components/ui/button';
+import { GoogleButton } from '@/components/auth/google-button';
+
+const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
+  google_cancelled: 'Google sign-in was cancelled. Please try again.',
+  google_state_mismatch: 'Google sign-in could not be verified. Please try again.',
+  google_failed: 'Google sign-in failed. Please try again.',
+  google_email_unverified:
+    'Your Google account email is not verified, so it cannot be used to sign in.',
+  google_account_disabled: 'This account has been disabled.',
+  google_not_configured: 'Google sign-in is not available right now.',
+};
 
 export default function SignInPage() {
   const { signIn } = useAuth();
@@ -15,6 +26,18 @@ export default function SignInPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // OAuth callback errors arrive as ?error=google_* query params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const googleError = params.get('error');
+    if (googleError) {
+      setError(
+        GOOGLE_ERROR_MESSAGES[googleError] ?? 'Google sign-in failed. Please try again.',
+      );
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -77,6 +100,12 @@ export default function SignInPage() {
           {submitting && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
           Sign In
         </Button>
+        <div className="flex items-center gap-3 py-1" aria-hidden="true">
+          <span className="h-px flex-1 bg-border" />
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
+          <span className="h-px flex-1 bg-border" />
+        </div>
+        <GoogleButton redirectTo="/events" />
         <p className="text-center text-sm text-muted-foreground">
           New to EventAI?{' '}
           <Link href="/signup" className="font-medium text-primary hover:underline">

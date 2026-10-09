@@ -23,7 +23,10 @@ enum UserRole {
 model User {
   id              String    @id @default(uuid())
   email           String    @unique
-  passwordHash    String
+  // Nullable: Google-only accounts have no local password
+  passwordHash    String?
+  // Google OAuth subject ("sub") when the account is linked to a Google account
+  googleId        String?   @unique @map("google_id")
   firstName       String    @map("first_name")
   lastName        String    @map("last_name")
   username        String?   @unique

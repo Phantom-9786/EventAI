@@ -52,7 +52,7 @@
 ---
 
 ## Phase 2 — Core Platform
-**Status: IN PROGRESS — Authentication, Authorization, User Profiles, Event System, Ticket Types, Venue completion, and the full public frontend (event listing/detail, categories, venues, auth pages) complete; organizer dashboard UI (Phase 4) and booking engine (Phase 3) next**
+**Status: COMPLETE — Authentication (incl. Google OAuth 2.0, live login pending real Google Cloud credentials), Authorization, User Profiles, Event System, Ticket Types, Venue completion (incl. Leaflet maps), and the full public frontend (event listing/detail, categories, venues, auth pages, AI assistant page, organizer dashboard) complete**
 
 ### Authentication
 - [x] Registration (email/password)
@@ -65,6 +65,7 @@
 - [x] Email verification architecture (schema-ready: `is_email_verified`; flow pending)
 - [x] Change password
 - [x] Rate limiting on auth endpoints (ThrottlerGuard, 10 req/min on auth)
+- [x] Google OAuth 2.0 sign-in (authorization-code flow, server-side `verifyIdToken`, HMAC-signed CSRF state, verified-email-only account linking, passwordless accounts; frontend buttons + `/auth/callback`; feature-gated 503 without credentials — live login pending real Google Cloud credentials, see `docs/google-oauth.md`)
 
 ### Authorization
 - [x] RBAC (CUSTOMER, ORGANIZER, ADMIN)
@@ -100,8 +101,8 @@
 - [x] Venue model
 - [x] Venue CRUD (organizer-owned create/list + update/delete guarded against venues with events)
 - [x] Public venue browse (`GET /api/venues` city/name filter + pagination; `GET /api/venues/:id` with seat sections + organizer)
-- [ ] Map coordinates (schema-ready: latitude/longitude; Leaflet integration pending)
-- [ ] Leaflet + OpenStreetMap integration
+- [x] Map coordinates (schema-ready: latitude/longitude)
+- [x] Leaflet + OpenStreetMap integration (`apps/web/src/components/venues/venue-map.tsx` on the venue detail page; graceful fallback without coordinates)
 - [x] Seating configuration (organizer seat sections with bulk seat generation, Excel-style row letters)
 
 ### Ticket Types
@@ -116,8 +117,8 @@
 - [x] Categories page (`/categories` — live categories with published-event counts, linking to filtered `/events`)
 - [x] Venues pages (`/venues` browse with search/city filter + pagination; `/venues/[id]` detail with amenities, seating sections, organizer card)
 - [x] Auth pages (`/signin`, `/signup` — validated forms, error envelopes surfaced, redirect on success; `AuthProvider` context with bearer token + silent refresh via httpOnly cookie; header shows user state and Sign Out)
-- [ ] AI assistant page (Phase 5)
-- [ ] Organizer dashboard UI (Phase 4)
+- [x] AI assistant page (Phase 5 — `/ai` chat UI)
+- [x] Organizer dashboard UI (Phase 4 — `/dashboard` stats + event list, `/dashboard/scan` QR door scanner)
 
 ---
 
@@ -176,11 +177,11 @@
 ---
 
 ## Phase 4 — Platform Engineering
-**Status: PARTIAL — expiry cron, email notifications, organizer stats + dashboard UI shipped. Redis caching, Socket.IO real-time, BullMQ worker split, and admin tooling intentionally deferred (in-process scheduling + Resend REST cover the current scale; see context.md)**
+**Status: PARTIAL — expiry cron, email notifications, organizer stats + dashboard + door scanner + attendee list, admin stats dashboard, and Redis caching shipped. Socket.IO real-time, BullMQ worker split, and admin management tooling intentionally deferred (in-process scheduling + Resend REST cover the current scale; see context.md)**
 
 ### Redis Caching
-- [ ] Event caching
-- [ ] Cache invalidation strategy
+- [x] Event caching (CacheService — ioredis-backed `apps/api/src/common/cache/cache.service.ts`; events list/search + categories cached with TTL)
+- [x] Cache invalidation strategy (pattern-based invalidation on event/category writes)
 - [x] Rate limiting (in-memory @nestjs/throttler guard on all routes; Redis-backed store deferred)
 
 ### Background Jobs
@@ -204,8 +205,8 @@
 - [x] Stats endpoint (`GET /api/organizers/me/stats` — events by status, confirmed revenue (paise), confirmed/refunded bookings, tickets issued, checked-in)
 - [x] Dashboard UI (`/dashboard` — stat cards, events table with statuses, inline organizer onboarding form for non-organizers, header link for ORGANIZER role)
 - [x] Ticket validation API (door check-in via ticket code; see Phase 3)
-- [ ] Ticket validation scanner UI (camera/QR input) — API ready
-- [ ] Booking/attendee management UI
+- [x] Ticket validation scanner UI (camera/QR input — `/dashboard/scan` paste-or-camera code entry against the validate endpoint)
+- [x] Booking/attendee management UI (attendee list per event on the organizer dashboard via `GET /api/organizers/events/:eventId/bookings`)
 - [ ] Charts/deeper analytics
 
 ### Admin Dashboard
@@ -214,7 +215,7 @@
 - [ ] Event moderation
 - [x] Category management (backend complete since Phase 2; admin UI pending)
 - [ ] Audit logs
-- [ ] Platform statistics
+- [x] Platform statistics (`GET /api/admin/stats` + `/admin` dashboard page — users/organizers/bookings/revenue/tickets by status)
 
 ### Analytics
 - [x] Organizer analytics (bookings, revenue, occupancy via the stats endpoint + dashboard)
@@ -252,13 +253,13 @@
 ---
 
 ## Phase 6 — Production Polish
-**Status: PARTIAL — 106 unit tests, CI workflow, and core docs shipped; e2e tests, observability tooling, and full doc set pending**
+**Status: PARTIAL — 132 unit tests, Playwright smoke suite (7/7), CI workflow, and the full docs/ set shipped; observability tooling, integration tests, and live third-party verification pending**
 
 ### Testing
-- [x] Unit tests (106 passing across 10 suites: auth, users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback, payments incl. signature/webhook/refund, AI service)
+- [x] Unit tests (132 passing across 12 suites: auth incl. Google cases, google-oauth service, users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback, payments incl. signature/webhook/refund, AI service, admin stats, health)
 - [ ] Integration tests (needs a live Postgres in CI — natural next step)
 - [x] Concurrency logic covered at unit level (conditional-decrement rollback prevents double booking; real parallel-run test pending)
-- [ ] E2E tests (Playwright — register, browse, book, pay, ticket)
+- [x] E2E tests (Playwright smoke suite `e2e/smoke.spec.ts` — 7/7: landing, discovery, search, event detail + tickets, categories/venues, seeded sign-in, auth gate; booking/pay e2e still pending real Razorpay keys)
 
 ### Security Review
 - [x] Password hashing (argon2id via auth module, verified in unit tests)
@@ -266,9 +267,9 @@
 - [x] Input validation audit (zod schemas on every write endpoint)
 - [x] Rate limiting verification (global throttler + stricter auth limits)
 - [ ] CORS configuration review (enabled for FRONTEND_URL; production origins audit pending)
-- [ ] Helmet/security headers
-- [ ] CSRF protection
-- [ ] Request size limits
+- [x] Helmet/security headers (helmet() configured in main.ts since Phase 1)
+- [ ] CSRF protection (SPA + bearer-token model mitigates; refresh cookie is path-scoped sameSite=lax — formal review pending)
+- [x] Request size limits (json/urlencoded limits in main.ts; avatar 5 MB cap)
 - [x] Secure error responses (global exception filter, no stack traces leaked)
 - [ ] Audit log verification
 
@@ -289,29 +290,31 @@
 
 ### Observability
 - [ ] Structured logging
-- [ ] Request IDs
-- [ ] Health endpoints (DB, Redis, Worker)
+- [x] Request IDs (request-id middleware in main.ts)
+- [x] Health endpoints (DB connectivity check at `/api/health`; Redis/Worker depth pending)
 - [ ] Error tracking setup
 
 ### Documentation
-- [ ] README.md (complete)
-- [ ] docs/architecture.md
-- [ ] docs/database.md
-- [ ] docs/api.md
-- [ ] docs/booking-engine.md
-- [ ] docs/ai.md
-- [ ] docs/security.md
-- [ ] docs/deployment.md
+- [x] README.md (complete)
+- [x] docs/architecture.md
+- [x] docs/database.md
+- [x] docs/api.md
+- [x] docs/booking-engine.md
+- [x] docs/ai.md
+- [x] docs/security.md
+- [x] docs/deployment.md
+- [x] docs/architecture-decisions.md (ADRs 001–014, incl. Google OAuth)
+- [x] docs/google-oauth.md (flow, account-linking policy, Google Cloud setup, verification checklist)
 - [ ] Architecture diagram
 
 ### Seed Data
-- [ ] Users (customer, organizer, admin)
-- [ ] Categories
-- [ ] Events
-- [ ] Venues
-- [ ] Seats
-- [ ] Ticket types
-- [ ] FAQs
+- [x] Users (customer, organizer, admin)
+- [x] Categories
+- [x] Events
+- [x] Venues
+- [x] Seats
+- [x] Ticket types
+- [x] FAQs
 
 ### Final Verification
 - [ ] Full application startup test

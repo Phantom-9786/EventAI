@@ -1,10 +1,21 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from './auth.service';
+import type { GoogleProfile } from './google-oauth.service';
+
+const googleProfile = (overrides: Partial<GoogleProfile> = {}): GoogleProfile => ({
+  sub: 'google-sub-1',
+  email: 'guser@example.com',
+  emailVerified: true,
+  firstName: 'Google',
+  lastName: 'User',
+  picture: 'https://lh3.googleusercontent.com/a.jpg',
+  ...overrides,
+});
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -122,6 +133,125 @@ describe('AuthService', () => {
       const result = await service.login({ email: 'test@example.com', password: 'Password123' });
       expect(result.tokens.accessToken).toBe('access-token');
       expect(prisma.session.create).toHaveBeenCalled();
+    });
+
+    it('rejects password login for a Google-only account without leaking why', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'guser@example.com',
+        role: 'CUSTOMER',
+        isActive: true,
+        passwordHash: null,
+      });
+      await expect(
+        service.login({ email: 'guser@example.com', password: 'Password123' }),
+      ).rejects.toThrow(new UnauthorizedException('Invalid email or password'));
+    });
+  });
+
+  describe('loginWithGoogle', () => {
+    it('creates a new passwordless account for an unknown Google user', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
+        id: 'user-2',
+        email: 'guser@example.com',
+        role: 'CUSTOMER',
+      });
+
+      const result = await service.loginWithGoogle(googleProfile());
+
+      expect(result.user).toEqual({ id: 'user-2', email: 'guser@example.com', role: 'CUSTOMER' });
+      const created = prisma.user.create.mock.calls[0][0].data;
+      expect(created.googleId).toBe('google-sub-1');
+      expect(created.passwordHash).toBeNull();
+      expect(created.isEmailVerified).toBe(true);
+      expect(created.email).toBe('guser@example.com');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.session.create).toHaveBeenCalled();
+    });
+
+    it('links an existing email/password account when the Google email is verified', async () => {
+      prisma.user.findUnique
+        .mockResolvedValueOnce(null) // googleId lookup
+        .mockResolvedValueOnce({
+          id: 'user-1',
+          email: 'test@example.com',
+          role: 'CUSTOMER',
+          isActive: true,
+          passwordHash: 'argon2-hash',
+          profileImage: null,
+        });
+      prisma.user.update.mockResolvedValue({
+        id: 'user-1',
+        email: 'test@example.com',
+        role: 'CUSTOMER',
+      });
+
+      const result = await service.loginWithGoogle(
+        googleProfile({ email: 'test@example.com' }),
+      );
+
+      expect(result.user.id).toBe('user-1');
+      const updated = prisma.user.update.mock.calls[0][0];
+      expect(updated.where.id).toBe('user-1');
+      expect(updated.data.googleId).toBe('google-sub-1');
+      expect(updated.data.isEmailVerified).toBe(true);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      expect(prisma.session.create).toHaveBeenCalled();
+    });
+
+    it('rejects an unverified Google email before touching the database', async () => {
+      await expect(
+        service.loginWithGoogle(googleProfile({ emailVerified: false })),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('rejects a disabled account matched by googleId', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        email: 'guser@example.com',
+        role: 'CUSTOMER',
+        isActive: false,
+      });
+      await expect(service.loginWithGoogle(googleProfile())).rejects.toThrow(
+        new UnauthorizedException('This account has been disabled'),
+      );
+      expect(prisma.session.create).not.toHaveBeenCalled();
+    });
+
+    it('signs in a returning Google user by googleId without linking or creating', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-2',
+        email: 'guser@example.com',
+        role: 'CUSTOMER',
+        isActive: true,
+      });
+
+      const result = await service.loginWithGoogle(googleProfile());
+
+      expect(result.user.id).toBe('user-2');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      // Only the googleId lookup happened
+      expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
+      expect(prisma.session.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('changePassword', () => {
+    it('rejects changing the password of a Google-only account', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-2',
+        email: 'guser@example.com',
+        role: 'CUSTOMER',
+        isActive: true,
+        passwordHash: null,
+      });
+      await expect(
+        service.changePassword('user-2', 'OldPass1', 'NewPass1'),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
     });
   });
 

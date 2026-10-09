@@ -17,6 +17,10 @@ export interface EnvConfig {
   GROK_MODEL?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+  // Google OAuth 2.0 (optional — sign-in with Google is feature-gated)
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_CALLBACK_URL?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvConfig {

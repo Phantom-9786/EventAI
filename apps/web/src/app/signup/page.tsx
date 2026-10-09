@@ -7,6 +7,7 @@ import { CalendarDays, Loader2 } from 'lucide-react';
 import { ApiError } from '@/lib/auth';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Button } from '@/components/ui/button';
+import { GoogleButton } from '@/components/auth/google-button';
 
 const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
 
@@ -116,6 +117,12 @@ export default function SignUpPage() {
           {submitting && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
           Create Account
         </Button>
+        <div className="flex items-center gap-3 py-1" aria-hidden="true">
+          <span className="h-px flex-1 bg-border" />
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
+          <span className="h-px flex-1 bg-border" />
+        </div>
+        <GoogleButton redirectTo="/events" />
         <p className="text-center text-sm text-muted-foreground">
           Already have an account?{' '}
           <Link href="/signin" className="font-medium text-primary hover:underline">

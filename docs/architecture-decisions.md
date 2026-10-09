@@ -174,3 +174,15 @@
 **Chosen:** NestJS
 **Reason:** Built-in modular architecture supports the modular monolith pattern. Dependency injection, guards, interceptors, and pipes provide clean separation of concerns.
 **Trade-offs:** Heavier than Express, but the structure is valuable for a project of this complexity.
+
+## ADR-014: Google OAuth 2.0 Sign-In with Verified-Email-Only Account Linking
+**Date:** 2026-10-09
+**Decision:** Add "Sign in with Google" as a second authentication method using the authorization-code flow, with conservative account linking.
+**Context:** Users expect social login; the existing email/password model must not be weakened. Google accounts can be created for arbitrary email addresses, so linking a Google identity to an existing local account is a potential account-takeover vector if done blindly.
+**Options Considered:**
+1. Server-side authorization-code flow with `google-auth-library` (`verifyIdToken`) — chosen
+2. Client-side Google Identity Services (ID token posted to the API) — simpler but the token transits the browser and the flow is harder to harden server-side
+3. Account linking always on match by email — rejected: unsafe when `email_verified` is false
+**Chosen:** Server-side authorization-code flow. `GET /api/auth/google` issues an HMAC-SHA256-signed state (10-min expiry) mirrored in an httpOnly cookie; the callback requires cookie/query state match, exchanges the code, and verifies the ID token (signature, audience, expiry). Existing accounts are linked by `googleId` first; otherwise by email ONLY when Google reports `email_verified: true`. New users are created passwordless (`users.passwordHash` nullable, `users.google_id` unique). The access token returns via URL fragment (never sent to servers); refresh tokens reuse the existing hashed rotating-session mechanism.
+**Reason:** Server-side verification keeps Google's attestation entirely within the trust boundary; verified-email-only linking makes account takeover require control of the mailbox, matching the threat model of password reset.
+**Trade-offs:** Live login is not yet verified against real Google Cloud credentials (feature-gated 503 without them); passwordless accounts cannot use password login or change-password until a reset flow sets a password. Setup steps in `docs/google-oauth.md`.

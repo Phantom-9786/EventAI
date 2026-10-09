@@ -98,6 +98,7 @@ npm run dev
 | [docs/booking-engine.md](docs/booking-engine.md) | Booking/payment/refund flow and safety mechanisms |
 | [docs/ai.md](docs/ai.md) | AI assistant grounding and recommendations |
 | [docs/security.md](docs/security.md) | Security controls and posture |
+| [docs/google-oauth.md](docs/google-oauth.md) | Google sign-in (OAuth 2.0): flow, linking policy, setup |
 | [docs/deployment.md](docs/deployment.md) | Environments, CI, production checklist |
 | [docs/architecture-decisions.md](docs/architecture-decisions.md) | ADR log |
 

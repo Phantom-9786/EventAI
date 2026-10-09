@@ -15,6 +15,7 @@
 | Error responses | global exception filter returns a consistent envelope with no stack traces; upstream AI errors mapped to stable 503s |
 | Webhooks | Razorpay HMAC-SHA256 over the **raw** body, constant-time compare |
 | Tokens at rest | refresh/session/password-reset tokens hashed (SHA-256) before storage, single-use reset with 1h expiry |
+| Google OAuth | ID token verified server-side (`verifyIdToken`: signature, audience, expiry); HMAC-signed CSRF state mirrored via httpOnly cookie; existing accounts auto-linked **only** when Google reports `email_verified`; access token returned via URL fragment; post-login redirect restricted to same-site relative paths |
 | Uploads | served statically only under `/uploads/*` with 1-day cache |
 | Env | fail-fast validation on boot; Razorpay keys enforced in production; `X-Request-Id` echoes per request for traceability |
 

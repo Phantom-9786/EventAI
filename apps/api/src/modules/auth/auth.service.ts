@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -10,6 +11,7 @@ import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'crypto';
 import type { TokenPayload, UserRole } from '@eventai/types';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { GoogleProfile } from './google-oauth.service';
 
 export const REFRESH_TOKEN_COOKIE = 'eventai_refresh_token';
 
@@ -114,9 +116,85 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    // Google-only account: no local password exists
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('Invalid email or password');
+    }
+
     const passwordValid = await argon2.verify(user.passwordHash, input.password);
     if (!passwordValid) {
       throw new UnauthorizedException('Invalid email or password');
+    }
+
+    const tokens = await this.createSession(user.id, user.email, user.role);
+    return {
+      user: { id: user.id, email: user.email, role: user.role as UserRole },
+      tokens,
+    };
+  }
+
+  // ═══════════════════════════════════════════════════
+  // Google sign-in. The GoogleProfile must already be
+  // verified server-side (see GoogleOauthService).
+  //
+  // Account-linking policy (safe by default):
+  // - Match on googleId first (returning Google users).
+  // - Otherwise match on email and auto-link ONLY when
+  //   Google reports the email as verified — otherwise a
+  //   attacker-controlled Google account could take over
+  //   an existing local account.
+  // - No matching user: create a new passwordless account
+  //   (also requires a Google-verified email).
+  // ═══════════════════════════════════════════════════
+  async loginWithGoogle(profile: GoogleProfile): Promise<{
+    user: { id: string; email: string; role: UserRole };
+    tokens: SessionTokens;
+  }> {
+    if (!profile.emailVerified) {
+      throw new UnauthorizedException('Google account email is not verified');
+    }
+
+    let user = await this.prisma.user.findUnique({
+      where: { googleId: profile.sub },
+    });
+
+    if (user && !user.isActive) {
+      throw new UnauthorizedException('This account has been disabled');
+    }
+
+    if (!user) {
+      const byEmail = await this.prisma.user.findUnique({
+        where: { email: profile.email },
+      });
+
+      if (byEmail && !byEmail.isActive) {
+        throw new UnauthorizedException('This account has been disabled');
+      }
+
+      if (byEmail) {
+        // Link the existing account to this Google identity
+        user = await this.prisma.user.update({
+          where: { id: byEmail.id },
+          data: {
+            googleId: profile.sub,
+            isEmailVerified: true,
+            profileImage: byEmail.profileImage ?? profile.picture,
+          },
+        });
+      } else {
+        user = await this.prisma.user.create({
+          data: {
+            email: profile.email,
+            googleId: profile.sub,
+            passwordHash: null,
+            firstName: profile.firstName ?? 'Google',
+            lastName: profile.lastName ?? 'User',
+            profileImage: profile.picture,
+            role: 'CUSTOMER',
+            isEmailVerified: true,
+          },
+        });
+      }
     }
 
     const tokens = await this.createSession(user.id, user.email, user.role);
@@ -198,6 +276,13 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new UnauthorizedException();
+    }
+
+    // Google-only account: no local password to change
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'No password is set for this account. Continue with Google to sign in.',
+      );
     }
 
     const passwordValid = await argon2.verify(user.passwordHash, currentPassword);
