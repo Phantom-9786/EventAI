@@ -230,7 +230,15 @@ export class PaymentsService {
   async refundBooking(userId: string, bookingId: string, reason?: string) {
     const payment = await this.prisma.payment.findUnique({
       where: { bookingId },
-      include: { booking: { include: { items: true } } },
+      include: {
+        booking: {
+          include: {
+            items: true,
+            user: { select: { email: true, firstName: true, lastName: true } },
+            event: { select: { title: true } },
+          },
+        },
+      },
     });
     if (!payment || payment.booking.userId !== userId) {
       throw new NotFoundException('Booking not found');
@@ -313,7 +321,32 @@ export class PaymentsService {
     });
 
     this.logger.log(`Booking ${booking.id} refunded (${refund.id})`);
+    this.notifyRefund(booking, refund.id, refund.amount, reason);
     return { booking: refunded, refundId: refund.id, refundAmount: refund.amount };
+  }
+
+  /** Fire-and-forget refund email after a successful refund. */
+  private notifyRefund(
+    booking: {
+      id: string;
+      user: { email: string; firstName: string; lastName: string };
+      event: { title: string };
+    },
+    refundId: string,
+    refundAmount: number,
+    reason?: string,
+  ): void {
+    void this.notifications
+      .sendRefundConfirmation({
+        to: booking.user.email,
+        holderName: `${booking.user.firstName} ${booking.user.lastName}`.trim() || 'Guest',
+        eventTitle: booking.event.title,
+        bookingId: booking.id,
+        refundAmount,
+        refundId,
+        reason,
+      })
+      .catch(() => undefined);
   }
 
   // ── Digital ticket QR ────────────────────────────

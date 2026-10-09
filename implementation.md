@@ -177,7 +177,7 @@
 ---
 
 ## Phase 4 — Platform Engineering
-**Status: PARTIAL — expiry cron, email notifications, organizer stats + dashboard + door scanner + attendee list, admin stats dashboard, and Redis caching shipped. Socket.IO real-time, BullMQ worker split, and admin management tooling intentionally deferred (in-process scheduling + Resend REST cover the current scale; see context.md)**
+**Status: COMPLETE (core) — expiry cron, email notifications (confirmation/cancellation/refund), organizer stats + dashboard + door scanner + attendee list, admin management (user status, event moderation, organizer verification — API + UI), and Redis caching shipped. Socket.IO real-time, BullMQ worker split, charts/analytics, and audit logs intentionally deferred (in-process scheduling + Resend REST cover the current scale; see context.md)**
 
 ### Redis Caching
 - [x] Event caching (CacheService — ioredis-backed `apps/api/src/common/cache/cache.service.ts`; events list/search + categories cached with TTL)
@@ -210,12 +210,12 @@
 - [ ] Charts/deeper analytics
 
 ### Admin Dashboard
-- [ ] User management
-- [ ] Organizer management
-- [ ] Event moderation
+- [ ] User management (list/search + activate/deactivate with session revocation — `GET/PATCH /api/admin/users*`, Users tab on `/admin`; edit-role UI pending)
+- [ ] Organizer management (list/search + verified-badge toggle — `GET/PATCH /api/admin/organizers*`, Organizers tab; edit UI pending)
+- [x] Event moderation (list all events + cancel published ones with logged reason — `GET /api/admin/events`, `POST /api/admin/events/:id/moderate`, Events tab)
 - [x] Category management (backend complete since Phase 2; admin UI pending)
 - [ ] Audit logs
-- [x] Platform statistics (`GET /api/admin/stats` + `/admin` dashboard page — users/organizers/bookings/revenue/tickets by status)
+- [x] Platform statistics (`GET /api/admin/stats` + `/admin` Overview tab — users/organizers/bookings/revenue/tickets by status)
 
 ### Analytics
 - [x] Organizer analytics (bookings, revenue, occupancy via the stats endpoint + dashboard)
@@ -253,10 +253,10 @@
 ---
 
 ## Phase 6 — Production Polish
-**Status: PARTIAL — 132 unit tests, Playwright smoke suite (7/7), CI workflow, and the full docs/ set shipped; observability tooling, integration tests, and live third-party verification pending**
+**Status: PARTIAL — 145 unit tests, Playwright smoke suite (7/7), CI workflow, and the full docs/ set shipped; observability tooling, integration tests, and live third-party verification pending**
 
 ### Testing
-- [x] Unit tests (132 passing across 12 suites: auth incl. Google cases, google-oauth service, users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback, payments incl. signature/webhook/refund, AI service, admin stats, health)
+- [x] Unit tests (145 passing across 12 suites: auth incl. Google cases, google-oauth service, users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback/cancellation-email, payments incl. signature/webhook/refund/refund-email, AI service, admin stats + user/event/organizer management, health)
 - [ ] Integration tests (needs a live Postgres in CI — natural next step)
 - [x] Concurrency logic covered at unit level (conditional-decrement rollback prevents double booking; real parallel-run test pending)
 - [x] E2E tests (Playwright smoke suite `e2e/smoke.spec.ts` — 7/7: landing, discovery, search, event detail + tickets, categories/venues, seeded sign-in, auth gate; booking/pay e2e still pending real Razorpay keys)

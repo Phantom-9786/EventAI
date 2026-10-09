@@ -28,6 +28,94 @@ export async function getAdminStats(): Promise<AdminStats> {
   return res.json();
 }
 
+// ── User management ───────────────────────────────
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  isActive: boolean;
+  isEmailVerified: boolean;
+  createdAt: string;
+  bookingCount: number;
+}
+
+export async function listAdminUsers(
+  params: { search?: string; role?: string; isActive?: string; page?: number } = {},
+): Promise<{ users: AdminUser[]; total: number; page: number; pages: number }> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.role) qs.set('role', params.role);
+  if (params.isActive) qs.set('isActive', params.isActive);
+  if (params.page) qs.set('page', String(params.page));
+  const res = await authFetch(`/admin/users?${qs.toString()}`);
+  if (!res.ok) throw new Error(`Failed to load users (${res.status})`);
+  return res.json();
+}
+
+export const setAdminUserStatus = (id: string, isActive: boolean) =>
+  adminMutation(`/admin/users/${id}/status`, 'PATCH', { isActive });
+
+// ── Event moderation ──────────────────────────────
+
+export interface AdminEventRow {
+  id: string;
+  title: string;
+  slug: string;
+  status: string;
+  startDate: string;
+  organizerEmail: string;
+  venue: { name: string; city: string } | null;
+  bookingCount: number;
+}
+
+export async function listAdminEvents(
+  params: { search?: string; status?: string; page?: number } = {},
+): Promise<{ events: AdminEventRow[]; total: number; page: number; pages: number }> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.status) qs.set('status', params.status);
+  if (params.page) qs.set('page', String(params.page));
+  const res = await authFetch(`/admin/events?${qs.toString()}`);
+  if (!res.ok) throw new Error(`Failed to load events (${res.status})`);
+  return res.json();
+}
+
+export const moderateAdminEvent = (id: string, reason?: string) =>
+  adminMutation(`/admin/events/${id}/moderate`, 'POST', {
+    action: 'CANCEL',
+    ...(reason && { reason }),
+  });
+
+// ── Organizer management ──────────────────────────
+
+export interface AdminOrganizerRow {
+  id: string;
+  organizationName: string;
+  isVerified: boolean;
+  createdAt: string;
+  user: { id: string; email: string; isActive: boolean };
+  eventCount: number;
+  venueCount: number;
+}
+
+export async function listAdminOrganizers(
+  params: { search?: string; isVerified?: string; page?: number } = {},
+): Promise<{ organizers: AdminOrganizerRow[]; total: number; page: number; pages: number }> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.isVerified) qs.set('isVerified', params.isVerified);
+  if (params.page) qs.set('page', String(params.page));
+  const res = await authFetch(`/admin/organizers?${qs.toString()}`);
+  if (!res.ok) throw new Error(`Failed to load organizers (${res.status})`);
+  return res.json();
+}
+
+export const setAdminOrganizerVerification = (id: string, isVerified: boolean) =>
+  adminMutation(`/admin/organizers/${id}/verification`, 'PATCH', { isVerified });
+
 export async function listAdminCategories(): Promise<AdminCategory[]> {
   const res = await authFetch('/categories');
   if (!res.ok) throw new Error(`Failed to load categories (${res.status})`);

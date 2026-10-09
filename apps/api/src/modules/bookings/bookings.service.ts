@@ -9,6 +9,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import type { CreateBookingInput } from '@eventai/validation';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentsService } from '../payments/payments.service';
 
 /** Reuses the seat-hold TTL: how long a PENDING booking keeps stock reserved. */
@@ -61,6 +62,7 @@ export class BookingsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly paymentsService: PaymentsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(userId: string, input: CreateBookingInput) {
@@ -224,7 +226,11 @@ export class BookingsService {
   async cancelOwn(userId: string, bookingId: string, reason?: string) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { items: true },
+      include: {
+        items: true,
+        user: { select: { email: true, firstName: true, lastName: true } },
+        event: { select: { title: true } },
+      },
     });
     if (!booking || booking.userId !== userId) {
       throw new NotFoundException('Booking not found');
@@ -240,7 +246,7 @@ export class BookingsService {
       throw new ConflictException('This booking was already refunded');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const current = await tx.booking.findUnique({
         where: { id: booking.id },
         select: { status: true },
@@ -268,6 +274,29 @@ export class BookingsService {
       }
       return updated;
     });
+
+    this.notifyCancellation(booking, reason);
+    return result;
+  }
+
+  /** Fire-and-forget cancellation email for an unpaid booking. */
+  private notifyCancellation(
+    booking: {
+      id: string;
+      user: { email: string; firstName: string; lastName: string };
+      event: { title: string };
+    },
+    reason?: string,
+  ): void {
+    void this.notifications
+      .sendBookingCancellation({
+        to: booking.user.email,
+        holderName: `${booking.user.firstName} ${booking.user.lastName}`.trim() || 'Guest',
+        eventTitle: booking.event.title,
+        bookingId: booking.id,
+        reason,
+      })
+      .catch(() => undefined);
   }
 
   /** Minute cron: expires stale bookings across all users and releases stock. */

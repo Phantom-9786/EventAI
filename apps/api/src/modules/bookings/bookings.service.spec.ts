@@ -1,12 +1,17 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentsService } from '../payments/payments.service';
 import { BookingsService } from './bookings.service';
 
 describe('BookingsService', () => {
   let service: BookingsService;
   let refundBooking: jest.Mock;
+  let notifications: {
+    sendBookingCancellation: jest.Mock;
+    sendRefundConfirmation: jest.Mock;
+  };
   let prisma: {
     booking: {
       findUnique: jest.Mock;
@@ -44,6 +49,8 @@ describe('BookingsService', () => {
     status: 'PENDING',
     totalAmount: 300000,
     expiresAt: new Date(Date.now() + 600000),
+    user: { email: 'user-1@example.com', firstName: 'Test', lastName: 'User' },
+    event: { title: 'Demo Event' },
     items: [
       { ticketTypeId: 'tt-1', quantity: 2, unitPrice: 150000, totalPrice: 300000 },
     ],
@@ -66,12 +73,17 @@ describe('BookingsService', () => {
     };
 
     const paymentsService = { refundBooking: jest.fn() };
+    notifications = {
+      sendBookingCancellation: jest.fn().mockResolvedValue(true),
+      sendRefundConfirmation: jest.fn().mockResolvedValue(true),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         BookingsService,
         { provide: PrismaService, useValue: prisma },
         { provide: PaymentsService, useValue: paymentsService },
+        { provide: NotificationsService, useValue: notifications },
       ],
     }).compile();
 
@@ -244,6 +256,14 @@ describe('BookingsService', () => {
         where: { id: 'tt-1' },
         data: { availableQuantity: { increment: 2 } },
       });
+      expect(notifications.sendBookingCancellation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user-1@example.com',
+          eventTitle: 'Demo Event',
+          bookingId: 'bk-1',
+          reason: 'changed plans',
+        }),
+      );
     });
 
     it('refuses to cancel already-closed bookings', async () => {

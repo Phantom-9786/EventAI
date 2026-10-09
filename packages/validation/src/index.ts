@@ -9,4 +9,5 @@ export * from './venue';
 export * from './ticket';
 export * from './booking';
 export * from './ai';
+export * from './admin';
 export * from './common';

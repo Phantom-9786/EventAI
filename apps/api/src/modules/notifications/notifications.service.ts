@@ -83,4 +83,54 @@ export class NotificationsService {
       `,
     });
   }
+
+  async sendBookingCancellation(input: {
+    to: string;
+    holderName: string;
+    eventTitle: string;
+    bookingId: string;
+    reason?: string;
+  }): Promise<boolean> {
+    return this.sendEmail({
+      to: input.to,
+      subject: `Booking cancelled — ${input.eventTitle}`,
+      html: `
+        <p>Hi ${input.holderName},</p>
+        <p>Your booking for <strong>${input.eventTitle}</strong> has been cancelled and any reserved seats have been released.</p>
+        <ul>
+          <li><strong>Event:</strong> ${input.eventTitle}</li>
+          <li><strong>Booking:</strong> ${input.bookingId}</li>
+          ${input.reason ? `<li><strong>Reason:</strong> ${input.reason}</li>` : ''}
+        </ul>
+        <p>No payment was taken for this booking. — EventAI</p>
+      `,
+    });
+  }
+
+  async sendRefundConfirmation(input: {
+    to: string;
+    holderName: string;
+    eventTitle: string;
+    bookingId: string;
+    refundAmount: number;
+    refundId: string;
+    reason?: string;
+  }): Promise<boolean> {
+    return this.sendEmail({
+      to: input.to,
+      subject: `Refund processed — ${input.eventTitle}`,
+      html: `
+        <p>Hi ${input.holderName},</p>
+        <p>Your booking for <strong>${input.eventTitle}</strong> has been cancelled and your payment is being refunded.</p>
+        <ul>
+          <li><strong>Event:</strong> ${input.eventTitle}</li>
+          <li><strong>Booking:</strong> ${input.bookingId}</li>
+          <li><strong>Refund amount:</strong> ₹${(input.refundAmount / 100).toLocaleString('en-IN')}</li>
+          <li><strong>Refund reference:</strong> ${input.refundId}</li>
+          ${input.reason ? `<li><strong>Reason:</strong> ${input.reason}</li>` : ''}
+        </ul>
+        <p>Refunds typically appear on your statement within 5–7 business days. — EventAI</p>
+      `,
+    });
+  }
 }

@@ -20,6 +20,7 @@ describe('PaymentsService', () => {
   };
   let ordersCreate: jest.Mock;
   let refundsCreate: jest.Mock;
+  let sendRefundConfirmation: jest.Mock;
 
   const keyId = 'rzp_test_key';
   const keySecret = 'test_secret_16chars';
@@ -84,6 +85,7 @@ describe('PaymentsService', () => {
     };
     ordersCreate = jest.fn();
     refundsCreate = jest.fn();
+    sendRefundConfirmation = jest.fn().mockResolvedValue(true);
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -94,6 +96,8 @@ describe('PaymentsService', () => {
           useValue: {
             sendEmail: jest.fn().mockResolvedValue(true),
             sendBookingConfirmation: jest.fn().mockResolvedValue(true),
+            sendBookingCancellation: jest.fn().mockResolvedValue(true),
+            sendRefundConfirmation,
           },
         },
       ],
@@ -375,6 +379,15 @@ describe('PaymentsService', () => {
       });
       expect(result.refundId).toBe('rfnd_1');
       expect(result.booking.status).toBe('REFUNDED');
+      expect(sendRefundConfirmation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'ada@example.com',
+          eventTitle: 'Summer Gig',
+          bookingId,
+          refundId: 'rfnd_1',
+          refundAmount: 300000,
+        }),
+      );
     });
 
     it('refuses to refund an unpaid booking', async () => {
