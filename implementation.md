@@ -253,7 +253,7 @@
 ---
 
 ## Phase 6 — Production Polish
-**Status: PARTIAL — 163 unit tests, structured logging, Playwright smoke suite (7/7), CI workflow, and the full docs/ set shipped; error tracking, integration tests, and live third-party verification pending**
+**Status: PARTIAL — 163 unit tests, structured logging, Playwright smoke suite (7/7), CI workflow verified green on GitHub (Phantom-9786/EventAI), and the full docs/ set shipped; error tracking, integration tests, and live third-party verification pending**
 
 ### Testing
 - [x] Unit tests (163 passing across 13 suites: auth incl. Google + password-reset + email-verification cases, google-oauth service, structured logger, users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback/cancellation-email, payments incl. signature/webhook/refund/refund-email, AI service, admin stats + user/event/organizer management, health)

@@ -208,7 +208,7 @@ Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global Validatio
 
 ## Deployment Status
 
-Docker Compose infra services + per-app Dockerfiles exist. GitHub Actions CI workflow added at `.github/workflows/ci.yml` (Node 20, npm cache, lint → type-check → test → build, placeholder env vars for CI) — will run on first push to GitHub.
+Docker Compose infra services + per-app Dockerfiles exist. GitHub Actions CI workflow at `.github/workflows/ci.yml` (Node 20, npm cache, Prisma generate → lint → type-check → test → build, placeholder env vars for CI) — pushed to `https://github.com/Phantom-9786/EventAI` (private, `main` tracks `origin/main`) and **verified green** (run 37917510708; first run failed because CI lacked `prisma generate`, fixed in `fd4404c`).
 
 ## Known Issues
 
@@ -260,8 +260,8 @@ Structured logging (Phase 6 observability, this batch — committed at the next 
 
 ## Next Task
 
-Remaining Phase 6 work: error tracking (Sentry — needs a real DSN, currently placeholder), CI e2e job (needs the workflow pushed to a remote to verify), integration tests (live Postgres in CI), then credential-blocked verifications (Razorpay sandbox, `GROK_API_KEY`, `RESEND_API_KEY`, Google Cloud OAuth client) as keys arrive. UI/UX polish and public deployment are explicitly deferred by the user.
+Remaining Phase 6 work: error tracking (Sentry — needs a real DSN, currently placeholder), integration tests (live Postgres in CI), then credential-blocked verifications (Razorpay sandbox, `GROK_API_KEY`, `RESEND_API_KEY`, Google Cloud OAuth client) as keys arrive. Repo is now on GitHub (private, `Phantom-9786/EventAI`) with CI verified green. UI/UX polish and public deployment are explicitly deferred by the user.
 
 ## Last Completed Checkpoint
 
-Email verification (4e80faa): token model + migration, verify/resend endpoints, `/verify-email` page + banner, live-verified single-use flow; prior checkpoints: password reset + forgot/reset pages (8ba5522), admin management API + UI + cancellation/refund emails (f371f15), Google OAuth + Playwright smoke suite + doc sync (e83ef07), door scanner + attendee list + admin dashboard + Redis caching + venue maps + docs (e399ecb), AI assistant + recommendations + `/ai` page (638a9a3), expiry cron + notifications + organizer stats/dashboard (1216b3d), refunds + ticket check-in + My Tickets page (7463023), Razorpay payments + digital tickets (b4e06a2), booking engine core (f7551e0), frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).
+GitHub push + CI verification (`fd4404c`): repo live at `https://github.com/Phantom-9786/EventAI` (private), CI workflow green after adding a Prisma generate step. Prior checkpoints: structured logging (384bfa6), email verification (4e80faa), password reset + forgot/reset pages (8ba5522), admin management API + UI + cancellation/refund emails (f371f15), Google OAuth + Playwright smoke suite + doc sync (e83ef07), door scanner + attendee list + admin dashboard + Redis caching + venue maps + docs (e399ecb), AI assistant + recommendations + `/ai` page (638a9a3), expiry cron + notifications + organizer stats/dashboard (1216b3d), refunds + ticket check-in + My Tickets page (7463023), Razorpay payments + digital tickets (b4e06a2), booking engine core (f7551e0), frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).
