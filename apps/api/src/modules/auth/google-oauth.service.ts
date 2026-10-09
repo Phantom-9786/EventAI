@@ -53,10 +53,11 @@ export class GoogleOauthService {
   }
 
   private get callbackUrl(): string {
-    return (
-      this.configService.get<string>('GOOGLE_CALLBACK_URL') ??
-      `http://localhost:${this.configService.get<number>('PORT', 4000)}/api/auth/google/callback`
-    );
+    // An empty GOOGLE_CALLBACK_URL= line counts as unset — fall back to
+    // the local default instead of sending Google an empty redirect_uri.
+    const configured = this.configService.get<string>('GOOGLE_CALLBACK_URL');
+    if (configured && configured.trim() !== '') return configured.trim();
+    return `http://localhost:${this.configService.get<number>('PORT', 4000)}/api/auth/google/callback`;
   }
 
   private getClient(): OAuth2Client {
