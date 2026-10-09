@@ -118,7 +118,13 @@ Phase 2 — Frontend Event Pages (COMPLETE, `apps/web/src/app/events/`):
 - `/events` listing (server component): full-text search box, city filter, sort dropdown (date/price/popularity × direction), category chips from the live categories API, result count, empty state, prev/next pagination preserving filters; API failures degrade to an empty result set
 - `/events/[slug]` detail (server component): hero image/category/tags, date & venue cards, description, ticket table with per-type availability (sold-out / low-stock "Only N left"), max-per-booking, sale-window notes, paise prices; FAQs (native `<details>`), policies, sticky booking sidebar with "from" price (booking button disabled until Phase 3), organizer card with verified badge; `generateMetadata` per event and `notFound()` on missing/unpublished events
 - `EventCard` shared component in `apps/web/src/components/events/event-card.tsx`
-- Header links to `/categories`, `/venues`, `/signin`, `/signup` still have no pages — intentionally out of scope for this task
+
+Phase 2 — Frontend Auth & Browse Pages (COMPLETE, `apps/web/src/app/{signin,signup,categories,venues}/`):
+- `/signin` and `/signup`: client forms with client-side validation mirroring `@eventai/validation` rules (email, 8+ char password with upper/lower/digit), API error envelopes surfaced inline (`ApiError` from `lib/auth.ts`), redirect to `/events` on success with `router.refresh()`
+- `AuthProvider` (`components/auth/auth-provider.tsx`): React context holding the user; `fetchCurrentUser` on mount (localStorage bearer token → silent `/auth/refresh` via httpOnly cookie when absent/expired); `signIn`/`signUp`/`signOut`; `authFetch` retries once on 401 after refresh
+- Header now consumes auth state: skeleton while loading, "Hi, {name}" + Sign Out when authenticated, Sign In / Get Started otherwise (desktop + mobile menus)
+- `/categories`: server-rendered grid of live categories with colored icon tiles and published-event counts, each linking to `/events?category=slug`
+- `/venues` + `/venues/[id]`: server-rendered venue browse (name/city search, pagination, published-event counts, capacity) and venue detail (address, description, amenities, seating-section table with rows × seats and totals, organizer with verified badge, "Events in {city}" cross-link); graceful empty states when the API is unreachable
 
 ## Current Database Schema
 
@@ -188,7 +194,8 @@ Docker Compose infra services + per-app Dockerfiles exist. No CI/CD workflow yet
 - Venue map coordinates are schema-only: no Leaflet/OpenStreetMap rendering anywhere yet
 - Seat sections generate physical seats, but no seat-level ticket assignment or seat-selection UX exists (Phase 3 scope)
 - Event image upload not implemented (images/coverImage are URL arrays, schema-ready); event cards fall back to a placeholder icon
-- Frontend covers only `/events` listing + `/events/[slug]` detail; `/categories`, `/venues`, `/ai`, `/signin`, `/signup` header links have no pages yet and no auth state is wired into the UI
+- Frontend covers all public browsing and auth: `/`, `/events`, `/events/[slug]`, `/categories`, `/venues`, `/venues/[id]`, `/signin`, `/signup`; missing pages: `/ai` (Phase 5) and organizer dashboard UI (Phase 4)
+- Frontend has no tests yet (API client, auth provider, pages are untested; web `test` script is a placeholder)
 - Landing page uses placeholder content; not yet backed by the API
 - API boot requires reachable PostgreSQL (PrismaService fails fast); frontend pages degrade gracefully to empty states when the API is unreachable
 - Password reset email delivery not wired (token logged in dev; email worker planned for Phase 4)
@@ -199,16 +206,16 @@ See `docs/architecture-decisions.md` (ADRs 001–013).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform: Authentication & RBAC (COMPLETE), User Profiles (COMPLETE), Event System incl. FTS discovery backend (COMPLETE), Ticket Types (COMPLETE), Venue completion (COMPLETE), Frontend event pages (COMPLETE). Next: Phase 3 — Booking Engine (seats, bookings, payments, digital tickets).
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform: Authentication & RBAC (COMPLETE), User Profiles (COMPLETE), Event System incl. FTS discovery backend (COMPLETE), Ticket Types (COMPLETE), Venue completion (COMPLETE), Frontend public pages + auth UI (COMPLETE). Remaining in Phase 2: Leaflet venue maps, organizer dashboard UI (deferred to Phase 4 scope). Next: Phase 3 — Booking Engine (seats, bookings, payments, digital tickets).
 
 ## Current Task
 
-Ticket Types + Venue completion + frontend event pages implemented and verified: organizer ticket CRUD with sale windows, availability derivation and booking-aware delete rules; venue update/delete with event-attachment guard, seat-section generation (chunked, Excel-style rows) and public venue browse/detail APIs; `/events` listing (search/city/category/sort/pagination from live API) and `/events/[slug]` detail (tickets with availability, FAQs, policies, organizer card) in Next.js. Full monorepo pipeline green: lint 9/9, type-check 12/12, 65/65 unit tests, build 6/6.
+Frontend auth & browse pages implemented and verified: `/signin` + `/signup` client forms wired to the auth API with AuthProvider context (bearer token in localStorage, silent refresh via httpOnly cookie, header sign-in state), `/categories` live grid, `/venues` browse + `/venues/[id]` detail with seating sections. Full monorepo pipeline green: lint 9/9, type-check 12/12, 65/65 unit tests, build 6/6 with 9 web routes.
 
 ## Next Task
 
-Phase 3 — Booking Engine: seat states + holds (Redis/BullMQ), booking creation with concurrency protection, Razorpay sandbox payments, digital ticket generation — or, before that, remaining Phase 2 UI (auth pages wiring the existing backend, categories/venues browse pages, organizer dashboard) if the priority is a complete customer journey.
+Phase 3 — Booking Engine: seat states + temporary holds (Redis/BullMQ), booking creation with PostgreSQL concurrency protection, Razorpay sandbox order/verify/webhook flow, digital ticket generation — starting with the booking backend, then the booking UI on the event detail page.
 
 ## Last Completed Checkpoint
 
-Phase 2 — Ticket Types + Venue completion + frontend event pages (commit "feat: complete ticket types, venues, and frontend event pages"); prior checkpoints: event system (052363e "feat: complete event system", c59b01f "feat: complete event system with FTS search"), user profiles (990e83f), authentication (0c051b7).
+Phase 2 — Frontend auth & browse pages (commit "feat: add frontend auth and browse pages"); prior checkpoints: ticket types + venues + event pages (b93a276), event system (052363e), event system FTS (c59b01f), user profiles (990e83f), authentication (0c051b7).

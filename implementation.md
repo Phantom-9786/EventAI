@@ -52,7 +52,7 @@
 ---
 
 ## Phase 2 — Core Platform
-**Status: IN PROGRESS — Authentication, Authorization, User Profiles, Event System (organizer CRUD + publishing + categories + FTS discovery backend), Ticket Types, Venue completion, and frontend event pages complete; booking engine (Phase 3) next**
+**Status: IN PROGRESS — Authentication, Authorization, User Profiles, Event System, Ticket Types, Venue completion, and the full public frontend (event listing/detail, categories, venues, auth pages) complete; organizer dashboard UI (Phase 4) and booking engine (Phase 3) next**
 
 ### Authentication
 - [x] Registration (email/password)
@@ -113,8 +113,11 @@
 - [x] API client (`apps/web/src/lib/api.ts` — typed fetchers, `NEXT_PUBLIC_API_URL` override, paise→₹ formatting, date formatting)
 - [x] Events listing page (`/events` — search, city filter, category chips from live API, sorting, pagination; server-rendered)
 - [x] Event detail page (`/events/[slug]` — venue/date info, ticket types with availability and sale windows, FAQs, policies, organizer card, generateMetadata)
-- [ ] Categories/Venues/AI/signin pages (header links exist; pages pending)
-- [ ] Auth integration on the frontend (Phase 2 backend ready; UI pending)
+- [x] Categories page (`/categories` — live categories with published-event counts, linking to filtered `/events`)
+- [x] Venues pages (`/venues` browse with search/city filter + pagination; `/venues/[id]` detail with amenities, seating sections, organizer card)
+- [x] Auth pages (`/signin`, `/signup` — validated forms, error envelopes surfaced, redirect on success; `AuthProvider` context with bearer token + silent refresh via httpOnly cookie; header shows user state and Sign Out)
+- [ ] AI assistant page (Phase 5)
+- [ ] Organizer dashboard UI (Phase 4)
 
 ---
 

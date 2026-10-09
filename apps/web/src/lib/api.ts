@@ -127,6 +127,55 @@ export async function getCategories(): Promise<Category[]> {
   return categories;
 }
 
+export interface VenueSummary {
+  id: string;
+  name: string;
+  city: string;
+  state: string;
+  address: string;
+  capacity: number;
+  images: string[];
+  amenities: string[];
+  _count: { events: number };
+}
+
+export interface VenueSearchResult extends Paginated {
+  venues: VenueSummary[];
+}
+
+export interface VenueDetail extends VenueSummary {
+  description: string | null;
+  zipCode: string;
+  country: string;
+  latitude: number | null;
+  longitude: number | null;
+  organizer: { id: string; organizationName: string; isVerified: boolean };
+  seatSections: {
+    id: string;
+    name: string;
+    rows: number;
+    seatsPerRow: number;
+    totalSeats: number;
+  }[];
+}
+
+export async function getVenues(
+  filters: { city?: string; query?: string; page?: number; limit?: number } = {},
+): Promise<VenueSearchResult> {
+  const params = new URLSearchParams();
+  if (filters.city) params.set('city', filters.city);
+  if (filters.query) params.set('query', filters.query);
+  if (filters.page) params.set('page', String(filters.page));
+  if (filters.limit) params.set('limit', String(filters.limit));
+  const qs = params.toString();
+  return getJson<VenueSearchResult>(`/venues${qs ? `?${qs}` : ''}`);
+}
+
+export async function getVenue(id: string): Promise<VenueDetail> {
+  const { venue } = await getJson<{ venue: VenueDetail }>(`/venues/${encodeURIComponent(id)}`);
+  return venue;
+}
+
 /** Formats a paise integer as an INR display string (₹). */
 export function formatPrice(paise: number): string {
   return `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;

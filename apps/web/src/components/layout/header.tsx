@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { CalendarDays, Menu, X } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { CalendarDays, LogOut, Menu, X } from 'lucide-react';
+import { useAuth } from '@/components/auth/auth-provider';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +16,8 @@ const navLinks = [
 
 export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user, loading, signOut } = useAuth();
+  const router = useRouter();
 
   // Close the mobile menu when resizing up to desktop
   useEffect(() => {
@@ -52,12 +56,37 @@ export function Header() {
         </nav>
 
         <div className="hidden items-center gap-2 md:flex">
-          <Link href="/signin" className={buttonVariants({ variant: 'ghost' })}>
-            Sign In
-          </Link>
-          <Link href="/signup" className={buttonVariants()}>
-            Get Started
-          </Link>
+          {loading ? (
+            <span className="h-9 w-24 animate-pulse rounded-md bg-muted" aria-hidden />
+          ) : user ? (
+            <>
+              <span className="max-w-[160px] truncate text-sm font-medium text-muted-foreground">
+                Hi, {user.firstName ?? user.email}
+              </span>
+              <button
+                type="button"
+                className={cn(buttonVariants({ variant: 'ghost' }))}
+                aria-label="Sign out"
+                onClick={async () => {
+                  await signOut();
+                  router.push('/');
+                  router.refresh();
+                }}
+              >
+                <LogOut className="mr-1 h-4 w-4" />
+                Sign Out
+              </button>
+            </>
+          ) : (
+            <>
+              <Link href="/signin" className={buttonVariants({ variant: 'ghost' })}>
+                Sign In
+              </Link>
+              <Link href="/signup" className={buttonVariants()}>
+                Get Started
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile menu toggle */}
@@ -93,20 +122,37 @@ export function Header() {
             </Link>
           ))}
           <div className="mt-2 flex gap-2 border-t pt-3">
-            <Link
-              href="/signin"
-              className={cn(buttonVariants({ variant: 'outline' }), 'flex-1')}
-              onClick={() => setMobileOpen(false)}
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/signup"
-              className={cn(buttonVariants(), 'flex-1')}
-              onClick={() => setMobileOpen(false)}
-            >
-              Get Started
-            </Link>
+            {user ? (
+              <button
+                type="button"
+                className={cn(buttonVariants({ variant: 'outline' }), 'flex-1')}
+                onClick={async () => {
+                  setMobileOpen(false);
+                  await signOut();
+                  router.push('/');
+                  router.refresh();
+                }}
+              >
+                Sign Out
+              </button>
+            ) : (
+              <>
+                <Link
+                  href="/signin"
+                  className={cn(buttonVariants({ variant: 'outline' }), 'flex-1')}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/signup"
+                  className={cn(buttonVariants(), 'flex-1')}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Get Started
+                </Link>
+              </>
+            )}
           </div>
         </nav>
       </div>
