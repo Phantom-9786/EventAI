@@ -136,38 +136,44 @@ Implemented (Phase 2). See "Implemented Features — Phase 2". Session model in 
 
 ## Booking Architecture
 
-Phase 3 core implemented (`apps/api/src/modules/bookings/`), payment-backed booking states pending:
+Phase 3 implemented (`apps/api/src/modules/bookings/`), complete except seat-level assignment (deferred):
 - `POST /api/bookings` (auth): body `{ eventId, items[{ticketTypeId, quantity}], idempotencyKey }` (schemas in `packages/validation/src/booking.ts`). Validates the event is PUBLISHED and not started, ticket types belong to the event and are active with an open sale window, and merged per-type quantities respect `maxPerBooking`. Total is computed server-side from current DB prices (never trusted from the client).
 - Concurrency safety: stock is reserved via conditional `ticketType.updateMany` decrement (`availableQuantity: { gte: qty }` as a WHERE condition) inside the booking transaction — concurrent bookings cannot oversell; a lost decrement aborts the whole transaction with 409.
 - Idempotency: `bookings.idempotency_key` is unique; a repeated key returns the original booking (403 if the key belongs to another user). Concurrent same-key requests are resolved by the P2002 unique-violation fallback path.
 - Expiry: PENDING bookings carry `expiresAt = now + SEAT_HOLD_TTL_SECONDS` (default 600s). Stock is released lazily — on `GET /api/bookings` (sweep of the user's stale bookings) and on `GET /api/bookings/:id` — via a transaction that re-checks status before expiring (a concurrent payment can win).
-- Cancellation: `POST /api/bookings/:id/cancel` releases reserved stock for unpaid bookings; CONFIRMED bookings are refused until the refund flow ships with payments.
+- Cancellation: `POST /api/bookings/:id/cancel` releases reserved stock for unpaid bookings; CONFIRMED bookings delegate to the Razorpay refund flow (payment → REFUNDED, booking → REFUNDED, VALID tickets → CANCELLED, stock restored).
 - `GET /api/bookings` returns paginated own bookings newest-first with items + event/venue summary; detail includes payment status when present.
-- Payments, seat-level assignment, digital tickets: still pending (schema-ready).
+- Expiry + seat-level assignment: a minute-level cron now also sweeps stale PENDING/PAYMENT_PENDING bookings (see Background Jobs); seat-level ticket assignment is the only deferred item (schema-ready).
 
 ## Payment Architecture
 
-Not yet implemented. Schema ready (Payment with Razorpay fields, webhook verification).
+Implemented — see "Payments & Digital Tickets Architecture" below (order → verify/webhook → refunds).
 
 ## Real-Time Architecture
 
-Not yet implemented. Socket.IO dependencies installed in API.
+Not yet implemented (deferred). Socket.IO dependencies installed in API.
 
 ## Redis Usage
 
-Worker skeleton connects via `REDIS_URL` (ioredis, BullMQ-compatible). No application usage yet.
+Worker skeleton connects via `REDIS_URL` (ioredis, BullMQ-compatible). No application usage yet — booking expiry runs on an in-process cron instead (see Background Jobs); Redis caching deferred.
 
 ## Background Jobs
 
-Queue name registry in `apps/worker/src/index.ts`: seat-hold-expiration, email, ticket-generation, payment-processing. No processors registered yet.
+In-process scheduling via `@nestjs/schedule` (BullMQ worker split deferred and documented):
+- `BookingsService` minute-level `@Cron(EVERY_MINUTE)` sweeps up to 200 stale PENDING **and** PAYMENT_PENDING bookings past `expiresAt`; each expiry is a transaction that re-checks status first, so a concurrent payment wins; stock is incremented back.
+- `NotificationsService` sends confirmation emails via the Resend REST API, fire-and-forget after the confirm transaction (both verify and webhook paths); skipped with a dev log when `RESEND_API_KEY` is missing/placeholder.
 
 ## AI Architecture
 
-Not yet implemented (Phase 5).
+Implemented (Phase 5, catalog-grounded):
+- `POST /api/ai/chat` (@Public): xAI Grok via the OpenAI-compatible `https://api.x.ai/v1/chat/completions` endpoint (model from `GROK_MODEL`, default `grok-3-mini`, 30s timeout).
+- Grounding: the system prompt injects the next 12 upcoming PUBLISHED events (title, city, category, from-price, slug) and instructs the model to recommend only catalog events.
+- `isConfigured()` treats missing keys and the shipped `xai-xxxx…` placeholder as unconfigured → 503 with an actionable operator message instead of confusing upstream errors. **Blocker: no real `GROK_API_KEY` in `.env` — AI chat returns 503 until one is provided.**
+- Conversation persistence (AIConversation model) and authenticated tool-calling deferred.
 
 ## RAG Architecture
 
-Not yet implemented (Phase 5).
+Deferred by design: similar-event recommendations use a Postgres-based scoring query (same-category first, then same-city, upcoming published only — `GET /api/events/:idOrSlug/similar`) instead of Pinecone embeddings; no `PINECONE_API_KEY` needed. Vector RAG remains a future option if the use case demands it.
 
 ## Security Architecture
 
@@ -180,12 +186,12 @@ Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global Validatio
 ## Testing Status
 
 - Jest configured in `apps/api` (unit) with `test/jest-e2e.json` for e2e
-- 94 passing unit tests (health: 3; auth service: 6; users service: 14; events service: 19 — CRUD, ownership, publish/cancel/delete transitions, FTS raw-SQL shape + hydration order, draft-hiding; tickets service: 7 — creation guards, sale windows, section-venue checks, availability derivation on quantity edits, delete-with-bookings refusal; organizers service: 8 — venue update/delete guards, seat-section generation incl. Excel row labels and chunking; venues service: 5 — public search filters/pagination, detail include shape, 404; bookings service: 14 — idempotency fast-path + foreign-key rejection, event/ticket guards, started-event refusal, maxPerBooking merge, sale windows, conditional decrement + server-side pricing, mid-transaction stock-failure rollback, cross-user booking hiding, cancel/closed/confirmed rules; payments service: 15 — order reuse on retry, new-order creation + PAYMENT_PENDING, paid/expired booking refusal, signature confirm + ticket minting, tampered-signature rejection, idempotent re-verify, cross-user hiding, webhook captured/failed/invalid-signature/duplicate/unknown-order, QR data URL + cross-user ticket hiding)
+- 106 passing unit tests across 10 suites (health: 3; auth service: 6; users service: 14; events service: 19 — CRUD, ownership, publish/cancel/delete transitions, FTS raw-SQL shape + hydration order, draft-hiding; tickets service: 7 — creation guards, sale windows, section-venue checks, availability derivation on quantity edits, delete-with-bookings refusal; organizers service: 13 — venue update/delete guards, seat-section generation incl. Excel row labels and chunking, ticket validation (VALID→USED, already-used 409) and per-status ticket stats; venues service: 5 — public search filters/pagination, detail include shape, 404; bookings service: 14 — idempotency fast-path + foreign-key rejection, event/ticket guards, started-event refusal, maxPerBooking merge, sale windows, conditional decrement + server-side pricing, mid-transaction stock-failure rollback, cross-user booking hiding, cancel/closed/confirmed rules, confirmed-cancel refund delegation; payments service: 19 — order reuse on retry, new-order creation + PAYMENT_PENDING, paid/expired booking refusal, signature confirm + ticket minting, tampered-signature rejection, idempotent re-verify, cross-user hiding, webhook captured/failed/invalid-signature/duplicate/unknown-order, QR data URL + cross-user ticket hiding, refund (Razorpay refund call before state tx, double-refund prevention, ticket cancellation, stock restore); AI service: 3 — catalog-grounded prompt building, unconfigured-key 503, upstream error mapping)
 - No tests yet in web/worker/packages
 
 ## Deployment Status
 
-Docker Compose infra services + per-app Dockerfiles exist. No CI/CD workflow yet (Phase 6).
+Docker Compose infra services + per-app Dockerfiles exist. GitHub Actions CI workflow added at `.github/workflows/ci.yml` (Node 20, npm cache, lint → type-check → test → build, placeholder env vars for CI) — will run on first push to GitHub.
 
 ## Known Issues
 
@@ -197,26 +203,29 @@ Docker Compose infra services + per-app Dockerfiles exist. No CI/CD workflow yet
 
 ## Current Limitations
 
-- Bookings, payments, and AI features not yet implemented (schema-ready only)
+- AI chat requires a real `GROK_API_KEY` (currently a placeholder in `.env`) — the endpoint returns a clear 503 until configured; confirmation emails are skipped with a dev log until a real `RESEND_API_KEY` is set (both documented credential blockers)
 - Venue map coordinates are schema-only: no Leaflet/OpenStreetMap rendering anywhere yet
-- Seat sections generate physical seats, but no seat-level ticket assignment or seat-selection UX exists (Phase 3 scope)
+- Seat sections generate physical seats, but no seat-level ticket assignment or seat-selection UX exists (intentionally deferred)
 - Event image upload not implemented (images/coverImage are URL arrays, schema-ready); event cards fall back to a placeholder icon
-- Frontend covers all public browsing and auth: `/`, `/events`, `/events/[slug]`, `/categories`, `/venues`, `/venues/[id]`, `/signin`, `/signup`; missing pages: `/ai` (Phase 5) and organizer dashboard UI (Phase 4)
+- Frontend routes: `/`, `/events`, `/events/[slug]`, `/categories`, `/venues`, `/venues/[id]`, `/signin`, `/signup`, `/tickets`, `/dashboard`, `/ai`; missing: admin dashboard UI, organizer scanner UI
 - Frontend has no tests yet (API client, auth provider, pages are untested; web `test` script is a placeholder)
 - Landing page uses placeholder content; not yet backed by the API
 - API boot requires reachable PostgreSQL (PrismaService fails fast); frontend pages degrade gracefully to empty states when the API is unreachable
-- Password reset email delivery not wired (token logged in dev; email worker planned for Phase 4)
+- Password reset email delivery not wired (token logged in dev; same Resend dependency as confirmation emails)
 
 ## Payments & Digital Tickets Architecture
 
-Implemented (`apps/api/src/modules/payments/` + booking confirm path), refunds pending:
+Implemented (`apps/api/src/modules/payments/` + booking confirm path), complete with refunds:
 - `POST /api/payments/order` (auth): creates a Razorpay order for a booking (amount = booking.totalAmount from the DB, receipt = bookingId). Booking → PAYMENT_PENDING. One payment row per booking (`idempotencyKey = order:{bookingId}` unique); retry reuses the open order, a FAILED payment row is recycled with a fresh order id. Refuses paid/closed/expired bookings.
 - `POST /api/payments/verify` (auth): HMAC-SHA256 over `razorpayOrderId|razorpayPaymentId` with `RAZORPAY_KEY_SECRET`, constant-time compared. Confirm transaction: payment → CAPTURED (+method/reason cleared), booking → CONFIRMED + confirmedAt, mints one digital ticket per unit (idempotent — skipped if tickets exist). Idempotent once captured.
 - `POST /api/payments/webhook` (@Public): signature over the RAW body (`rawBody: true` in main.ts) with `RAZORPAY_WEBHOOK_SECRET`. `payment.captured` → same confirm path (safe for out-of-order delivery: captured beats failed; duplicates no-op). `payment.failed` → payment FAILED + failureReason (paid beats failed). Unknown orders ignored with 200.
 - Digital tickets: `TKT-` + 16 hex chars (unique), `qrData` JSON { code, bookingId, eventId }, holderName from user; included in booking detail (`GET /api/bookings/:id`) and the verify response. `GET /api/payments/tickets/:id/qr` (auth) returns a PNG data URL rendered by the confirmation panel.
 - Frontend: `BookingWidget` on `/events/[slug]` — quantity steppers (maxPerBooking/stock-capped), live total, sign-in gate, then createBooking → createPaymentOrder → Razorpay Checkout.js → verifyPayment → ticket codes + QRs. Checkout dismissal keeps seats held until expiry; missing keys yield an honest "payments not configured" error.
+- Refunds: `POST /api/payments/refund` (auth, own booking) — Razorpay `payments.refund` called BEFORE the state transaction (money movement first) with bookingId/reason notes; inside the tx the payment status is re-checked as CAPTURED (double-refund prevention), then payment → REFUNDED (+refundId/refundAmount), booking → REFUNDED, VALID tickets → CANCELLED, stock incremented back. Booking cancel on a CONFIRMED booking delegates here.
+- Ticket check-in (organizer): `POST /api/organizers/events/:eventId/tickets/validate` — looks up a ticket code on the organizer's own event, VALID→USED with `validatedAt`/`validatedBy`, already-used → 409; `GET .../tickets/stats` returns per-status counts.
+- Confirmation emails: fire-and-forget via Resend after capture (both verify + webhook paths); skipped in dev without a real key.
 - Env: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` optional in dev, enforced in production by env validation.
-- Refunds, organizer-side ticket validation (scan), seat-level selection: pending (schema-ready).
+- Seat-level selection: deferred (schema-ready).
 
 ## Important Architecture Decisions
 
@@ -224,16 +233,16 @@ See `docs/architecture-decisions.md` (ADRs 001–013).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE except Leaflet maps + organizer dashboard, deferred to Phase 4). Phase 3 — Booking Engine (IN PROGRESS): booking core + Razorpay payments (order/verify/webhook) + digital tickets with QR + booking UI COMPLETE; remaining: refunds, organizer-side ticket scanning, seat-level selection.
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE except Leaflet maps, deferred). Phase 3 — Booking Engine (COMPLETE except seat-level selection, deferred and documented): booking core + Razorpay payments + refunds + digital tickets with QR + check-in + booking UI. Phase 4 — Platform Engineering (PARTIAL): expiry cron, Resend confirmation emails, organizer stats + dashboard UI shipped; Redis caching and BullMQ worker split deferred. Phase 5 — AI Layer (PARTIAL): catalog-grounded Grok chat + similar-event recommendations + `/ai` page shipped (blocked on a real `GROK_API_KEY`); Pinecone RAG and tool-calling deferred. Phase 6 — Production Polish (PARTIAL): 106 unit tests, CI workflow, docs updates shipped; e2e tests, observability tooling, and the remaining docs/ set pending.
 
 ## Current Task
 
-Razorpay payments and digital tickets implemented and verified: order creation with open-order reuse and failed-payment recycling, checkout signature verification with constant-time compare, raw-body webhook handling (captured confirms — out-of-order and duplicate safe; failed records the reason), idempotent ticket minting inside the confirm transaction, own-ticket QR endpoint, and the full booking widget on the event page (steppers → booking → Razorpay Checkout → verification → codes + QRs). Full monorepo pipeline green: lint 9/9, type-check 12/12, 94/94 unit tests, build 6/6.
+Docs and CI checkpoint: `context.md`/`implementation.md` updated to reflect refunds, ticket check-in, My Tickets page, expiry cron, notifications, organizer stats/dashboard, AI assistant + recommendations, the `/ai` page, the 106-test suite, the credential blockers (placeholder `GROK_API_KEY` / `RESEND_API_KEY`), and the CI workflow.
 
 ## Next Task
 
-Phase 3 wrap-up: refunds (Razorpay refund API + booking REFUNDED transition), organizer ticket-validation endpoint (scan a ticket code, mark USED), and a "My Tickets" page — or proceed to Phase 4 (caching, BullMQ expiry jobs, notifications).
+Optional remaining polish (all documented in implementation.md): Playwright e2e tests, Helmet/CSRF/CORS production audit, observability tooling, admin dashboard UI, organizer scanner UI, and the docs/ set. Live payment/AI behavior requires real Razorpay sandbox keys, a real `GROK_API_KEY`, and a `RESEND_API_KEY` in `.env`.
 
 ## Last Completed Checkpoint
 
-Phase 3 — Razorpay payments + digital tickets (commit "feat: add razorpay payments and digital tickets"); prior checkpoints: booking engine core (f7551e0), frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).
+Phase 6 partial — docs update + CI workflow (commit "chore: update docs and add CI workflow"); prior checkpoints this phase: AI assistant + recommendations + `/ai` page (638a9a3), expiry cron + notifications + organizer stats/dashboard (1216b3d), refunds + ticket check-in + My Tickets page (7463023), Razorpay payments + digital tickets (b4e06a2); earlier: booking engine core (f7551e0), frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).
