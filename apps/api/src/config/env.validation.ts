@@ -15,7 +15,7 @@ export interface EnvConfig {
   RAZORPAY_WEBHOOK_SECRET?: string;
   GROK_API_KEY?: string;
   GROK_MODEL?: string;
-  RESEND_API_KEY?: string;
+  BREVO_API_KEY?: string;
   EMAIL_FROM?: string;
   // Google OAuth 2.0 (optional — sign-in with Google is feature-gated)
   GOOGLE_CLIENT_ID?: string;

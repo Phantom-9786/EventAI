@@ -402,7 +402,7 @@ export class AuthService {
         },
       });
 
-      // Degrades gracefully: with no RESEND_API_KEY the send is skipped
+      // Degrades gracefully: with no BREVO_API_KEY the send is skipped
       // and the raw token is logged in dev so the flow stays testable.
       void this.notifications
         .sendPasswordResetEmail({

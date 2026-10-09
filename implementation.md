@@ -61,7 +61,7 @@
 - [x] Password hashing (Argon2id)
 - [x] JWT tokens / session management (rotating refresh sessions, hashed at rest)
 - [x] Secure cookies (httpOnly, sameSite=lax, path-scoped refresh cookie)
-- [x] Password reset architecture (hashed single-use tokens, 1h expiry) + complete self-service flow: `sendPasswordResetEmail` via Resend (skipped-with-log without a key), `/forgot-password` + `/reset-password` pages, "Forgot password?" link on `/signin` — verified live end-to-end against the seeded DB
+- [x] Password reset architecture (hashed single-use tokens, 1h expiry) + complete self-service flow: `sendPasswordResetEmail` via Brevo (skipped-with-log without a key), `/forgot-password` + `/reset-password` pages, "Forgot password?" link on `/signin` — verified live end-to-end against the seeded DB
 - [x] Email verification flow: `EmailVerificationToken` model (hashed single-use token, 24h expiry, one per user) + migration `20261009150000_email_verification`; `POST /api/auth/verify-email` (public, single-use transaction) + `POST /api/auth/resend-verification` (authenticated); register issues a token, Google-linked accounts skip verification; `/verify-email` page + `EmailVerificationBanner` (resend + dismiss); verified live (register → resend → verify → `isEmailVerified:true`, reuse rejected)
 - [x] Change password
 - [x] Rate limiting on auth endpoints (ThrottlerGuard, 10 req/min on auth)
@@ -177,7 +177,7 @@
 ---
 
 ## Phase 4 — Platform Engineering
-**Status: COMPLETE (core) — expiry cron, email notifications (confirmation/cancellation/refund), organizer stats + dashboard + door scanner + attendee list, admin management (user status, event moderation, organizer verification — API + UI), and Redis caching shipped. Socket.IO real-time, BullMQ worker split, charts/analytics, and audit logs intentionally deferred (in-process scheduling + Resend REST cover the current scale; see context.md)**
+**Status: COMPLETE (core) — expiry cron, email notifications (confirmation/cancellation/refund), organizer stats + dashboard + door scanner + attendee list, admin management (user status, event moderation, organizer verification — API + UI), and Redis caching shipped. Socket.IO real-time, BullMQ worker split, charts/analytics, and audit logs intentionally deferred (in-process scheduling + Brevo REST cover the current scale; see context.md)**
 
 ### Redis Caching
 - [x] Event caching (CacheService — ioredis-backed `apps/api/src/common/cache/cache.service.ts`; events list/search + categories cached with TTL)
@@ -186,7 +186,7 @@
 
 ### Background Jobs
 - [x] Seat/booking expiration jobs (`@nestjs/schedule` minute cron sweeping stale PENDING/PAYMENT_PENDING bookings, stock-releasing inside re-checked transactions)
-- [x] Email notification delivery (Resend REST via NotificationsService, fire-and-forget after payment capture; graceful skip without RESEND_API_KEY)
+- [x] Email notification delivery (Brevo REST via NotificationsService, fire-and-forget after payment capture; graceful skip without BREVO_API_KEY; migrated from Resend 2026-10-09, see ADR-015)
 - [ ] Worker app split (BullMQ + Redis) — deferred; single-process scheduling suffices for current volume
 
 ### Real-Time (Socket.IO)
@@ -253,10 +253,10 @@
 ---
 
 ## Phase 6 — Production Polish
-**Status: PARTIAL — 163 unit tests, structured logging, Playwright smoke suite (7/7), CI workflow verified green on GitHub (Phantom-9786/EventAI), and the full docs/ set shipped; error tracking, integration tests, and live third-party verification pending**
+**Status: PARTIAL — 180 unit tests, structured logging, Playwright smoke suite (7/7), CI workflow verified green on GitHub (Phantom-9786/EventAI), and the full docs/ set shipped; error tracking, integration tests, and live third-party verification pending**
 
 ### Testing
-- [x] Unit tests (163 passing across 13 suites: auth incl. Google + password-reset + email-verification cases, google-oauth service, structured logger, users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback/cancellation-email, payments incl. signature/webhook/refund/refund-email, AI service, admin stats + user/event/organizer management, health)
+- [x] Unit tests (180 passing across 14 suites: auth incl. Google + password-reset + email-verification cases, google-oauth service, structured logger, notifications (Brevo email integration — sender parsing, success/provider-error/unreachable paths, all five email flows), users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback/cancellation-email, payments incl. signature/webhook/refund/refund-email, AI service, admin stats + user/event/organizer management, health)
 - [ ] Integration tests (needs a live Postgres in CI — natural next step)
 - [x] Concurrency logic covered at unit level (conditional-decrement rollback prevents double booking; real parallel-run test pending)
 - [x] E2E tests (Playwright smoke suite `e2e/smoke.spec.ts` — 7/7: landing, discovery, search, event detail + tickets, categories/venues, seeded sign-in, auth gate; booking/pay e2e still pending real Razorpay keys)

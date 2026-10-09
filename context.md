@@ -178,7 +178,7 @@ Redis caching is live in the API via `CacheService` (`apps/api/src/common/cache/
 
 In-process scheduling via `@nestjs/schedule` (BullMQ worker split deferred and documented):
 - `BookingsService` minute-level `@Cron(EVERY_MINUTE)` sweeps up to 200 stale PENDING **and** PAYMENT_PENDING bookings past `expiresAt`; each expiry is a transaction that re-checks status first, so a concurrent payment wins; stock is incremented back.
-- `NotificationsService` sends confirmation emails via the Resend REST API, fire-and-forget after the confirm transaction (both verify and webhook paths); skipped with a dev log when `RESEND_API_KEY` is missing/placeholder.
+- `NotificationsService` sends confirmation emails via the Brevo REST API (migrated from Resend 2026-10-09, ADR-015), fire-and-forget after the confirm transaction (both verify and webhook paths); skipped with a dev log when `BREVO_API_KEY` is missing/placeholder.
 
 ## AI Architecture
 
@@ -198,12 +198,12 @@ Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global Validatio
 
 ## Current Environment Configuration
 
-`.env.example` covers: NODE_ENV, PORT, FRONTEND_URL, DATABASE_URL, REDIS_URL, JWT_SECRET/JWT_EXPIRY/REFRESH_TOKEN_EXPIRY, Razorpay, Grok, Pinecone, Resend, uploads, rate limiting, seat hold TTL, Google OAuth (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_CALLBACK_URL` — optional, feature-gated). Copy to `.env` before running. Env validation requires real `DATABASE_URL` and non-placeholder `JWT_SECRET` (>= 16 chars). On this machine, `.env` copies exist at the repo root, `packages/database/` (Prisma CLI) and `apps/api/` (NestJS ConfigModule reads from each app's cwd). DATABASE_URL uses host port 5433 (see Known Issues).
+`.env.example` covers: NODE_ENV, PORT, FRONTEND_URL, DATABASE_URL, REDIS_URL, JWT_SECRET/JWT_EXPIRY/REFRESH_TOKEN_EXPIRY, Razorpay, Grok, Pinecone, Brevo, uploads, rate limiting, seat hold TTL, Google OAuth (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_CALLBACK_URL` — optional, feature-gated). Copy to `.env` before running. Env validation requires real `DATABASE_URL` and non-placeholder `JWT_SECRET` (>= 16 chars). On this machine, `.env` copies exist at the repo root, `packages/database/` (Prisma CLI) and `apps/api/` (NestJS ConfigModule reads from each app's cwd). DATABASE_URL uses host port 5433 (see Known Issues).
 
 ## Testing Status
 
 - Jest configured in `apps/api` (unit) with `test/jest-e2e.json` for e2e
-- 163 passing unit tests across 13 suites (health, auth service incl. Google + password-reset + email-verification cases, google-oauth service, structured logger, users, events, tickets, organizers, venues, bookings incl. cancellation-email hook, payments incl. refund-email hook, AI service, admin stats + user management + event moderation + organizer verification)
+- 180 passing unit tests across 14 suites (health, auth service incl. Google + password-reset + email-verification cases, google-oauth service, structured logger, notifications (Brevo email integration), users, events, tickets, organizers, venues, bookings incl. cancellation-email hook, payments incl. refund-email hook, AI service, admin stats + user management + event moderation + organizer verification)
 - Playwright smoke suite (`e2e/smoke.spec.ts`, `npx playwright test` with auto-started dev web server): 7/7 passing against the seeded stack — landing, discovery, search narrowing, event detail + ticket table, categories/venues, seeded sign-in, unauthenticated tickets gate. Requires PostgreSQL + Redis (docker compose up), seeded DB (`npm run db:seed`), and the API on :4000
 - No tests yet in web/worker/packages
 
@@ -221,13 +221,13 @@ Docker Compose infra services + per-app Dockerfiles exist. GitHub Actions CI wor
 
 ## Current Limitations
 
-- AI chat requires a real `GROK_API_KEY` (currently a placeholder in `.env`) — the endpoint returns a clear 503 until configured; confirmation emails are skipped with a dev log until a real `RESEND_API_KEY` is set; Google sign-in is implemented but requires `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` + one manual login to verify (all documented credential blockers)
+- AI chat requires a real `GROK_API_KEY` (currently a placeholder in `.env`) — the endpoint returns a clear 503 until configured; confirmation emails are skipped with a dev log until a real `BREVO_API_KEY` is set; Google sign-in is implemented but requires `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` + one manual login to verify (all documented credential blockers)
 - Seat sections generate physical seats, but no seat-level ticket assignment or seat-selection UX exists (intentionally deferred)
 - Event image upload not implemented (images/coverImage are URL arrays, schema-ready); event cards fall back to a placeholder icon
 - Frontend has no tests yet (API client, auth provider, pages are untested; web `test` script is a placeholder)
 - Landing page uses placeholder content; not yet backed by the API
 - API boot requires reachable PostgreSQL (PrismaService fails fast); frontend pages degrade gracefully to empty states when the API is unreachable
-- Password reset + email verification: full self-service flows (`/forgot-password` → 1-hour single-use token → `/reset-password`; register → `/verify-email` with 24h single-use token + banner resend); with no `RESEND_API_KEY` emails are skipped and raw tokens are logged in dev — live delivery blocked on a real key
+- Password reset + email verification: full self-service flows (`/forgot-password` → 1-hour single-use token → `/reset-password`; register → `/verify-email` with 24h single-use token + banner resend); with no `BREVO_API_KEY` emails are skipped and raw tokens are logged in dev — live delivery blocked on key + verified Brevo sender
 
 ## Logging & Observability
 
@@ -243,7 +243,7 @@ Implemented (`apps/api/src/modules/payments/` + booking confirm path), complete 
 - Frontend: `BookingWidget` on `/events/[slug]` — quantity steppers (maxPerBooking/stock-capped), live total, sign-in gate, then createBooking → createPaymentOrder → Razorpay Checkout.js → verifyPayment → ticket codes + QRs. Checkout dismissal keeps seats held until expiry; missing keys yield an honest "payments not configured" error.
 - Refunds: `POST /api/payments/refund` (auth, own booking) — Razorpay `payments.refund` called BEFORE the state transaction (money movement first) with bookingId/reason notes; inside the tx the payment status is re-checked as CAPTURED (double-refund prevention), then payment → REFUNDED (+refundId/refundAmount), booking → REFUNDED, VALID tickets → CANCELLED, stock incremented back. Booking cancel on a CONFIRMED booking delegates here.
 - Ticket check-in (organizer): `POST /api/organizers/events/:eventId/tickets/validate` — looks up a ticket code on the organizer's own event, VALID→USED with `validatedAt`/`validatedBy`, already-used → 409; `GET .../tickets/stats` returns per-status counts.
-- Confirmation emails: fire-and-forget via Resend after capture (both verify + webhook paths); skipped in dev without a real key.
+- Confirmation emails: fire-and-forget via Brevo after capture (both verify + webhook paths); skipped in dev without a real key.
 - Env: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` optional in dev, enforced in production by env validation.
 - Seat-level selection: deferred (schema-ready).
 
@@ -253,15 +253,15 @@ See `docs/architecture-decisions.md` (ADRs 001–014).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE): auth incl. Google OAuth (live-verified up to consent; final round-trip pending a user sign-in test) + self-service password reset + email verification, RBAC, profiles, events/FTS, ticket types, venues + Leaflet maps, frontend pages. Phase 3 — Booking Engine (COMPLETE except seat-level selection, deferred and documented): booking core + Razorpay payments + refunds + digital tickets with QR + check-in + booking UI. Phase 4 — Platform Engineering (COMPLETE except BullMQ split, charts/analytics, and audit logs — all documented as deferred): expiry cron, Resend confirmation + cancellation + refund emails, organizer stats + dashboard + attendee list + door scanner, admin stats + user management + event moderation + organizer verification (API + UI), Redis caching via CacheService. Phase 5 — AI Layer (PARTIAL): catalog-grounded Grok chat + similar-event recommendations + `/ai` page shipped (blocked on a real `GROK_API_KEY`); Pinecone RAG and tool-calling deferred. Phase 6 — Production Polish (PARTIAL): 163 unit tests, structured logging (LOG_FORMAT=json + requestId correlation), Playwright smoke suite 7/7, CI workflow, docs/ set complete; error tracking (Sentry DSN) and live third-party verification pending.
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE): auth incl. Google OAuth (live-verified up to consent; final round-trip pending a user sign-in test) + self-service password reset + email verification, RBAC, profiles, events/FTS, ticket types, venues + Leaflet maps, frontend pages. Phase 3 — Booking Engine (COMPLETE except seat-level selection, deferred and documented): booking core + Razorpay payments + refunds + digital tickets with QR + check-in + booking UI. Phase 4 — Platform Engineering (COMPLETE except BullMQ split, charts/analytics, and audit logs — all documented as deferred): expiry cron, Brevo confirmation + cancellation + refund emails, organizer stats + dashboard + attendee list + door scanner, admin stats + user management + event moderation + organizer verification (API + UI), Redis caching via CacheService. Phase 5 — AI Layer (PARTIAL): catalog-grounded Grok chat + similar-event recommendations + `/ai` page shipped (blocked on a real `GROK_API_KEY`); Pinecone RAG and tool-calling deferred. Phase 6 — Production Polish (PARTIAL): 180 unit tests, structured logging (LOG_FORMAT=json + requestId correlation), Playwright smoke suite 7/7, CI workflow, docs/ set complete; error tracking (Sentry DSN) and live third-party verification pending.
 
 ## Current Task
 
-Google OAuth credential configuration + verification (this batch): real Cloud Console client configured in `apps/api/.env`; live-verified everything except the final consent round-trip — auth URL 302 with correct registered redirect_uri, all callback failure paths (state mismatch / cancelled / missing code / real token-exchange rejection of a fake code), frontend button + `/auth/callback` consumer + error mapping, `users.google_id` schema, git hygiene (`.env` ignored, client JSON not in repo). Empty-`GOOGLE_CALLBACK_URL` default bug fixed (86481ed, pushed). Awaiting one real user sign-in at `http://localhost:3000/signin` ("Continue with Google") to close the loop; then check `users.google_id` linkage in the DB.
+Brevo email migration (this batch, per user request — Resend retired): `NotificationsService.sendEmail` now posts to Brevo `POST /v3/smtp/email` (`api-key` header, `{ sender, to, subject, htmlContent }`, `EMAIL_FROM` parsed into `{ name, email }` via exported `parseEmailSender`); graceful-failure contract unchanged (skip + dev log without/placeholder `BREVO_API_KEY`, provider errors and network throws logged, never thrown into flows). All five flows untouched. Env: `BREVO_API_KEY` set in `apps/api/.env` (real key, never exposed), `EMAIL_FROM=EventAI <tarunkumarsahu2551@gmail.com>` (sender candidate — MUST be confirmed in Brevo → Senders & IP before any real send), `RESEND_API_KEY` removed; `turbo.json` + `.env.example` + `env.validation.ts` updated; ADR-012 marked superseded, ADR-015 added. 17 new unit tests (sender parsing, success/error/timeout, all five flows) — 180 total. Live delivery NOT yet tested (needs verified sender).
 
 ## Next Task
 
-Integration tests (live Postgres in CI) — the last non-blocked Phase 6 item; then credential-blocked verifications (Razorpay sandbox, `GROK_API_KEY`, `RESEND_API_KEY`, Sentry DSN) as keys arrive. UI/UX polish and public deployment are explicitly deferred by the user.
+Live Brevo delivery test once the user confirms `tarunkumarsahu2551@gmail.com` (or another address) is a verified sender in Brevo — trigger forgot-password to the Brevo account email and check inbox + `Email sent` log. Then: integration tests (live Postgres in CI); credential-blocked verifications (Razorpay sandbox, `GROK_API_KEY`, Sentry DSN) as keys arrive. UI/UX polish and public deployment are explicitly deferred by the user.
 
 ## Last Completed Checkpoint
 

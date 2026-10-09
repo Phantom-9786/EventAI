@@ -23,7 +23,7 @@ Health: `GET http://localhost:4000/api/health` → `{ status, dependencies: { da
 | `FRONTEND_URL` | production | must be `https://`; used as the single CORS origin |
 | `RAZORPAY_KEY_ID/_SECRET/_WEBHOOK_SECRET` | production | optional in dev (checkout shows an honest "not configured" error) |
 | `GROK_API_KEY` / `GROK_MODEL` | optional | AI chat 503s with an actionable message until a real key is set |
-| `RESEND_API_KEY` / `EMAIL_FROM` | optional | confirmation emails skip with a dev log until set |
+| `BREVO_API_KEY` / `EMAIL_FROM` | optional | transactional emails skip with a dev log until set; `EMAIL_FROM` must be a sender verified in Brevo |
 | `SEAT_HOLD_TTL_SECONDS` | optional | seat-hold window (default 600) |
 | `RATE_LIMIT_TTL` / `RATE_LIMIT_MAX` | optional | global throttle window/limit |
 

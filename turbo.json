@@ -11,7 +11,7 @@
     "GROK_API_KEY",
     "PINECONE_API_KEY",
     "PINECONE_INDEX",
-    "RESEND_API_KEY"
+    "BREVO_API_KEY"
   ],
   "tasks": {
     "build": {

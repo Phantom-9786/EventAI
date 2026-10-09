@@ -17,7 +17,7 @@ AI-powered Event Discovery and Ticket Booking Platform built as a modular monoli
 | Search | PostgreSQL Full-Text Search |
 | AI/LLM | Grok/xAI (via provider abstraction) |
 | Vector DB | Pinecone |
-| Email | Resend |
+| Email | Brevo |
 | Monorepo | Turborepo, npm workspaces |
 
 ## Project Structure

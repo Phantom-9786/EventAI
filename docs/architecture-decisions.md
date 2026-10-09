@@ -149,8 +149,9 @@
 
 ---
 
-## ADR-012: Resend for Transactional Email
+## ADR-012: Resend for Transactional Email (SUPERSEDED by ADR-015)
 **Date:** 2026-10-08
+**Status:** Superseded on 2026-10-09 by ADR-015 (Brevo). The integration was migrated; this ADR is retained for history.
 **Decision:** Use Resend for transactional email delivery.
 **Context:** The platform needs to send booking confirmations, ticket emails, and notifications.
 **Options Considered:**
@@ -186,3 +187,10 @@
 **Chosen:** Server-side authorization-code flow. `GET /api/auth/google` issues an HMAC-SHA256-signed state (10-min expiry) mirrored in an httpOnly cookie; the callback requires cookie/query state match, exchanges the code, and verifies the ID token (signature, audience, expiry). Existing accounts are linked by `googleId` first; otherwise by email ONLY when Google reports `email_verified: true`. New users are created passwordless (`users.passwordHash` nullable, `users.google_id` unique). The access token returns via URL fragment (never sent to servers); refresh tokens reuse the existing hashed rotating-session mechanism.
 **Reason:** Server-side verification keeps Google's attestation entirely within the trust boundary; verified-email-only linking makes account takeover require control of the mailbox, matching the threat model of password reset.
 **Trade-offs:** Live login is not yet verified against real Google Cloud credentials (feature-gated 503 without them); passwordless accounts cannot use password login or change-password until a reset flow sets a password. Setup steps in `docs/google-oauth.md`.
+
+## ADR-015: Brevo for Transactional Email (supersedes ADR-012)
+**Date:** 2026-10-09
+**Decision:** Migrate transactional email from Resend to Brevo's REST API (`POST /v3/smtp/email`, `api-key` header).
+**Context:** Provider switch requested by the product owner. Brevo's free tier is sufficient for development, and a sender can be verified as a single mailbox (email confirmation) without owning a custom domain — Resend's sandbox sender (`onboarding@resend.dev`) only delivered to the account owner's own inbox and a custom domain would need to be purchased.
+**Implementation:** `NotificationsService.sendEmail` now posts `{ sender, to, subject, htmlContent }` to Brevo; `EMAIL_FROM` ("Name <addr>" or bare addr) is parsed into Brevo's `{ name, email }` sender object. Env: `BREVO_API_KEY` (skipped-with-dev-log when missing or `xkeysib-xxxx` placeholder) + `EMAIL_FROM`; `RESEND_API_KEY` removed from code, `turbo.json`, `.env.example`. All five flows (booking confirmation, cancellation, refund, password reset, email verification) and the graceful-failure contract are unchanged. Sender verification requirement: sends from an unverified sender address are rejected by Brevo — the sender must be confirmed in Brevo → Senders & IP (single-mailbox verification is enough for local dev; a verified domain later removes that constraint).
+**Trade-offs:** Still fire-and-forget with failures logged (email never breaks bookings/payments/auth); live delivery is not yet verified (needs a verified Brevo sender).
