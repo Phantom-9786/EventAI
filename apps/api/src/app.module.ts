@@ -9,6 +9,8 @@ import { UsersModule } from './modules/users/users.module';
 import { OrganizersModule } from './modules/organizers/organizers.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { EventsModule } from './modules/events/events.module';
+import { TicketsModule } from './modules/tickets/tickets.module';
+import { VenuesModule } from './modules/venues/venues.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -39,6 +41,8 @@ import { validateEnv } from './config/env.validation';
     OrganizersModule,
     CategoriesModule,
     EventsModule,
+    TicketsModule,
+    VenuesModule,
   ],
   providers: [
     {

@@ -1,12 +1,31 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   becomeOrganizerSchema,
+  createSeatSectionSchema,
   createVenueSchema,
   paginationSchema,
+  updateVenueSchema,
 } from '@eventai/validation';
-import type { CreateVenueInput } from '@eventai/validation';
+import type {
+  CreateSeatSectionInput,
+  CreateVenueInput,
+  UpdateVenueInput,
+} from '@eventai/validation';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { OrganizersService } from './organizers.service';
 
@@ -58,5 +77,57 @@ export class OrganizersController {
   async listVenues(@CurrentUser('id') userId: string) {
     const organizerId = await this.organizersService.requireOrganizerId(userId);
     return { venues: await this.organizersService.listOwnVenues(organizerId) };
+  }
+
+  @Roles('ORGANIZER')
+  @Patch('venues/:venueId')
+  @ApiOperation({ summary: 'Update a venue you own (organizer only)' })
+  async updateVenue(
+    @CurrentUser('id') userId: string,
+    @Param('venueId', ParseUUIDPipe) venueId: string,
+    @Body(new ZodValidationPipe(updateVenueSchema)) body: UpdateVenueInput,
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return { venue: await this.organizersService.updateVenue(organizerId, venueId, body) };
+  }
+
+  @Roles('ORGANIZER')
+  @Delete('venues/:venueId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a venue you own — only when it has no events (organizer only)' })
+  async deleteVenue(
+    @CurrentUser('id') userId: string,
+    @Param('venueId', ParseUUIDPipe) venueId: string,
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return this.organizersService.deleteVenue(organizerId, venueId);
+  }
+
+  @Roles('ORGANIZER')
+  @Post('venues/:venueId/sections')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Add a seat section (rows x seats-per-row) to a venue you own' })
+  async createSeatSection(
+    @CurrentUser('id') userId: string,
+    @Param('venueId', ParseUUIDPipe) venueId: string,
+    @Body(new ZodValidationPipe(createSeatSectionSchema)) body: CreateSeatSectionInput,
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return {
+      section: await this.organizersService.createSeatSection(organizerId, venueId, body),
+    };
+  }
+
+  @Roles('ORGANIZER')
+  @Get('venues/:venueId/sections')
+  @ApiOperation({ summary: 'List seat sections of a venue you own' })
+  async listSeatSections(
+    @CurrentUser('id') userId: string,
+    @Param('venueId', ParseUUIDPipe) venueId: string,
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return {
+      sections: await this.organizersService.listSeatSections(organizerId, venueId),
+    };
   }
 }

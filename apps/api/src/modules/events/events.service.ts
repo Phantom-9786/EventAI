@@ -21,7 +21,47 @@ const EVENT_DETAIL_INCLUDE = {
   category: { select: { id: true, name: true, slug: true, icon: true, color: true } },
   venue: true,
   organizer: { select: { id: true, organizationName: true, logo: true, isVerified: true } },
-  ticketTypes: { orderBy: { price: 'asc' } },
+  ticketTypes: {
+    where: { isActive: true },
+    orderBy: { price: 'asc' as const },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      price: true,
+      currency: true,
+      totalQuantity: true,
+      availableQuantity: true,
+      maxPerBooking: true,
+      saleStartDate: true,
+      saleEndDate: true,
+      section: { select: { id: true, name: true } },
+    },
+  },
+  faqs: { orderBy: { order: 'asc' } },
+} satisfies Prisma.EventInclude;
+
+const EVENT_DETAIL_MANAGE_INCLUDE = {
+  category: { select: { id: true, name: true, slug: true, icon: true, color: true } },
+  venue: true,
+  organizer: { select: { id: true, organizationName: true, logo: true, isVerified: true } },
+  ticketTypes: {
+    orderBy: { price: 'asc' as const },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      price: true,
+      currency: true,
+      totalQuantity: true,
+      availableQuantity: true,
+      maxPerBooking: true,
+      saleStartDate: true,
+      saleEndDate: true,
+      isActive: true,
+      section: { select: { id: true, name: true } },
+    },
+  },
   faqs: { orderBy: { order: 'asc' } },
 } satisfies Prisma.EventInclude;
 
@@ -81,7 +121,7 @@ export class EventsService {
         cancellationPolicy: input.cancellationPolicy,
         status: 'DRAFT',
       },
-      include: EVENT_DETAIL_INCLUDE,
+      include: EVENT_DETAIL_MANAGE_INCLUDE,
     });
   }
 
@@ -89,7 +129,7 @@ export class EventsService {
     const event = await this.findOwned(organizerId, idOrSlug);
     return this.prisma.event.findUniqueOrThrow({
       where: { id: event.id },
-      include: EVENT_DETAIL_INCLUDE,
+      include: EVENT_DETAIL_MANAGE_INCLUDE,
     });
   }
 
@@ -144,7 +184,7 @@ export class EventsService {
         ...(input.policies !== undefined && { policies: input.policies }),
         ...(input.cancellationPolicy !== undefined && { cancellationPolicy: input.cancellationPolicy }),
       },
-      include: EVENT_DETAIL_INCLUDE,
+      include: EVENT_DETAIL_MANAGE_INCLUDE,
     });
   }
 
@@ -161,7 +201,7 @@ export class EventsService {
     return this.prisma.event.update({
       where: { id: owned.id },
       data: { status: 'PUBLISHED' },
-      include: EVENT_DETAIL_INCLUDE,
+      include: EVENT_DETAIL_MANAGE_INCLUDE,
     });
   }
 
@@ -175,7 +215,7 @@ export class EventsService {
     return this.prisma.event.update({
       where: { id: owned.id },
       data: { status: 'CANCELLED' },
-      include: EVENT_DETAIL_INCLUDE,
+      include: EVENT_DETAIL_MANAGE_INCLUDE,
     });
   }
 
@@ -209,6 +249,11 @@ export class EventsService {
     }
     if (input.categoryId) {
       conditions.push(Prisma.sql`e.category_id = ${input.categoryId}`);
+    }
+    if (input.category) {
+      conditions.push(
+        Prisma.sql`e.category_id IN (SELECT c.id FROM categories c WHERE c.slug = ${input.category} AND c.is_active = true)`,
+      );
     }
     if (input.city) {
       conditions.push(Prisma.sql`v.city ILIKE ${`%${input.city}%`}`);
@@ -286,6 +331,11 @@ export class EventsService {
       }));
 
     return { events, total, page: input.page, limit: input.limit, pages: Math.ceil(total / input.limit) };
+  }
+
+  /** Resolves an event owned by the organizer by id or slug (throws 404). */
+  async requireOwnedEvent(organizerId: string, idOrSlug: string) {
+    return this.findOwned(organizerId, idOrSlug);
   }
 
   private async findOwned(organizerId: string, idOrSlug: string) {

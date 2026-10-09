@@ -33,6 +33,7 @@ export const updateEventSchema = z.object({
 export const eventSearchSchema = z.object({
   query: z.string().max(200).optional(),
   categoryId: z.string().uuid().optional(),
+  category: z.string().max(100).optional(), // category slug
   city: z.string().max(100).optional(),
   dateFrom: z.string().datetime().optional(),
   dateTo: z.string().datetime().optional(),

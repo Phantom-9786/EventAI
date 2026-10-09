@@ -25,3 +25,12 @@ export const createSeatSectionSchema = z.object({
 export type CreateVenueInput = z.infer<typeof createVenueSchema>;
 export type UpdateVenueInput = z.infer<typeof updateVenueSchema>;
 export type CreateSeatSectionInput = z.infer<typeof createSeatSectionSchema>;
+
+export const venueSearchSchema = z.object({
+  query: z.string().max(100).optional(),
+  city: z.string().max(100).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+export type VenueSearchInput = z.infer<typeof venueSearchSchema>;

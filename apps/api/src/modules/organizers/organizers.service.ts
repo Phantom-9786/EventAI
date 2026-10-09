@@ -5,8 +5,23 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import type { CreateVenueInput } from '@eventai/validation';
+import type {
+  CreateSeatSectionInput,
+  CreateVenueInput,
+  UpdateVenueInput,
+} from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
+
+/** 0-based index to spreadsheet-style letters: 0→A, 25→Z, 26→AA, 27→AB... */
+export function excelColumnLabel(index: number): string {
+  let label = '';
+  let n = index;
+  while (n >= 0) {
+    label = String.fromCharCode(65 + (n % 26)) + label;
+    n = Math.floor(n / 26) - 1;
+  }
+  return label;
+}
 
 // ═══════════════════════════════════════════════════
 // Organizers: onboarding (user → organizer profile +
@@ -110,14 +125,101 @@ export class OrganizersService {
     });
   }
 
-  /** Ensures the venue exists and belongs to the organizer. */
-  async requireOwnedVenue(organizerId: string, venueId: string) {
+  /** Ensures the venue exists and belongs to the organizer; returns its id. */
+  async requireOwnedVenue(organizerId: string, venueId: string): Promise<string> {
     const venue = await this.prisma.venue.findFirst({
       where: { id: venueId, organizerId },
       select: { id: true },
     });
     if (!venue) {
       throw new NotFoundException('Venue not found among your venues');
+    }
+    return venue.id;
+  }
+
+  async updateVenue(organizerId: string, venueId: string, input: UpdateVenueInput) {
+    const id = await this.requireOwnedVenue(organizerId, venueId);
+    return this.prisma.venue.update({
+      where: { id },
+      data: {
+        ...(input.name !== undefined && { name: input.name }),
+        ...(input.description !== undefined && { description: input.description }),
+        ...(input.address !== undefined && { address: input.address }),
+        ...(input.city !== undefined && { city: input.city }),
+        ...(input.state !== undefined && { state: input.state }),
+        ...(input.zipCode !== undefined && { zipCode: input.zipCode }),
+        ...(input.country !== undefined && { country: input.country }),
+        ...(input.latitude !== undefined && { latitude: input.latitude }),
+        ...(input.longitude !== undefined && { longitude: input.longitude }),
+        ...(input.capacity !== undefined && { capacity: input.capacity }),
+        ...(input.amenities !== undefined && { amenities: input.amenities }),
+      },
+    });
+  }
+
+  async deleteVenue(organizerId: string, venueId: string) {
+    const id = await this.requireOwnedVenue(organizerId, venueId);
+    const eventCount = await this.prisma.event.count({ where: { venueId: id } });
+    if (eventCount > 0) {
+      throw new ConflictException(
+        'Venue has events attached and cannot be deleted',
+      );
+    }
+    // Seat sections cascade with the venue
+    await this.prisma.venue.delete({ where: { id } });
+    return { message: 'Venue deleted' };
+  }
+
+  async createSeatSection(
+    organizerId: string,
+    venueId: string,
+    input: CreateSeatSectionInput,
+  ) {
+    const id = await this.requireOwnedVenue(organizerId, venueId);
+
+    const totalSeats = input.rows * input.seatsPerRow;
+    const section = await this.prisma.seatSection.create({
+      data: {
+        venueId: id,
+        name: input.name,
+        rows: input.rows,
+        seatsPerRow: input.seatsPerRow,
+        totalSeats,
+      },
+    });
+
+    await this.generateSeats(section.id, input.rows, input.seatsPerRow);
+    return section;
+  }
+
+  async listSeatSections(organizerId: string, venueId: string) {
+    const id = await this.requireOwnedVenue(organizerId, venueId);
+    return this.prisma.seatSection.findMany({
+      where: { venueId: id },
+      orderBy: { name: 'asc' },
+      include: {
+        _count: { select: { seats: true, ticketTypes: true } },
+      },
+    });
+  }
+
+  /** Bulk-inserts seats with Excel-style row letters (A, B, ..., Z, AA, AB...). */
+  private async generateSeats(sectionId: string, rows: number, seatsPerRow: number) {
+    const seats: {
+      sectionId: string;
+      row: string;
+      number: number;
+      label: string;
+    }[] = [];
+    for (let r = 0; r < rows; r++) {
+      const rowLabel = excelColumnLabel(r);
+      for (let n = 1; n <= seatsPerRow; n++) {
+        seats.push({ sectionId, row: rowLabel, number: n, label: `${rowLabel}${n}` });
+      }
+    }
+    const CHUNK = 1000;
+    for (let i = 0; i < seats.length; i += CHUNK) {
+      await this.prisma.seat.createMany({ data: seats.slice(i, i + CHUNK) });
     }
   }
 
