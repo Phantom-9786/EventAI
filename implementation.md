@@ -126,7 +126,7 @@
 **Status: COMPLETE (seat-level selection intentionally deferred — ticket-type booking shipped; schema-ready for seat picking)**
 
 ### Payment
-- [x] Razorpay sandbox integration (lazy Razorpay client; keys optional in dev, required in production via env validation; rawBody enabled for webhooks)
+- [x] Razorpay sandbox integration (lazy Razorpay client; keys optional in dev, required in production via env validation; rawBody enabled for webhooks) — **live-auth verified 2026-10-10 (Test Mode): real test credentials configured; API flow register → book (₹499) → `POST /api/payments/order` returned a real Razorpay `order_…` (49900 paise INR, CREATED) with the payment row linked (booking → PAYMENT_PENDING). Full checkout round-trip (test card → verify → CONFIRMED → refund) still pending a browser step**
 - [x] Order creation (`POST /api/payments/order` — amount server-priced from the booking, receipt = bookingId, booking → PAYMENT_PENDING, open-order reuse on retry, failed-payment row recycled with a fresh order)
 - [x] Backend payment verification (`POST /api/payments/verify` — HMAC-SHA256 `order|payment` signature check with constant-time compare; confirm transaction marks payment CAPTURED, booking CONFIRMED, mints tickets; idempotent once captured)
 - [x] Webhook handling (`POST /api/payments/webhook` — @Public, `x-razorpay-signature` over the raw body, `payment.captured` confirms (out-of-order delivery safe, duplicate-safe), `payment.failed` marks the payment FAILED)
