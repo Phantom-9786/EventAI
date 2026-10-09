@@ -27,6 +27,7 @@ export interface TokenPayload {
   sub: string; // userId
   email: string;
   role: UserRole;
+  jti?: string; // unique token id — keeps tokens distinct within the same second
   iat: number;
   exp: number;
 }

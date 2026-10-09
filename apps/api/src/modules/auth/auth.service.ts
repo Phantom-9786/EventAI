@@ -484,6 +484,9 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       role: user.role as UserRole,
+      // Unique per token: two logins within the same second would otherwise
+      // produce byte-identical JWTs and violate the unique session hash.
+      jti: randomBytes(12).toString('hex'),
     };
     const accessToken = await this.jwtService.signAsync(payload);
     const refreshToken = randomBytes(48).toString('hex');

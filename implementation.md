@@ -253,12 +253,12 @@
 ---
 
 ## Phase 6 — Production Polish
-**Status: PARTIAL — 180 unit tests, structured logging, Playwright smoke suite (7/7), CI workflow verified green on GitHub (Phantom-9786/EventAI), and the full docs/ set shipped; error tracking, integration tests, and live third-party verification pending**
+**Status: PARTIAL — 180 unit tests + 26 DB-backed integration tests, structured logging, Playwright smoke suite (7/7), CI workflow verified green on GitHub (Phantom-9786/EventAI), and the full docs/ set shipped; error tracking and live third-party verification pending**
 
 ### Testing
 - [x] Unit tests (180 passing across 14 suites: auth incl. Google + password-reset + email-verification cases, google-oauth service, structured logger, notifications (Brevo email integration — sender parsing, success/provider-error/unreachable paths, all five email flows), users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback/cancellation-email, payments incl. signature/webhook/refund/refund-email, AI service, admin stats + user/event/organizer management, health)
-- [ ] Integration tests (needs a live Postgres in CI — natural next step)
-- [x] Concurrency logic covered at unit level (conditional-decrement rollback prevents double booking; real parallel-run test pending)
+- [x] Integration tests (26 passing across 3 suites in `apps/api/test/*.int-spec.ts`, run against a real PostgreSQL provisioned by `prisma migrate deploy` in a dedicated `*test*` database — hard guard refuses non-test DB names; all externals (Brevo/Razorpay/Google/Grok) stubbed so CI needs no credentials; wired into CI after unit tests with a `postgres:16` service container, ADR-016): auth round-trip (argon2id verify, hashed session rows, duplicate-email rejection), full password-reset lifecycle (hashed single-use tokens, prior-token invalidation, reuse + expiry rejection, session sign-out, new-password login), event FTS (trigger-populated search_vector, relevance ordering, city filter, pagination), booking engine (stock decrement, idempotency, concurrency oversell prevention via real parallel transactions, maxPerBooking, started-event rejection, unpaid cancel stock restore, expiry release, cross-user isolation). Caught + fixed a real bug: same-second logins produced byte-identical JWTs violating the unique session hash — fixed with a random `jti` claim
+- [x] Concurrency logic covered at unit level (conditional-decrement rollback prevents double booking) **and at integration level** (real parallel transactions: exactly one of two competing bookings wins, stock never oversold)
 - [x] E2E tests (Playwright smoke suite `e2e/smoke.spec.ts` — 7/7: landing, discovery, search, event detail + tickets, categories/venues, seeded sign-in, auth gate; booking/pay e2e still pending real Razorpay keys)
 
 ### Security Review
