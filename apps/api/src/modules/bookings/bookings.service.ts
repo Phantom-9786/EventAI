@@ -8,6 +8,7 @@ import {
 import type { CreateBookingInput } from '@eventai/validation';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PaymentsService } from '../payments/payments.service';
 
 /** Reuses the seat-hold TTL: how long a PENDING booking keeps stock reserved. */
 const HOLD_TTL_SECONDS = Number(process.env.SEAT_HOLD_TTL_SECONDS ?? 600);
@@ -56,7 +57,10 @@ const BOOKING_DETAIL_INCLUDE = {
 export class BookingsService {
   private readonly logger = new Logger(BookingsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   async create(userId: string, input: CreateBookingInput) {
     // Fast idempotency path: same key → return the original booking
@@ -228,10 +232,8 @@ export class BookingsService {
       throw new ConflictException('This booking is already closed');
     }
     if (booking.status === 'CONFIRMED') {
-      // Refund flow arrives with the payment integration
-      throw new ConflictException(
-        'Paid bookings cannot be cancelled yet — refunds ship with payments',
-      );
+      // Paid bookings go through the Razorpay refund flow
+      return this.paymentsService.refundBooking(userId, bookingId, reason);
     }
     if (booking.status === 'REFUNDED') {
       throw new ConflictException('This booking was already refunded');

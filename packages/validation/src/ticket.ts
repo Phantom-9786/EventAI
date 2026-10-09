@@ -17,3 +17,9 @@ export const updateTicketTypeSchema = createTicketTypeSchema.partial().extend({
 
 export type CreateTicketTypeInput = z.infer<typeof createTicketTypeSchema>;
 export type UpdateTicketTypeInput = z.infer<typeof updateTicketTypeSchema>;
+
+export const validateTicketSchema = z.object({
+  ticketCode: z.string().min(4).max(64).trim(),
+});
+
+export type ValidateTicketInput = z.infer<typeof validateTicketSchema>;

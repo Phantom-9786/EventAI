@@ -12,8 +12,16 @@ import {
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { createPaymentOrderSchema, verifyPaymentSchema } from '@eventai/validation';
-import type { CreatePaymentOrderInput, VerifyPaymentInput } from '@eventai/validation';
+import {
+  createPaymentOrderSchema,
+  refundBookingSchema,
+  verifyPaymentSchema,
+} from '@eventai/validation';
+import type {
+  CreatePaymentOrderInput,
+  RefundBookingInput,
+  VerifyPaymentInput,
+} from '@eventai/validation';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
@@ -59,6 +67,16 @@ export class PaymentsController {
       req.rawBody ?? Buffer.from(JSON.stringify(req.body)),
       req.headers['x-razorpay-signature'] as string | undefined,
     );
+  }
+
+  @Post('refund')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Fully refund a paid booking via Razorpay and release its tickets' })
+  async refund(
+    @CurrentUser('id') userId: string,
+    @Body(new ZodValidationPipe(refundBookingSchema)) body: RefundBookingInput,
+  ) {
+    return this.paymentsService.refundBooking(userId, body.bookingId, body.reason);
   }
 
   @Get('tickets/:id/qr')

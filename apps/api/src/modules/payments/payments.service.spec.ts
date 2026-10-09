@@ -13,10 +13,12 @@ describe('PaymentsService', () => {
   let prisma: {
     booking: { findUnique: jest.Mock; update: jest.Mock; findUniqueOrThrow: jest.Mock };
     payment: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
-    ticket: { count: jest.Mock; create: jest.Mock; findUnique: jest.Mock };
+    ticket: { count: jest.Mock; create: jest.Mock; findUnique: jest.Mock; updateMany: jest.Mock };
+    ticketType: { updateMany: jest.Mock };
     $transaction: jest.Mock;
   };
   let ordersCreate: jest.Mock;
+  let refundsCreate: jest.Mock;
 
   const keyId = 'rzp_test_key';
   const keySecret = 'test_secret_16chars';
@@ -65,10 +67,17 @@ describe('PaymentsService', () => {
     prisma = {
       booking: { findUnique: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn() },
       payment: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
-      ticket: { count: jest.fn().mockResolvedValue(0), create: jest.fn(), findUnique: jest.fn() },
+      ticket: {
+        count: jest.fn().mockResolvedValue(0),
+        create: jest.fn(),
+        findUnique: jest.fn(),
+        updateMany: jest.fn(),
+      },
+      ticketType: { updateMany: jest.fn() },
       $transaction: jest.fn(),
     };
     ordersCreate = jest.fn();
+    refundsCreate = jest.fn();
 
     const moduleRef = await Test.createTestingModule({
       providers: [PaymentsService, { provide: PrismaService, useValue: prisma }],
@@ -78,6 +87,7 @@ describe('PaymentsService', () => {
     // Inject a stubbed Razorpay client
     (service as unknown as { razorpayClient: unknown }).razorpayClient = {
       orders: { create: ordersCreate },
+      payments: { refund: refundsCreate },
     };
   });
 
@@ -297,6 +307,90 @@ describe('PaymentsService', () => {
       const result = await service.handleWebhook(b, signBody(b));
 
       expect(result).toEqual({ received: true, handled: false });
+    });
+  });
+
+  describe('refundBooking', () => {
+    const paidPayment = {
+      id: 'pay-row-1',
+      bookingId,
+      userId,
+      status: 'CAPTURED',
+      razorpayPaymentId: 'pay_abc',
+      booking: { ...booking, status: 'CONFIRMED' },
+    };
+
+    it('refunds via Razorpay and closes the booking with tickets cancelled', async () => {
+      prisma.payment.findUnique.mockResolvedValue(paidPayment);
+      refundsCreate.mockResolvedValue({ id: 'rfnd_1', amount: 300000, status: 'processed' });
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.payment.findUnique.mockResolvedValueOnce(paidPayment); // load
+      prisma.payment.findUnique.mockResolvedValueOnce({ status: 'CAPTURED' }); // tx re-check
+      prisma.payment.update.mockResolvedValue(paidPayment);
+      prisma.booking.update.mockResolvedValue({ ...booking, status: 'REFUNDED' });
+      prisma.ticket.updateMany.mockResolvedValue({ count: 2 });
+      prisma.booking.findUniqueOrThrow.mockResolvedValue({
+        ...booking,
+        status: 'REFUNDED',
+        tickets: [],
+      });
+
+      const result = await service.refundBooking(userId, bookingId, 'changed plans');
+
+      expect(refundsCreate).toHaveBeenCalledWith(
+        'pay_abc',
+        expect.objectContaining({ speed: 'normal' }),
+      );
+      expect(prisma.payment.update).toHaveBeenCalledWith({
+        where: { id: 'pay-row-1' },
+        data: expect.objectContaining({ status: 'REFUNDED', refundId: 'rfnd_1' }),
+      });
+      expect(prisma.booking.update).toHaveBeenCalledWith({
+        where: { id: bookingId },
+        data: expect.objectContaining({ status: 'REFUNDED' }),
+      });
+      expect(prisma.ticket.updateMany).toHaveBeenCalledWith({
+        where: { bookingId, status: 'VALID' },
+        data: { status: 'CANCELLED' },
+      });
+      expect(prisma.ticketType.updateMany).toHaveBeenCalledWith({
+        where: { id: 'tt-1' },
+        data: { availableQuantity: { increment: 2 } },
+      });
+      expect(result.refundId).toBe('rfnd_1');
+      expect(result.booking.status).toBe('REFUNDED');
+    });
+
+    it('refuses to refund an unpaid booking', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...paidPayment,
+        status: 'CREATED',
+        razorpayPaymentId: null,
+        booking: { ...booking, status: 'PAYMENT_PENDING' },
+      });
+
+      await expect(service.refundBooking(userId, bookingId)).rejects.toThrow(ConflictException);
+      expect(refundsCreate).not.toHaveBeenCalled();
+    });
+
+    it('refuses a second refund', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...paidPayment,
+        booking: { ...booking, status: 'REFUNDED' },
+      });
+
+      await expect(service.refundBooking(userId, bookingId)).rejects.toThrow(/already refunded/i);
+      expect(refundsCreate).not.toHaveBeenCalled();
+    });
+
+    it('hides other users’ bookings', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...paidPayment,
+        booking: { ...booking, userId: 'someone-else' },
+      });
+
+      await expect(service.refundBooking('intruder', bookingId)).rejects.toThrow(NotFoundException);
+      expect(refundsCreate).not.toHaveBeenCalled();
     });
   });
 

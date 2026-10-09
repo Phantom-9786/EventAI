@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CalendarDays, LogOut, Menu, X } from 'lucide-react';
+import { CalendarDays, LogOut, Menu, Ticket, X } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -60,6 +60,10 @@ export function Header() {
             <span className="h-9 w-24 animate-pulse rounded-md bg-muted" aria-hidden />
           ) : user ? (
             <>
+              <Link href="/tickets" className={buttonVariants({ variant: 'ghost' })}>
+                <Ticket className="mr-1 h-4 w-4" />
+                My Tickets
+              </Link>
               <span className="max-w-[160px] truncate text-sm font-medium text-muted-foreground">
                 Hi, {user.firstName ?? user.email}
               </span>

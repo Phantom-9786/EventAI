@@ -27,6 +27,8 @@ import type {
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { validateTicketSchema } from '@eventai/validation';
+import type { ValidateTicketInput } from '@eventai/validation';
 import { OrganizersService } from './organizers.service';
 
 @ApiTags('organizer')
@@ -129,5 +131,29 @@ export class OrganizersController {
     return {
       sections: await this.organizersService.listSeatSections(organizerId, venueId),
     };
+  }
+
+  @Roles('ORGANIZER')
+  @Post('events/:eventId/tickets/validate')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Check in a ticket by its code at the door (organizer only)' })
+  async validateTicket(
+    @CurrentUser('id') userId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Body(new ZodValidationPipe(validateTicketSchema)) body: ValidateTicketInput,
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return this.organizersService.validateTicket(organizerId, eventId, body.ticketCode);
+  }
+
+  @Roles('ORGANIZER')
+  @Get('events/:eventId/tickets/stats')
+  @ApiOperation({ summary: 'Ticket check-in summary for one of your events (organizer only)' })
+  async eventTicketStats(
+    @CurrentUser('id') userId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return this.organizersService.eventTicketStats(organizerId, eventId);
   }
 }

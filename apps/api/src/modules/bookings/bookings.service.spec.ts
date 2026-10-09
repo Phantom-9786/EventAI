@@ -1,10 +1,12 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PaymentsService } from '../payments/payments.service';
 import { BookingsService } from './bookings.service';
 
 describe('BookingsService', () => {
   let service: BookingsService;
+  let refundBooking: jest.Mock;
   let prisma: {
     booking: {
       findUnique: jest.Mock;
@@ -63,11 +65,18 @@ describe('BookingsService', () => {
       $transaction: jest.fn(),
     };
 
+    const paymentsService = { refundBooking: jest.fn() };
+
     const moduleRef = await Test.createTestingModule({
-      providers: [BookingsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        BookingsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: PaymentsService, useValue: paymentsService },
+      ],
     }).compile();
 
     service = moduleRef.get(BookingsService);
+    refundBooking = paymentsService.refundBooking;
   });
 
   const validInput = {
@@ -220,7 +229,9 @@ describe('BookingsService', () => {
       prisma.booking.update.mockResolvedValue({ ...booking, status: 'CANCELLED' });
       prisma.ticketType.updateMany.mockResolvedValue({ count: 1 });
 
-      const result = await service.cancelOwn('user-1', 'bk-1', 'changed plans');
+      const result = (await service.cancelOwn('user-1', 'bk-1', 'changed plans')) as {
+        status: string;
+      };
 
       expect(result.status).toBe('CANCELLED');
       expect(prisma.booking.update).toHaveBeenCalledWith(
@@ -241,12 +252,21 @@ describe('BookingsService', () => {
       await expect(service.cancelOwn('user-1', 'bk-1')).rejects.toThrow(ConflictException);
     });
 
-    it('refuses to cancel confirmed bookings until refunds ship', async () => {
+    it('refunds a confirmed booking through the payments service', async () => {
       prisma.booking.findUnique.mockResolvedValue({ ...booking, status: 'CONFIRMED' });
+      refundBooking.mockResolvedValue({
+        booking: { ...booking, status: 'REFUNDED' },
+        refundId: 'rfnd_1',
+        refundAmount: 300000,
+      });
 
-      await expect(service.cancelOwn('user-1', 'bk-1')).rejects.toThrow(
-        /refunds ship with payments/i,
-      );
+      const result = (await service.cancelOwn('user-1', 'bk-1', 'changed plans')) as {
+        booking: { status: string };
+      };
+
+      expect(refundBooking).toHaveBeenCalledWith('user-1', 'bk-1', 'changed plans');
+      expect(result.booking.status).toBe('REFUNDED');
+      expect(prisma.booking.update).not.toHaveBeenCalled();
     });
   });
 });

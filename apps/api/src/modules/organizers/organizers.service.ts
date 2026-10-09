@@ -239,4 +239,77 @@ export class OrganizersService {
     ]);
     return { events, total, page, limit, pages: Math.ceil(total / limit) };
   }
+
+  /** Resolves an event owned by the organizer; throws if missing or foreign. */
+  private async requireOwnedEvent(organizerId: string, eventId: string) {
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, organizerId },
+      select: { id: true, title: true },
+    });
+    if (!event) {
+      throw new NotFoundException('Event not found among your events');
+    }
+    return event;
+  }
+
+  /**
+   * Validates (checks in) a ticket by its code at the door. Only the
+   * organizer of the ticket's event may validate it. Returns the ticket
+   * state including the reason when validation is refused.
+   */
+  async validateTicket(organizerId: string, eventId: string, ticketCode: string) {
+    await this.requireOwnedEvent(organizerId, eventId);
+
+    const ticket = await this.prisma.ticket.findUnique({
+      where: { ticketCode },
+      include: {
+        ticketType: { select: { id: true, name: true } },
+        user: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+    });
+    if (!ticket || ticket.eventId !== eventId) {
+      throw new NotFoundException('Ticket not found for this event');
+    }
+
+    if (ticket.status === 'USED') {
+      throw new ConflictException(
+        `Ticket already used${ticket.validatedAt ? ` at ${ticket.validatedAt.toISOString()}` : ''}`,
+      );
+    }
+    if (ticket.status !== 'VALID') {
+      throw new ConflictException(`Ticket is ${ticket.status.toLowerCase()} and cannot be accepted`);
+    }
+
+    const updated = await this.prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { status: 'USED', validatedAt: new Date(), validatedBy: organizerId },
+      select: {
+        id: true,
+        ticketCode: true,
+        holderName: true,
+        status: true,
+        validatedAt: true,
+        ticketType: { select: { id: true, name: true } },
+      },
+    });
+
+    this.logger.log(`Ticket ${ticket.ticketCode} validated for event ${eventId}`);
+    return { ticket: updated, holder: ticket.user };
+  }
+
+  /** Door summary: how many tickets per status for one of your events. */
+  async eventTicketStats(organizerId: string, eventId: string) {
+    await this.requireOwnedEvent(organizerId, eventId);
+    const grouped = await this.prisma.ticket.groupBy({
+      by: ['status'],
+      where: { eventId },
+      _count: { _all: true },
+    });
+    const stats = { VALID: 0, USED: 0, CANCELLED: 0, EXPIRED: 0 };
+    for (const g of grouped) {
+      stats[g.status] = g._count._all;
+    }
+    const total = Object.values(stats).reduce((a, b) => a + b, 0);
+    return { ...stats, total, checkedIn: stats.USED };
+  }
 }

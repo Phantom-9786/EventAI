@@ -112,3 +112,103 @@ describe('OrganizersService venue operations', () => {
     });
   });
 });
+
+describe('OrganizersService ticket validation', () => {
+  let service: OrganizersService;
+  let prisma: {
+    event: { findFirst: jest.Mock };
+    ticket: {
+      findUnique: jest.Mock;
+      update: jest.Mock;
+      groupBy: jest.Mock;
+    };
+  };
+
+  const ownedEvent = { id: 'event-1', title: 'Gig', organizerId: 'org-1' };
+  const validTicket = {
+    id: 'ticket-1',
+    ticketCode: 'TKT-ABC123',
+    eventId: 'event-1',
+    status: 'VALID',
+    validatedAt: null,
+    holderName: 'Ada Lovelace',
+    ticketType: { id: 'tt-1', name: 'General' },
+    user: { id: 'user-1', firstName: 'Ada', lastName: 'Lovelace', email: 'a@b.c' },
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      event: { findFirst: jest.fn().mockResolvedValue(ownedEvent) },
+      ticket: { findUnique: jest.fn(), update: jest.fn(), groupBy: jest.fn() },
+    };
+
+    const moduleRef = await Test.createTestingModule({
+      providers: [OrganizersService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+
+    service = moduleRef.get(OrganizersService);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (service as any).logger = { log: jest.fn(), error: jest.fn(), warn: jest.fn() };
+  });
+
+  it('checks in a VALID ticket and stamps the validator', async () => {
+    prisma.ticket.findUnique.mockResolvedValue(validTicket);
+    prisma.ticket.update.mockImplementation(async ({ data }) => ({
+      ...validTicket,
+      ...data,
+      status: 'USED',
+    }));
+
+    const result = await service.validateTicket('org-1', 'event-1', 'TKT-ABC123');
+
+    expect(result.ticket.status).toBe('USED');
+    expect(prisma.ticket.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'ticket-1' },
+        data: expect.objectContaining({ status: 'USED', validatedBy: 'org-1' }),
+      }),
+    );
+    expect(result.holder).toMatchObject({ firstName: 'Ada' });
+  });
+
+  it('rejects an already-used ticket', async () => {
+    prisma.ticket.findUnique.mockResolvedValue({
+      ...validTicket,
+      status: 'USED',
+      validatedAt: new Date('2026-01-01T10:00:00Z'),
+    });
+
+    await expect(
+      service.validateTicket('org-1', 'event-1', 'TKT-ABC123'),
+    ).rejects.toThrow(/already used/i);
+    expect(prisma.ticket.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects a ticket belonging to a different event', async () => {
+    prisma.ticket.findUnique.mockResolvedValue({ ...validTicket, eventId: 'event-OTHER' });
+
+    await expect(
+      service.validateTicket('org-1', 'event-1', 'TKT-ABC123'),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('rejects a foreign organizer', async () => {
+    prisma.event.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.validateTicket('org-IMPOSTOR', 'event-1', 'TKT-ABC123'),
+    ).rejects.toThrow(NotFoundException);
+    expect(prisma.ticket.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('summarises ticket counts per status', async () => {
+    prisma.ticket.groupBy.mockResolvedValue([
+      { status: 'VALID', _count: { _all: 40 } },
+      { status: 'USED', _count: { _all: 10 } },
+    ]);
+
+    const stats = await service.eventTicketStats('org-1', 'event-1');
+
+    expect(stats).toMatchObject({ VALID: 40, USED: 10, total: 50, checkedIn: 10 });
+  });
+});

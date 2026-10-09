@@ -218,6 +218,98 @@ export class PaymentsService {
     return { received: true, handled: false };
   }
 
+  // ── Refunds ──────────────────────────────────────
+
+  /** Full refund of a confirmed booking via the Razorpay refund API. */
+  async refundBooking(userId: string, bookingId: string, reason?: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { bookingId },
+      include: { booking: { include: { items: true } } },
+    });
+    if (!payment || payment.booking.userId !== userId) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    const booking = payment.booking;
+    if (booking.status === 'REFUNDED') {
+      throw new ConflictException('This booking was already refunded');
+    }
+    if (booking.status !== 'CONFIRMED') {
+      throw new ConflictException(
+        'Only paid (confirmed) bookings can be refunded — unpaid bookings can simply be cancelled',
+      );
+    }
+    if (payment.status !== 'CAPTURED' || !payment.razorpayPaymentId) {
+      throw new ConflictException('No captured payment exists for this booking');
+    }
+
+    const refund = await this.ensureClient().payments.refund(
+      payment.razorpayPaymentId,
+      { speed: 'normal', notes: { bookingId: booking.id, reason: reason ?? 'user-requested' } },
+    ) as { id: string; amount: number; status: string };
+
+    const refunded = await this.prisma.$transaction(async (tx) => {
+      // Re-check: a concurrent refund may have gone through
+      const current = await tx.payment.findUnique({
+        where: { id: payment.id },
+        select: { status: true },
+      });
+      if (!current || current.status !== 'CAPTURED') {
+        throw new ConflictException('This booking was already refunded');
+      }
+
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'REFUNDED',
+          refundId: refund.id,
+          refundAmount: refund.amount,
+        },
+      });
+
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: 'REFUNDED',
+          cancelledAt: new Date(),
+          cancellationReason: reason ?? 'Customer refund',
+        },
+      });
+
+      // Cancel unused tickets and release the stock back for resale
+      await tx.ticket.updateMany({
+        where: { bookingId: booking.id, status: 'VALID' },
+        data: { status: 'CANCELLED' },
+      });
+      for (const item of booking.items) {
+        await tx.ticketType.updateMany({
+          where: { id: item.ticketTypeId },
+          data: { availableQuantity: { increment: item.quantity } },
+        });
+      }
+
+      return tx.booking.findUniqueOrThrow({
+        where: { id: booking.id },
+        include: {
+          items: true,
+          payment: true,
+          tickets: {
+            select: {
+              id: true,
+              ticketCode: true,
+              holderName: true,
+              status: true,
+              ticketTypeId: true,
+            },
+          },
+        },
+      });
+    });
+
+    this.logger.log(`Booking ${booking.id} refunded (${refund.id})`);
+    return { booking: refunded, refundId: refund.id, refundAmount: refund.amount };
+  }
+
   // ── Digital ticket QR ────────────────────────────
 
   async getTicketQrDataUrl(userId: string, ticketId: string): Promise<string> {

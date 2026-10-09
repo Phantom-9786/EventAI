@@ -30,7 +30,13 @@ export const cancelBookingSchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
+export const refundBookingSchema = z.object({
+  bookingId: z.string().uuid('Invalid booking'),
+  reason: z.string().max(500).optional(),
+});
+
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
 export type CreatePaymentOrderInput = z.infer<typeof createPaymentOrderSchema>;
 export type VerifyPaymentInput = z.infer<typeof verifyPaymentSchema>;
 export type CancelBookingInput = z.infer<typeof cancelBookingSchema>;
+export type RefundBookingInput = z.infer<typeof refundBookingSchema>;

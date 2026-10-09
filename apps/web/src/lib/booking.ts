@@ -80,3 +80,19 @@ export async function getTicketQr(ticketId: string): Promise<string> {
   const { dataUrl } = (await res.json()) as { dataUrl: string };
   return dataUrl;
 }
+
+export interface BookingListEntry extends BookingView {
+  event: { id: string; title: string; slug: string; startDate: string; venue: { name: string; city: string } };
+  items: { id: string; quantity: number; ticketType: { name: string } }[];
+  totalAmount: number;
+}
+
+export async function listBookings(page = 1, limit = 20): Promise<{
+  bookings: BookingListEntry[];
+  total: number;
+  pages: number;
+}> {
+  const res = await authFetch(`/bookings?page=${page}&limit=${limit}`);
+  if (!res.ok) throw new Error(`Failed to load bookings (${res.status})`);
+  return res.json();
+}
