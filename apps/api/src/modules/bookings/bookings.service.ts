@@ -1,0 +1,304 @@
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import type { CreateBookingInput } from '@eventai/validation';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+
+/** Reuses the seat-hold TTL: how long a PENDING booking keeps stock reserved. */
+const HOLD_TTL_SECONDS = Number(process.env.SEAT_HOLD_TTL_SECONDS ?? 600);
+
+const BOOKING_DETAIL_INCLUDE = {
+  event: {
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      startDate: true,
+      endDate: true,
+      venue: { select: { id: true, name: true, city: true } },
+    },
+  },
+  items: {
+    include: {
+      ticketType: {
+        select: { id: true, name: true, price: true, currency: true },
+      },
+    },
+  },
+  payment: { select: { id: true, status: true, amount: true } },
+} satisfies Prisma.BookingInclude;
+
+// ═══════════════════════════════════════════════════
+// Bookings: user-created reservations over ticket-type
+// stock. Creation is concurrency-safe (conditional
+// availability decrement inside a transaction), server-
+// priced, and idempotent per idempotency key. PENDING
+// bookings expire after HOLD_TTL and lazily release
+// their reserved stock.
+// ═══════════════════════════════════════════════════
+
+@Injectable()
+export class BookingsService {
+  private readonly logger = new Logger(BookingsService.name);
+
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(userId: string, input: CreateBookingInput) {
+    // Fast idempotency path: same key → return the original booking
+    const existing = await this.prisma.booking.findUnique({
+      where: { idempotencyKey: input.idempotencyKey },
+      include: BOOKING_DETAIL_INCLUDE,
+    });
+    if (existing) {
+      if (existing.userId !== userId) {
+        throw new ForbiddenException('Idempotency key already in use');
+      }
+      return existing;
+    }
+
+    // Merge duplicate ticket-type lines into one quantity per type
+    const quantities = new Map<string, number>();
+    for (const item of input.items) {
+      quantities.set(
+        item.ticketTypeId,
+        (quantities.get(item.ticketTypeId) ?? 0) + item.quantity,
+      );
+    }
+
+    const event = await this.prisma.event.findFirst({
+      where: { id: input.eventId, status: 'PUBLISHED' },
+      select: { id: true, startDate: true },
+    });
+    if (!event) {
+      throw new NotFoundException('Event not found or not open for booking');
+    }
+    if (event.startDate.getTime() <= Date.now()) {
+      throw new ConflictException('This event has already started');
+    }
+
+    const ticketTypes = await this.prisma.ticketType.findMany({
+      where: { id: { in: [...quantities.keys()] }, eventId: event.id },
+    });
+    if (ticketTypes.length !== quantities.size) {
+      throw new NotFoundException('One or more ticket types do not belong to this event');
+    }
+
+    const now = Date.now();
+    for (const type of ticketTypes) {
+      if (!type.isActive) {
+        throw new ConflictException(`Ticket type "${type.name}" is no longer on sale`);
+      }
+      const saleStart = type.saleStartDate?.getTime() ?? 0;
+      const saleEnd = type.saleEndDate?.getTime() ?? Number.POSITIVE_INFINITY;
+      if (now < saleStart || now > saleEnd) {
+        throw new ConflictException(`Ticket type "${type.name}" is outside its sale window`);
+      }
+      const wanted = quantities.get(type.id) ?? 0;
+      if (wanted > type.maxPerBooking) {
+        throw new ConflictException(
+          `Only ${type.maxPerBooking} "${type.name}" tickets per booking`,
+        );
+      }
+    }
+
+    const totalAmount = ticketTypes.reduce(
+      (sum, type) => sum + type.price * (quantities.get(type.id) ?? 0),
+      0,
+    );
+    const expiresAt = new Date(now + HOLD_TTL_SECONDS * 1000);
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // Conditional decrement: the row must still have enough stock at
+        // update time — concurrent bookings can never oversell.
+        for (const [ticketTypeId, quantity] of quantities) {
+          const result = await tx.ticketType.updateMany({
+            where: {
+              id: ticketTypeId,
+              eventId: event.id,
+              isActive: true,
+              availableQuantity: { gte: quantity },
+            },
+            data: { availableQuantity: { decrement: quantity } },
+          });
+          if (result.count === 0) {
+            const type = ticketTypes.find((t) => t.id === ticketTypeId);
+            throw new ConflictException(
+              `Not enough "${type?.name ?? 'ticket'}" tickets left for this booking`,
+            );
+          }
+        }
+
+        return tx.booking.create({
+          data: {
+            userId,
+            eventId: event.id,
+            totalAmount,
+            idempotencyKey: input.idempotencyKey,
+            expiresAt,
+            items: {
+              create: input.items.map((item) => {
+                const type = ticketTypes.find((t) => t.id === item.ticketTypeId);
+                return {
+                  ticketTypeId: item.ticketTypeId,
+                  quantity: item.quantity,
+                  unitPrice: type!.price,
+                  totalPrice: type!.price * item.quantity,
+                };
+              }),
+            },
+          },
+          include: BOOKING_DETAIL_INCLUDE,
+        });
+      });
+    } catch (error) {
+      // Prisma unique-violation: a concurrent request won the idempotency race
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: string }).code === 'P2002'
+      ) {
+        const winner = await this.prisma.booking.findUnique({
+          where: { idempotencyKey: input.idempotencyKey },
+          include: BOOKING_DETAIL_INCLUDE,
+        });
+        if (winner && winner.userId === userId) {
+          return winner;
+        }
+        throw new ForbiddenException('Idempotency key already in use');
+      }
+      throw error;
+    }
+  }
+
+  async listOwn(userId: string, page: number, limit: number) {
+    // Lazily expire this user's stale PENDING bookings before listing
+    await this.expireStaleBookings(userId);
+
+    const [bookings, total] = await this.prisma.$transaction([
+      this.prisma.booking.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        include: BOOKING_DETAIL_INCLUDE,
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.booking.count({ where: { userId } }),
+    ]);
+    return { bookings, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  async getOwn(userId: string, bookingId: string) {
+    await this.expireBookingIfStale(bookingId);
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: BOOKING_DETAIL_INCLUDE,
+    });
+    if (!booking || booking.userId !== userId) {
+      throw new NotFoundException('Booking not found');
+    }
+    return booking;
+  }
+
+  async cancelOwn(userId: string, bookingId: string, reason?: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { items: true },
+    });
+    if (!booking || booking.userId !== userId) {
+      throw new NotFoundException('Booking not found');
+    }
+    if (booking.status === 'CANCELLED' || booking.status === 'EXPIRED') {
+      throw new ConflictException('This booking is already closed');
+    }
+    if (booking.status === 'CONFIRMED') {
+      // Refund flow arrives with the payment integration
+      throw new ConflictException(
+        'Paid bookings cannot be cancelled yet — refunds ship with payments',
+      );
+    }
+    if (booking.status === 'REFUNDED') {
+      throw new ConflictException('This booking was already refunded');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.booking.findUnique({
+        where: { id: booking.id },
+        select: { status: true },
+      });
+      if (!current || current.status !== booking.status) {
+        throw new ConflictException('Booking status changed, please retry');
+      }
+
+      const updated = await tx.booking.update({
+        where: { id: booking.id },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          cancellationReason: reason,
+        },
+        include: BOOKING_DETAIL_INCLUDE,
+      });
+
+      // Release reserved stock (unpaid bookings only ever hold stock)
+      for (const item of booking.items) {
+        await tx.ticketType.updateMany({
+          where: { id: item.ticketTypeId },
+          data: { availableQuantity: { increment: item.quantity } },
+        });
+      }
+      return updated;
+    });
+  }
+
+  /** Expires all stale PENDING bookings of a user (lazy sweep on list). */
+  private async expireStaleBookings(userId: string) {
+    const stale = await this.prisma.booking.findMany({
+      where: {
+        userId,
+        status: 'PENDING',
+        expiresAt: { lt: new Date() },
+      },
+      select: { id: true },
+    });
+    for (const { id } of stale) {
+      await this.expireBookingIfStale(id);
+    }
+  }
+
+  /** Expires one PENDING booking past its TTL and releases its stock. */
+  private async expireBookingIfStale(bookingId: string) {
+    const booking = await this.prisma.booking.findFirst({
+      where: { id: bookingId, status: 'PENDING', expiresAt: { lt: new Date() } },
+      include: { items: true },
+    });
+    if (!booking) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Re-check inside the transaction: the user may have paid concurrently
+      const current = await tx.booking.findUnique({
+        where: { id: booking.id },
+        select: { status: true },
+      });
+      if (!current || current.status !== 'PENDING') return;
+
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: { status: 'EXPIRED' },
+      });
+      for (const item of booking.items) {
+        await tx.ticketType.updateMany({
+          where: { id: item.ticketTypeId },
+          data: { availableQuantity: { increment: item.quantity } },
+        });
+      }
+      this.logger.log(`Booking ${booking.id} expired and stock released`);
+    });
+  }
+}

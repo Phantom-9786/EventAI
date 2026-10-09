@@ -136,7 +136,14 @@ Implemented (Phase 2). See "Implemented Features — Phase 2". Session model in 
 
 ## Booking Architecture
 
-Not yet implemented. Schema ready (Booking, BookingItem, Seat states, idempotency key).
+Phase 3 core implemented (`apps/api/src/modules/bookings/`), payment-backed booking states pending:
+- `POST /api/bookings` (auth): body `{ eventId, items[{ticketTypeId, quantity}], idempotencyKey }` (schemas in `packages/validation/src/booking.ts`). Validates the event is PUBLISHED and not started, ticket types belong to the event and are active with an open sale window, and merged per-type quantities respect `maxPerBooking`. Total is computed server-side from current DB prices (never trusted from the client).
+- Concurrency safety: stock is reserved via conditional `ticketType.updateMany` decrement (`availableQuantity: { gte: qty }` as a WHERE condition) inside the booking transaction — concurrent bookings cannot oversell; a lost decrement aborts the whole transaction with 409.
+- Idempotency: `bookings.idempotency_key` is unique; a repeated key returns the original booking (403 if the key belongs to another user). Concurrent same-key requests are resolved by the P2002 unique-violation fallback path.
+- Expiry: PENDING bookings carry `expiresAt = now + SEAT_HOLD_TTL_SECONDS` (default 600s). Stock is released lazily — on `GET /api/bookings` (sweep of the user's stale bookings) and on `GET /api/bookings/:id` — via a transaction that re-checks status before expiring (a concurrent payment can win).
+- Cancellation: `POST /api/bookings/:id/cancel` releases reserved stock for unpaid bookings; CONFIRMED bookings are refused until the refund flow ships with payments.
+- `GET /api/bookings` returns paginated own bookings newest-first with items + event/venue summary; detail includes payment status when present.
+- Payments, seat-level assignment, digital tickets: still pending (schema-ready).
 
 ## Payment Architecture
 
@@ -173,7 +180,7 @@ Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global Validatio
 ## Testing Status
 
 - Jest configured in `apps/api` (unit) with `test/jest-e2e.json` for e2e
-- 65 passing unit tests (health: 3; auth service: 6; users service: 14; events service: 19 — CRUD, ownership, publish/cancel/delete transitions, FTS raw-SQL shape + hydration order, draft-hiding; tickets service: 7 — creation guards, sale windows, section-venue checks, availability derivation on quantity edits, delete-with-bookings refusal; organizers service: 8 — venue update/delete guards, seat-section generation incl. Excel row labels and chunking; venues service: 5 — public search filters/pagination, detail include shape, 404)
+- 79 passing unit tests (health: 3; auth service: 6; users service: 14; events service: 19 — CRUD, ownership, publish/cancel/delete transitions, FTS raw-SQL shape + hydration order, draft-hiding; tickets service: 7 — creation guards, sale windows, section-venue checks, availability derivation on quantity edits, delete-with-bookings refusal; organizers service: 8 — venue update/delete guards, seat-section generation incl. Excel row labels and chunking; venues service: 5 — public search filters/pagination, detail include shape, 404; bookings service: 14 — idempotency fast-path + foreign-key rejection, event/ticket guards, started-event refusal, maxPerBooking merge, sale windows, conditional decrement + server-side pricing, mid-transaction stock-failure rollback, cross-user booking hiding, cancel/closed/confirmed rules)
 - No tests yet in web/worker/packages
 
 ## Deployment Status
@@ -206,16 +213,16 @@ See `docs/architecture-decisions.md` (ADRs 001–013).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform: Authentication & RBAC (COMPLETE), User Profiles (COMPLETE), Event System incl. FTS discovery backend (COMPLETE), Ticket Types (COMPLETE), Venue completion (COMPLETE), Frontend public pages + auth UI (COMPLETE). Remaining in Phase 2: Leaflet venue maps, organizer dashboard UI (deferred to Phase 4 scope). Next: Phase 3 — Booking Engine (seats, bookings, payments, digital tickets).
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE except Leaflet maps + organizer dashboard, deferred to Phase 4). Phase 3 — Booking Engine (IN PROGRESS): booking core (creation with concurrency-safe stock reservation, idempotency, expiry, history, cancellation) COMPLETE; remaining: Razorpay payments, digital tickets, seat-level selection.
 
 ## Current Task
 
-Frontend auth & browse pages implemented and verified: `/signin` + `/signup` client forms wired to the auth API with AuthProvider context (bearer token in localStorage, silent refresh via httpOnly cookie, header sign-in state), `/categories` live grid, `/venues` browse + `/venues/[id]` detail with seating sections. Full monorepo pipeline green: lint 9/9, type-check 12/12, 65/65 unit tests, build 6/6 with 9 web routes.
+Booking engine core implemented and verified: `BookingsModule` with server-priced, idempotent booking creation guarded by conditional availability decrement (no overselling), lazy expiry releasing reserved stock after SEAT_HOLD_TTL, paginated history, and stock-releasing cancellation for unpaid bookings. Full monorepo pipeline green: lint 9/9, type-check 12/12, 79/79 unit tests, build 6/6.
 
 ## Next Task
 
-Phase 3 — Booking Engine: seat states + temporary holds (Redis/BullMQ), booking creation with PostgreSQL concurrency protection, Razorpay sandbox order/verify/webhook flow, digital ticket generation — starting with the booking backend, then the booking UI on the event detail page.
+Phase 3 continuation: Razorpay sandbox payment flow (order creation on booking, `verify-payment` signature check, webhook endpoint, failure handling), then digital ticket generation with QR codes after payment capture, then the frontend booking UI on the event detail page.
 
 ## Last Completed Checkpoint
 
-Phase 2 — Frontend auth & browse pages (commit "feat: add frontend auth and browse pages"); prior checkpoints: ticket types + venues + event pages (b93a276), event system (052363e), event system FTS (c59b01f), user profiles (990e83f), authentication (0c051b7).
+Phase 3 — booking engine core (commit "feat: add booking engine core"); prior checkpoints: frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).

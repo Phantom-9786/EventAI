@@ -122,7 +122,7 @@
 ---
 
 ## Phase 3 — Booking Engine
-**Status: NOT STARTED**
+**Status: IN PROGRESS — Booking creation (concurrency-safe, idempotent), history, expiry and cancellation complete; seat-level selection, Razorpay payments, and digital tickets next**
 
 ### Seat Management
 - [ ] Seat states (AVAILABLE, HELD, BOOKED, BLOCKED)
@@ -131,10 +131,13 @@
 - [ ] Concurrency protection (PostgreSQL transactions + row locking)
 
 ### Booking System
-- [ ] Booking states (PENDING, PAYMENT_PENDING, CONFIRMED, CANCELLED, EXPIRED, REFUNDED)
-- [ ] Booking creation flow
-- [ ] State machine transitions
-- [ ] Booking history
+- [x] Booking states (PENDING, PAYMENT_PENDING, CONFIRMED, CANCELLED, EXPIRED, REFUNDED)
+- [x] Booking creation flow (`POST /api/bookings` — server-priced, sale-window + maxPerBooking checks, stock reserved via conditional availability decrement inside a transaction)
+- [x] Concurrency protection (conditional `updateMany` decrement — concurrent requests can never oversell; transaction rollback on any failure)
+- [x] Idempotency (`idempotencyKey` unique per booking; repeated key returns the original booking, foreign key rejected)
+- [x] Booking expiry (PENDING bookings expire after `SEAT_HOLD_TTL_SECONDS`, default 10 min; stock released lazily on read/list inside a re-checked transaction)
+- [x] Booking history (`GET /api/bookings` paginated newest-first; `GET /api/bookings/:id` own detail with items + event summary)
+- [x] Cancellation (`POST /api/bookings/:id/cancel` — unpaid bookings release stock; CONFIRMED blocked until refunds ship with payments)
 
 ### Payment
 - [ ] Razorpay sandbox integration
