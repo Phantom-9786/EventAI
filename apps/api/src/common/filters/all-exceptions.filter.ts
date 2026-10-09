@@ -4,9 +4,10 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
-  Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
+import { StructuredLogger } from '../logging/structured-logger';
 
 // ═══════════════════════════════════════════════════
 // Global exception filter — consistent error envelope
@@ -20,16 +21,26 @@ interface ErrorEnvelope {
   error?: string;
   path: string;
   timestamp: string;
+  requestId?: string;
 }
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
-  private readonly logger = new Logger(AllExceptionsFilter.name);
+  private readonly logger: StructuredLogger;
+
+  constructor(configService: ConfigService) {
+    this.logger = new StructuredLogger(
+      AllExceptionsFilter.name,
+      configService.get<string>('NODE_ENV') === 'production' ||
+        configService.get<string>('LOG_FORMAT') === 'json',
+    );
+  }
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+    const requestId = request.headers['x-request-id'] as string | undefined;
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] = 'Internal server error';
@@ -46,10 +57,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
         error = b.error as string | undefined;
       }
     } else if (exception instanceof Error) {
-      this.logger.error(
-        `Unhandled exception on ${request.method} ${request.url}: ${exception.message}`,
-        exception.stack,
-      );
+      this.logger.logWithMeta('error', `Unhandled exception on ${request.method} ${request.url}`, {
+        method: request.method,
+        url: request.url,
+        requestId,
+        message: exception.message,
+        stack: exception.stack,
+      });
     }
 
     const payload: ErrorEnvelope = {
@@ -59,6 +73,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       error,
       path: request.url,
       timestamp: new Date().toISOString(),
+      ...(requestId ? { requestId } : {}),
     };
 
     response.status(statusCode).json(payload);

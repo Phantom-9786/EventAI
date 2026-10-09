@@ -253,10 +253,10 @@
 ---
 
 ## Phase 6 — Production Polish
-**Status: PARTIAL — 153 unit tests, Playwright smoke suite (7/7), CI workflow, and the full docs/ set shipped; observability tooling, integration tests, and live third-party verification pending**
+**Status: PARTIAL — 163 unit tests, structured logging, Playwright smoke suite (7/7), CI workflow, and the full docs/ set shipped; error tracking, integration tests, and live third-party verification pending**
 
 ### Testing
-- [x] Unit tests (153 passing across 12 suites: auth incl. Google + password-reset + email-verification cases, google-oauth service, users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback/cancellation-email, payments incl. signature/webhook/refund/refund-email, AI service, admin stats + user/event/organizer management, health)
+- [x] Unit tests (163 passing across 13 suites: auth incl. Google + password-reset + email-verification cases, google-oauth service, structured logger, users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback/cancellation-email, payments incl. signature/webhook/refund/refund-email, AI service, admin stats + user/event/organizer management, health)
 - [ ] Integration tests (needs a live Postgres in CI — natural next step)
 - [x] Concurrency logic covered at unit level (conditional-decrement rollback prevents double booking; real parallel-run test pending)
 - [x] E2E tests (Playwright smoke suite `e2e/smoke.spec.ts` — 7/7: landing, discovery, search, event detail + tickets, categories/venues, seeded sign-in, auth gate; booking/pay e2e still pending real Razorpay keys)
@@ -289,10 +289,10 @@
 - [ ] Workflow verification (runs on first push to GitHub)
 
 ### Observability
-- [ ] Structured logging
-- [x] Request IDs (request-id middleware in main.ts)
+- [x] Structured logging (`StructuredLogger`: single-line JSON entries with context/level/requestId when `LOG_FORMAT=json` or NODE_ENV=production; human-readable otherwise; request logs carry method/url/statusCode/durationMs/requestId; error envelope now includes `requestId`; 10 unit tests)
+- [x] Request IDs (request-id middleware in main.ts, echoed as `X-Request-Id` and correlated into request/error logs)
 - [x] Health endpoints (DB connectivity check at `/api/health`; Redis/Worker depth pending)
-- [ ] Error tracking setup
+- [ ] Error tracking setup (Sentry DSN placeholder in `.env.example`; blocked on a real DSN)
 
 ### Documentation
 - [x] README.md (complete)

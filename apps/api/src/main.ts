@@ -10,6 +10,7 @@ import cookieParser from 'cookie-parser';
 import { resolve } from 'path';
 import * as fs from 'fs';
 import { AppModule } from './app.module';
+import { isJsonLogging, StructuredLogger } from './common/logging/structured-logger';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -23,11 +24,20 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 4000);
   const frontendUrl = configService.get<string>('FRONTEND_URL', 'http://localhost:3000');
 
+  // ── Structured logging ─────────────────────────────
+  const jsonMode = isJsonLogging({
+    LOG_FORMAT: configService.get<string>('LOG_FORMAT'),
+    NODE_ENV: configService.get<string>('NODE_ENV'),
+  });
+  const appLogger = new StructuredLogger('App', jsonMode);
+  app.useLogger(appLogger);
+
   // ── Security ──────────────────────────────────────
   app.use(helmet());
   app.use(cookieParser());
 
   // ── Request IDs + structured request logging ─────
+  const httpLogger = new StructuredLogger('HTTP', jsonMode);
   app.use((req: Request, res: Response, next: NextFunction) => {
     const requestId = (req.headers['x-request-id'] as string) || randomUUID();
     req.headers['x-request-id'] = requestId;
@@ -35,9 +45,13 @@ async function bootstrap() {
     const start = Date.now();
     res.on('finish', () => {
       const durationMs = Date.now() - start;
-      logger.log(
-        `${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms [${requestId}]`,
-      );
+      httpLogger.logWithMeta('log', `${req.method} ${req.originalUrl}`, {
+        method: req.method,
+        url: req.originalUrl,
+        statusCode: res.statusCode,
+        durationMs,
+        requestId,
+      });
     });
     next();
   });
