@@ -103,6 +103,7 @@ export class AuthService {
 
     const publicUser = { id: user.id, email: user.email, role: user.role as UserRole };
     const tokens = await this.createSession(user.id, user.email, user.role);
+    this.issueEmailVerification(user.id, user.email, input.firstName, input.lastName);
     return { user: publicUser, tokens };
   }
 
@@ -301,6 +302,85 @@ export class AuthService {
       this.prisma.user.update({ where: { id: userId }, data: { passwordHash } }),
       this.prisma.session.deleteMany({ where: { userId } }),
     ]);
+  }
+
+  // ═══════════════════════════════════════════════════
+  // Email verification: one hashed token per user, 24h
+  // expiry, single-use. Google-linked accounts skip this
+  // (Google already attests the email; loginWithGoogle
+  // marks them verified).
+  // ═══════════════════════════════════════════════════
+
+  /** Fire-and-forget: create a fresh token and email the raw link. */
+  private issueEmailVerification(
+    userId: string,
+    email: string,
+    firstName?: string | null,
+    lastName?: string | null,
+  ): void {
+    void (async () => {
+      const token = randomBytes(32).toString('hex');
+      await this.prisma.emailVerificationToken.upsert({
+        where: { userId },
+        create: {
+          userId,
+          token: hashToken(token),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+        update: {
+          token: hashToken(token),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+      const sent = await this.notifications.sendEmailVerificationEmail({
+        to: email,
+        holderName: `${firstName ?? ''} ${lastName ?? ''}`.trim() || 'there',
+        verificationToken: token,
+        frontendUrl: this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000'),
+      });
+      if (!sent) this.logger.debug(`Email verification token for ${email}: ${token}`);
+    })().catch((err) => {
+      this.logger.warn(
+        `Email verification issue failed: ${err instanceof Error ? err.message : 'unknown'}`,
+      );
+    });
+  }
+
+  async verifyEmail(token: string): Promise<{ message: string }> {
+    const record = await this.prisma.emailVerificationToken.findUnique({
+      where: { token: hashToken(token) },
+      select: { id: true, userId: true, expiresAt: true },
+    });
+    if (!record || record.expiresAt < new Date()) {
+      throw new UnauthorizedException('Invalid or expired verification link');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: { isEmailVerified: true },
+        select: { id: true },
+      }),
+      this.prisma.emailVerificationToken.delete({ where: { id: record.id } }),
+    ]);
+
+    return { message: 'Email verified. Thank you!' };
+  }
+
+  async resendEmailVerification(userId: string): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, isEmailVerified: true, firstName: true, lastName: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+    if (user.isEmailVerified) {
+      return { message: 'Your email is already verified' };
+    }
+
+    this.issueEmailVerification(userId, user.email, user.firstName, user.lastName);
+    return { message: 'If your email is unverified, a new verification link has been sent' };
   }
 
   async requestPasswordReset(email: string): Promise<{ message: string }> {

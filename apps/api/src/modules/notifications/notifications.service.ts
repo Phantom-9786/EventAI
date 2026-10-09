@@ -84,6 +84,26 @@ export class NotificationsService {
     });
   }
 
+  async sendEmailVerificationEmail(input: {
+    to: string;
+    holderName: string;
+    verificationToken: string;
+    frontendUrl: string;
+  }): Promise<boolean> {
+    const verifyUrl = `${input.frontendUrl.replace(/\/$/, '')}/verify-email?token=${input.verificationToken}`;
+    return this.sendEmail({
+      to: input.to,
+      subject: 'Verify your EventAI email',
+      html: `
+        <p>Hi ${input.holderName},</p>
+        <p>Welcome to EventAI! Please confirm your email address. This link is valid for 24 hours:</p>
+        <p><a href="${verifyUrl}">Verify my email</a></p>
+        <p>If you didn't create an account, you can safely ignore this email.</p>
+        <p>— EventAI</p>
+      `,
+    });
+  }
+
   async sendPasswordResetEmail(input: {
     to: string;
     holderName: string;

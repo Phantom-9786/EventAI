@@ -15,6 +15,7 @@ export interface AuthUser {
   firstName: string | null;
   lastName: string | null;
   role: 'CUSTOMER' | 'ORGANIZER' | 'ADMIN';
+  isEmailVerified?: boolean;
 }
 
 export class ApiError extends Error {
@@ -125,6 +126,17 @@ export async function logout(): Promise<void> {
   } finally {
     setAccessToken(null);
   }
+}
+
+export async function resendEmailVerification(): Promise<boolean> {
+  const token = getAccessToken();
+  if (!token) return false;
+  const res = await fetch(`${API_URL}/auth/resend-verification`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.ok;
 }
 
 export async function fetchCurrentUser(): Promise<AuthUser | null> {

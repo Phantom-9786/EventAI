@@ -45,6 +45,7 @@ model User {
 
   // Relations
   sessions        Session[]
+  emailVerificationToken EmailVerificationToken?
   organizer       Organizer?
   bookings        Booking[]
   tickets         Ticket[]
@@ -56,6 +57,18 @@ model User {
 }
 
 // ── Session ───────────────────────────────────────
+
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  userId    String   @unique @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verification_tokens")
+}
 
 model Session {
   id           String   @id @default(uuid())

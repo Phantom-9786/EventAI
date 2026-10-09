@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, LogOut, Menu, Ticket, X } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
+import { EmailVerificationBanner } from '@/components/auth/email-verification-banner';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -116,6 +117,8 @@ export function Header() {
           {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </div>
+
+      <EmailVerificationBanner />
 
       {/* Mobile navigation */}
       <div

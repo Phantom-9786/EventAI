@@ -19,6 +19,7 @@ import {
   loginSchema,
   registerSchema,
   resetPasswordSchema,
+  verifyEmailSchema,
 } from '@eventai/validation';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { Public } from './decorators/public.decorator';
@@ -233,5 +234,22 @@ export class AuthController {
     @Body(new ZodValidationPipe(resetPasswordSchema)) body: { token: string; newPassword: string },
   ) {
     return this.authService.resetPassword(body.token, body.newPassword);
+  }
+
+  @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify the account email with a verification token' })
+  async verifyEmail(
+    @Body(new ZodValidationPipe(verifyEmailSchema)) body: { token: string },
+  ) {
+    return this.authService.verifyEmail(body.token);
+  }
+
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resend the email verification link (authenticated)' })
+  async resendVerification(@CurrentUser('id') userId: string) {
+    return this.authService.resendEmailVerification(userId);
   }
 }

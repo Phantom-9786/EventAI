@@ -90,6 +90,14 @@ Phase 2 — Google OAuth 2.0 (COMPLETE, unverified against real Google credentia
 - Full flow + setup steps documented in `docs/google-oauth.md` (login has NOT yet been performed with real Google Cloud credentials)
 - 14 unit tests (auth service google cases + google-oauth service: state CSRF/tamper/expiry, feature gating, code exchange, payload normalization)
 
+Phase 2 — Email Verification (COMPLETE):
+- `EmailVerificationToken` model (`email_verification_tokens`: unique userId + unique SHA-256-hashed token, 24h expiry, cascade delete — migration `20261009150000_email_verification`); one token per user via upsert, mirroring the sessions/password_resets pattern
+- `POST /api/auth/verify-email` (@Public, single-use: user update + token delete in one `$transaction`; invalid/expired → 401) and `POST /api/auth/resend-verification` (authenticated, short-circuits when already verified); register issues a token fire-and-forget
+- Google-linked accounts skip verification (Google attests the email; `loginWithGoogle` sets `isEmailVerified=true`); `GET /api/auth/me` returns `isEmailVerified`
+- Frontend: `/verify-email` page, `EmailVerificationBanner` under the header for unverified users (resend + dismiss), `resendEmailVerification()` in `lib/auth.ts`; `verifyEmailSchema` in `@eventai/validation`
+- Verified live: register → `isEmailVerified:false` → resend 200 → crafted token verify 200 → `me` shows `true` → token reuse rejected 401 and row deleted
+- 6 unit tests (issue/upsert, verify happy path + transaction, resend short-circuit, expiry, invalid token)
+
 Phase 2 — User Profiles (COMPLETE, `apps/api/src/modules/users/`):
 - `GET /api/users/me` full own profile (email, preferences, verification state); `PATCH /api/users/me` updates firstName/lastName/username/bio/location with P2002 → 409 on taken usernames
 - `PATCH /api/users/me/preferences` merges keys into the `users.preferences` JSON (string/boolean/number values)
@@ -136,7 +144,7 @@ Phase 2 — Frontend Auth & Browse Pages (COMPLETE, `apps/web/src/app/{signin,si
 
 ## Current Database Schema
 
-Complete Phase 1+ schema in `packages/database/prisma/schema.prisma` (see "Implemented Features"). Migrations applied: `20261008195519_init` (all 18 tables + enums + FKs) and `20261009120000_google_oauth` (`users.passwordHash` nullable + `users.google_id` unique). `search_vector` on Event is `Unsupported("tsvector")`: the column is created by Prisma in the migration; a trigger (`events_search_vector_trigger`, weights title=A, tags=B, short_description=C, description=D) and a GIN index (`events_search_vector_idx`, declared in the schema via `@@index([searchVector], type: Gin)`) are appended in the same migration. Verified end-to-end with a rolled-back insert + `websearch_to_tsquery` match. Prisma client generated (v6.19.3).
+Complete Phase 1+ schema in `packages/database/prisma/schema.prisma` (see "Implemented Features"). Migrations applied: `20261008195519_init` (all 18 tables + enums + FKs), `20261009120000_google_oauth` (`users.passwordHash` nullable + `users.google_id` unique) and `20261009150000_email_verification` (`email_verification_tokens`). `search_vector` on Event is `Unsupported("tsvector")`: the column is created by Prisma in the migration; a trigger (`events_search_vector_trigger`, weights title=A, tags=B, short_description=C, description=D) and a GIN index (`events_search_vector_idx`, declared in the schema via `@@index([searchVector], type: Gin)`) are appended in the same migration. Verified end-to-end with a rolled-back insert + `websearch_to_tsquery` match. Prisma client generated (v6.19.3).
 
 ## Authentication
 
@@ -185,7 +193,7 @@ Deferred by design: similar-event recommendations use a Postgres-based scoring q
 
 ## Security Architecture
 
-Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global ValidationPipe (whitelist + forbidNonWhitelisted), consistent error envelope (no stack leaks), fail-fast env validation, Zod-based body validation (`ZodValidationPipe` + `@eventai/validation`), Argon2id password hashing, hashed-at-rest refresh/session/reset tokens, httpOnly refresh cookie, global rate limiting (ThrottlerGuard; 10 req/min on auth), JWT auth with `@Public()` opt-out, RBAC via `@Roles()` + RolesGuard. Google OAuth: server-side `verifyIdToken`, HMAC-signed CSRF state cookie, verified-email-only account linking (ADR-014). Avatar uploads: mimetype allow-list + 5 MB cap enforced in the service (415/413 responses); uploads served with 1-day cache; only `/uploads/*` static prefix is exposed.
+Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global ValidationPipe (whitelist + forbidNonWhitelisted), consistent error envelope (no stack leaks), fail-fast env validation, Zod-based body validation (`ZodValidationPipe` + `@eventai/validation`), Argon2id password hashing, hashed-at-rest refresh/session/reset/verification tokens, httpOnly refresh cookie, global rate limiting (ThrottlerGuard; 10 req/min on auth), JWT auth with `@Public()` opt-out, RBAC via `@Roles()` + RolesGuard. Google OAuth: server-side `verifyIdToken`, HMAC-signed CSRF state cookie, verified-email-only account linking (ADR-014). Avatar uploads: mimetype allow-list + 5 MB cap enforced in the service (415/413 responses); uploads served with 1-day cache; only `/uploads/*` static prefix is exposed.
 
 ## Current Environment Configuration
 
@@ -194,7 +202,7 @@ Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global Validatio
 ## Testing Status
 
 - Jest configured in `apps/api` (unit) with `test/jest-e2e.json` for e2e
-- 147 passing unit tests across 12 suites (health, auth service incl. Google + password-reset-email cases, google-oauth service, users, events, tickets, organizers, venues, bookings incl. cancellation-email hook, payments incl. refund-email hook, AI service, admin stats + user management + event moderation + organizer verification)
+- 153 passing unit tests across 12 suites (health, auth service incl. Google + password-reset + email-verification cases, google-oauth service, users, events, tickets, organizers, venues, bookings incl. cancellation-email hook, payments incl. refund-email hook, AI service, admin stats + user management + event moderation + organizer verification)
 - Playwright smoke suite (`e2e/smoke.spec.ts`, `npx playwright test` with auto-started dev web server): 7/7 passing against the seeded stack — landing, discovery, search narrowing, event detail + ticket table, categories/venues, seeded sign-in, unauthenticated tickets gate. Requires PostgreSQL + Redis (docker compose up), seeded DB (`npm run db:seed`), and the API on :4000
 - No tests yet in web/worker/packages
 
@@ -218,7 +226,7 @@ Docker Compose infra services + per-app Dockerfiles exist. GitHub Actions CI wor
 - Frontend has no tests yet (API client, auth provider, pages are untested; web `test` script is a placeholder)
 - Landing page uses placeholder content; not yet backed by the API
 - API boot requires reachable PostgreSQL (PrismaService fails fast); frontend pages degrade gracefully to empty states when the API is unreachable
-- Password reset: full self-service flow (`/forgot-password` → email with 1-hour single-use token → `/reset-password`); with no `RESEND_API_KEY` the email is skipped and the raw token is logged in dev — live delivery blocked on a real key
+- Password reset + email verification: full self-service flows (`/forgot-password` → 1-hour single-use token → `/reset-password`; register → `/verify-email` with 24h single-use token + banner resend); with no `RESEND_API_KEY` emails are skipped and raw tokens are logged in dev — live delivery blocked on a real key
 
 ## Payments & Digital Tickets Architecture
 
@@ -240,11 +248,11 @@ See `docs/architecture-decisions.md` (ADRs 001–014).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE): auth incl. Google OAuth (live login pending real Google Cloud credentials) + self-service password reset, RBAC, profiles, events/FTS, ticket types, venues + Leaflet maps, frontend pages. Phase 3 — Booking Engine (COMPLETE except seat-level selection, deferred and documented): booking core + Razorpay payments + refunds + digital tickets with QR + check-in + booking UI. Phase 4 — Platform Engineering (COMPLETE except BullMQ split, charts/analytics, and audit logs — all documented as deferred): expiry cron, Resend confirmation + cancellation + refund emails, organizer stats + dashboard + attendee list + door scanner, admin stats + user management + event moderation + organizer verification (API + UI), Redis caching via CacheService. Phase 5 — AI Layer (PARTIAL): catalog-grounded Grok chat + similar-event recommendations + `/ai` page shipped (blocked on a real `GROK_API_KEY`); Pinecone RAG and tool-calling deferred. Phase 6 — Production Polish (PARTIAL): 147 unit tests + Playwright smoke suite 7/7, CI workflow, docs/ set complete; observability tooling and live third-party verification pending.
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE): auth incl. Google OAuth (live login pending real Google Cloud credentials) + self-service password reset + email verification, RBAC, profiles, events/FTS, ticket types, venues + Leaflet maps, frontend pages. Phase 3 — Booking Engine (COMPLETE except seat-level selection, deferred and documented): booking core + Razorpay payments + refunds + digital tickets with QR + check-in + booking UI. Phase 4 — Platform Engineering (COMPLETE except BullMQ split, charts/analytics, and audit logs — all documented as deferred): expiry cron, Resend confirmation + cancellation + refund emails, organizer stats + dashboard + attendee list + door scanner, admin stats + user management + event moderation + organizer verification (API + UI), Redis caching via CacheService. Phase 5 — AI Layer (PARTIAL): catalog-grounded Grok chat + similar-event recommendations + `/ai` page shipped (blocked on a real `GROK_API_KEY`); Pinecone RAG and tool-calling deferred. Phase 6 — Production Polish (PARTIAL): 153 unit tests + Playwright smoke suite 7/7, CI workflow, docs/ set complete; observability tooling and live third-party verification pending.
 
 ## Current Task
 
-Password-reset completion (Phase 2 auth closure): `sendPasswordResetEmail` in NotificationsService (1-hour link to `/reset-password?token=...`), `requestPasswordReset` fires it fire-and-forget and only logs the raw token when the email is skipped (no `RESEND_API_KEY`); new `/forgot-password` and `/reset-password` pages with a "Forgot password?" link on `/signin`. Verified live end-to-end against the seeded DB (forgot → reset → login with the new password → restored seed password). Unit tests now 147.
+Email verification (Phase 2 auth closure, this batch — committed at the next checkpoint): `EmailVerificationToken` model + migration `20261009150000_email_verification`, `issueEmailVerification`/`verifyEmail`/`resendEmailVerification` in AuthService, `POST /api/auth/verify-email` + `POST /api/auth/resend-verification`, `sendEmailVerificationEmail` in NotificationsService, `/verify-email` page + `EmailVerificationBanner`, `verifyEmailSchema` in `@eventai/validation`. Verified live (register → resend 200 → crafted token verify 200 → `isEmailVerified:true` → reuse 401, token row deleted). Unit tests now 153; e2e 7/7.
 
 ## Next Task
 
@@ -252,4 +260,4 @@ Remaining Phase 6 work: structured logging + error tracking, CI e2e job (needs t
 
 ## Last Completed Checkpoint
 
-Admin management + notification emails (this batch, uncommitted until the next checkpoint commit); prior checkpoints: Google OAuth + Playwright smoke suite + doc sync (e83ef07), door scanner + attendee list + admin dashboard + Redis caching + venue maps + docs (e399ecb), AI assistant + recommendations + `/ai` page (638a9a3), expiry cron + notifications + organizer stats/dashboard (1216b3d), refunds + ticket check-in + My Tickets page (7463023), Razorpay payments + digital tickets (b4e06a2), booking engine core (f7551e0), frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).
+Email verification batch (this batch, uncommitted until the next checkpoint commit); prior checkpoints: password reset + forgot/reset pages (8ba5522), admin management API + UI + cancellation/refund emails (f371f15), Google OAuth + Playwright smoke suite + doc sync (e83ef07), door scanner + attendee list + admin dashboard + Redis caching + venue maps + docs (e399ecb), AI assistant + recommendations + `/ai` page (638a9a3), expiry cron + notifications + organizer stats/dashboard (1216b3d), refunds + ticket check-in + My Tickets page (7463023), Razorpay payments + digital tickets (b4e06a2), booking engine core (f7551e0), frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).
