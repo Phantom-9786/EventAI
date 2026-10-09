@@ -3,6 +3,8 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import type { NextFunction, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { resolve } from 'path';
@@ -24,6 +26,21 @@ async function bootstrap() {
   // ── Security ──────────────────────────────────────
   app.use(helmet());
   app.use(cookieParser());
+
+  // ── Request IDs + structured request logging ─────
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const requestId = (req.headers['x-request-id'] as string) || randomUUID();
+    req.headers['x-request-id'] = requestId;
+    res.setHeader('X-Request-Id', requestId);
+    const start = Date.now();
+    res.on('finish', () => {
+      const durationMs = Date.now() - start;
+      logger.log(
+        `${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs}ms [${requestId}]`,
+      );
+    });
+    next();
+  });
 
   // ── CORS ──────────────────────────────────────────
   app.enableCors({

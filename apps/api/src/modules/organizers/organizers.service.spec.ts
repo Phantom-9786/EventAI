@@ -122,6 +122,7 @@ describe('OrganizersService ticket validation', () => {
       update: jest.Mock;
       groupBy: jest.Mock;
     };
+    booking: { findMany: jest.Mock; count: jest.Mock };
   };
 
   const ownedEvent = { id: 'event-1', title: 'Gig', organizerId: 'org-1' };
@@ -140,6 +141,7 @@ describe('OrganizersService ticket validation', () => {
     prisma = {
       event: { findFirst: jest.fn().mockResolvedValue(ownedEvent) },
       ticket: { findUnique: jest.fn(), update: jest.fn(), groupBy: jest.fn() },
+      booking: { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0) },
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -210,5 +212,42 @@ describe('OrganizersService ticket validation', () => {
     const stats = await service.eventTicketStats('org-1', 'event-1');
 
     expect(stats).toMatchObject({ VALID: 40, USED: 10, total: 50, checkedIn: 10 });
+  });
+
+  it('lists attendees for an owned event with pagination', async () => {
+    prisma.booking.findMany.mockResolvedValue([
+      {
+        id: 'booking-1',
+        status: 'CONFIRMED',
+        totalAmount: 99800,
+        createdAt: new Date(),
+        user: { id: 'user-1', firstName: 'Ada', lastName: 'Lovelace', email: 'a@b.c' },
+        items: [{ quantity: 2, unitPrice: 49900, ticketType: { id: 'tt-1', name: 'General' } }],
+        tickets: [{ id: 'ticket-1', ticketCode: 'TKT-ABC123', status: 'USED', holderName: 'Ada', ticketType: { id: 'tt-1', name: 'General' } }],
+      },
+    ]);
+    prisma.booking.count.mockResolvedValue(1);
+
+    const result = await service.eventAttendees('org-1', 'event-1', 1, 20);
+
+    expect(result.total).toBe(1);
+    expect(result.pages).toBe(1);
+    expect(result.bookings[0].items[0].ticketType.name).toBe('General');
+    expect(prisma.booking.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { eventId: 'event-1' },
+        skip: 0,
+        take: 20,
+      }),
+    );
+  });
+
+  it('refuses the attendee list for a foreign event', async () => {
+    prisma.event.findFirst.mockResolvedValue(null);
+
+    await expect(service.eventAttendees('org-1', 'event-OTHER', 1, 20)).rejects.toThrow(
+      NotFoundException,
+    );
+    expect(prisma.booking.findMany).not.toHaveBeenCalled();
   });
 });

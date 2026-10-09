@@ -58,9 +58,10 @@ npm run docker:up
 cp .env.example .env
 # Edit .env with real values (JWT_SECRET, etc.)
 
-# 4. Generate Prisma client and push schema
+# 4. Generate Prisma client, push schema, seed demo data
 npm run db:generate
 npm run db:push
+npm run db:seed
 
 # 5. Run everything in dev mode
 npm run dev
@@ -87,15 +88,18 @@ npm run dev
 
 ## Current Status
 
-**Phase 1 — Foundation: complete.** See `implementation.md` for the full roadmap and `context.md` for the live project state.
+**All core phases implemented** (booking engine with payments/refunds/check-in, platform engineering, AI layer, production polish). See `implementation.md` for the full roadmap and `context.md` for the live project state. Documentation:
 
-- Monorepo with Turborepo + npm workspaces
-- Shared packages (config, types, validation, database)
-- Full Prisma schema (users, events, venues, seats, bookings, payments, tickets, notifications, AI conversations, audit logs)
-- NestJS API with global validation, error envelope filter, env validation, health endpoint
-- Next.js web app with Tailwind + shadcn-style components, responsive layout, error/loading states
-- BullMQ worker skeleton with Redis connection and graceful shutdown
-- Docker Compose (postgres, redis) and per-app Dockerfiles
+| Doc | Contents |
+|-----|----------|
+| [docs/architecture.md](docs/architecture.md) | System architecture and key decisions |
+| [docs/database.md](docs/database.md) | Schema, state machines, seed data |
+| [docs/api.md](docs/api.md) | Full endpoint map and conventions |
+| [docs/booking-engine.md](docs/booking-engine.md) | Booking/payment/refund flow and safety mechanisms |
+| [docs/ai.md](docs/ai.md) | AI assistant grounding and recommendations |
+| [docs/security.md](docs/security.md) | Security controls and posture |
+| [docs/deployment.md](docs/deployment.md) | Environments, CI, production checklist |
+| [docs/architecture-decisions.md](docs/architecture-decisions.md) | ADR log |
 
 ## License
 

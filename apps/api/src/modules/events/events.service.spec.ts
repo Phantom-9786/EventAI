@@ -6,10 +6,12 @@ import {
 import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { EventsService } from './events.service';
 
 describe('EventsService', () => {
   let service: EventsService;
+  let cacheMock: { get: jest.Mock; set: jest.Mock; invalidatePrefix: jest.Mock };
   let prisma: {
     event: {
       create: jest.Mock;
@@ -56,9 +58,18 @@ describe('EventsService', () => {
       }),
       $queryRaw: jest.fn(),
     };
+    cacheMock = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue(undefined),
+      invalidatePrefix: jest.fn().mockResolvedValue(undefined),
+    };
 
     const moduleRef = await Test.createTestingModule({
-      providers: [EventsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        EventsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: CacheService, useValue: cacheMock },
+      ],
     }).compile();
 
     service = moduleRef.get(EventsService);
@@ -263,6 +274,26 @@ describe('EventsService', () => {
       await expect(service.getPublishedEvent('some-slug-or-id')).rejects.toThrow(NotFoundException);
       const args = prisma.event.findFirst.mock.calls[0][0];
       expect(args.where.status).toBe('PUBLISHED');
+    });
+
+    it('caches the detail and serves a repeat read from the cache', async () => {
+      const detail = { id: 'event-1', slug: 'some-slug-or-id' };
+      prisma.event.findFirst.mockResolvedValue(detail);
+
+      const first = await service.getPublishedEvent('some-slug-or-id');
+      expect(first).toEqual(detail);
+      expect(cacheMock.set).toHaveBeenCalledWith(
+        'event:detail:some-slug-or-id',
+        detail,
+        60,
+      );
+
+      cacheMock.get.mockResolvedValueOnce(detail);
+      prisma.event.findFirst.mockClear();
+
+      const second = await service.getPublishedEvent('some-slug-or-id');
+      expect(second).toEqual(detail);
+      expect(prisma.event.findFirst).not.toHaveBeenCalled();
     });
   });
 });

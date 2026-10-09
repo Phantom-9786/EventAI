@@ -70,6 +70,11 @@ export function Header() {
                   Dashboard
                 </Link>
               )}
+              {user.role === 'ADMIN' && (
+                <Link href="/admin" className={buttonVariants({ variant: 'ghost' })}>
+                  Admin
+                </Link>
+              )}
               <span className="max-w-[160px] truncate text-sm font-medium text-muted-foreground">
                 Hi, {user.firstName ?? user.email}
               </span>

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { ArrowRight, BadgeCheck, MapPin, Users } from 'lucide-react';
 import { getVenue } from '@/lib/api';
+import { VenueMap } from '@/components/venues/venue-map';
 
 interface VenueDetailPageProps {
   params: { id: string };
@@ -52,6 +53,15 @@ export default async function VenueDetailPage({ params }: VenueDetailPageProps) 
             <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
               {venue.description}
             </p>
+          )}
+
+          {venue.latitude != null && venue.longitude != null && (
+            <section className="mt-8">
+              <h2 className="text-lg font-semibold">Location</h2>
+              <div className="mt-3">
+                <VenueMap lat={venue.latitude} lng={venue.longitude} name={venue.name} />
+              </div>
+            </section>
           )}
 
           {venue.amenities.length > 0 && (

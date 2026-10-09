@@ -16,7 +16,7 @@ describe('TicketsService', () => {
     };
     seatSection: { findFirst: jest.Mock };
   };
-  let eventsService: { requireOwnedEvent: jest.Mock };
+  let eventsService: { requireOwnedEvent: jest.Mock; invalidateEventCache: jest.Mock };
 
   const futureEvent = {
     id: 'event-1',
@@ -37,7 +37,10 @@ describe('TicketsService', () => {
       },
       seatSection: { findFirst: jest.fn() },
     };
-    eventsService = { requireOwnedEvent: jest.fn().mockResolvedValue(futureEvent) };
+    eventsService = {
+      requireOwnedEvent: jest.fn().mockResolvedValue(futureEvent),
+      invalidateEventCache: jest.fn().mockResolvedValue(undefined),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [

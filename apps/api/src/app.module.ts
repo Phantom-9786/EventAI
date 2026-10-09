@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
+import { CacheModule } from './common/cache/cache.service';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -16,6 +17,7 @@ import { BookingsModule } from './modules/bookings/bookings.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AiModule } from './modules/ai/ai.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -40,6 +42,7 @@ import { validateEnv } from './config/env.validation';
       inject: [ConfigService],
     }),
     PrismaModule,
+    CacheModule,
     ScheduleModule.forRoot(),
     HealthModule,
     AuthModule,
@@ -53,6 +56,7 @@ import { validateEnv } from './config/env.validation';
     PaymentsModule,
     NotificationsModule,
     AiModule,
+    AdminModule,
   ],
   providers: [
     {

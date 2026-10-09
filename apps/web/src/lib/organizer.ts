@@ -49,6 +49,68 @@ export async function becomeOrganizer(input: {
   }
 }
 
+export interface TicketStats {
+  VALID: number;
+  USED: number;
+  CANCELLED: number;
+  EXPIRED: number;
+  total: number;
+  checkedIn: number;
+}
+
+export interface AttendeeBooking {
+  id: string;
+  status: string;
+  totalAmount: number;
+  createdAt: string;
+  user: { id: string; firstName: string | null; lastName: string | null; email: string };
+  items: { quantity: number; unitPrice: number; ticketType: { id: string; name: string } }[];
+  tickets: { id: string; ticketCode: string; status: string; holderName: string; ticketType: { id: string; name: string } }[];
+}
+
+export async function getEventTicketStats(eventId: string): Promise<TicketStats> {
+  const res = await authFetch(`/organizers/events/${eventId}/tickets/stats`);
+  if (!res.ok) throw new Error(`Failed to load ticket stats (${res.status})`);
+  return res.json();
+}
+
+export async function getEventAttendees(
+  eventId: string,
+  page = 1,
+  limit = 20,
+): Promise<{ bookings: AttendeeBooking[]; total: number; page: number; pages: number }> {
+  const res = await authFetch(`/organizers/events/${eventId}/bookings?page=${page}&limit=${limit}`);
+  if (!res.ok) throw new Error(`Failed to load attendees (${res.status})`);
+  return res.json();
+}
+
+export interface ValidateResult {
+  ticket: {
+    id: string;
+    ticketCode: string;
+    holderName: string;
+    status: string;
+    validatedAt: string | null;
+    ticketType: { id: string; name: string };
+  };
+  holder: { id: string; firstName: string | null; lastName: string | null; email: string };
+}
+
+/** Validates (checks in) a ticket code; throws an Error with the API reason on refusal. */
+export async function validateTicketCode(eventId: string, ticketCode: string): Promise<ValidateResult> {
+  const res = await authFetch(`/organizers/events/${eventId}/tickets/validate`, {
+    method: 'POST',
+    body: JSON.stringify({ ticketCode: ticketCode.trim() }),
+  });
+  const body = (await res.json().catch(() => ({}))) as { message?: string | string[] };
+  if (!res.ok) {
+    throw new Error(
+      Array.isArray(body.message) ? body.message.join(', ') : (body.message ?? `Failed (${res.status})`),
+    );
+  }
+  return body as unknown as ValidateResult;
+}
+
 /** Returns the organizer profile or null when the user has none yet. */
 export async function getOrganizerProfile(): Promise<{ id: string; organizationName: string } | null> {
   const res = await authFetch('/organizers/me');

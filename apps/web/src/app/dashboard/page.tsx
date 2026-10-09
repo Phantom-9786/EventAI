@@ -140,11 +140,19 @@ export default function DashboardPage() {
                   {formatEventDate(event.startDate)}
                 </p>
               </div>
-              <span
-                className={`w-fit rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[event.status] ?? 'bg-muted text-muted-foreground'}`}
-              >
-                {event.status}
-              </span>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`w-fit rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[event.status] ?? 'bg-muted text-muted-foreground'}`}
+                >
+                  {event.status}
+                </span>
+                <Link
+                  href={`/dashboard/scan?event=${event.id}`}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Door scan
+                </Link>
+              </div>
             </div>
           ))}
         </div>

@@ -52,6 +52,9 @@ export class TicketsService {
         sectionId: input.sectionId,
       },
       include: { section: { select: { id: true, name: true } } },
+    }).then(async (created) => {
+      await this.eventsService.invalidateEventCache();
+      return created;
     });
   }
 
@@ -96,7 +99,7 @@ export class TicketsService {
     }
 
     try {
-      return await this.prisma.ticketType.update({
+      const updated = await this.prisma.ticketType.update({
         where: { id: ticketTypeId },
         data: {
           ...data,
@@ -115,6 +118,8 @@ export class TicketsService {
         },
         include: { section: { select: { id: true, name: true } } },
       });
+      await this.eventsService.invalidateEventCache();
+      return updated;
     } catch (error) {
       // P2025: ticket type deleted concurrently
       if (
@@ -140,6 +145,7 @@ export class TicketsService {
     }
 
     await this.prisma.ticketType.delete({ where: { id: ticketTypeId } });
+    await this.eventsService.invalidateEventCache();
     return { message: 'Ticket type deleted' };
   }
 

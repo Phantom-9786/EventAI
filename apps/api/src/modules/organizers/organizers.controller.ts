@@ -163,4 +163,16 @@ export class OrganizersController {
     const organizerId = await this.organizersService.requireOrganizerId(userId);
     return this.organizersService.eventTicketStats(organizerId, eventId);
   }
+
+  @Roles('ORGANIZER')
+  @Get('events/:eventId/bookings')
+  @ApiOperation({ summary: 'Attendee list (bookings) for one of your events (organizer only)' })
+  async eventAttendees(
+    @CurrentUser('id') userId: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Query(new ZodValidationPipe(paginationSchema)) query: { page: number; limit: number },
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return this.organizersService.eventAttendees(organizerId, eventId, query.page, query.limit);
+  }
 }

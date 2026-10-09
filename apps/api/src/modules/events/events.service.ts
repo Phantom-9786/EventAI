@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import type { CreateEventInput, EventSearchInput, UpdateEventInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
 
 const EVENT_SUMMARY_INCLUDE = {
   category: { select: { id: true, name: true, slug: true } },
@@ -40,6 +41,8 @@ const EVENT_DETAIL_INCLUDE = {
   },
   faqs: { orderBy: { order: 'asc' } },
 } satisfies Prisma.EventInclude;
+
+type EventDetail = Prisma.EventGetPayload<{ include: typeof EVENT_DETAIL_INCLUDE }>;
 
 const EVENT_DETAIL_MANAGE_INCLUDE = {
   category: { select: { id: true, name: true, slug: true, icon: true, color: true } },
@@ -94,7 +97,16 @@ function priceRange(prices: number[]): { minPrice: number | null; maxPrice: numb
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
+
+  /** Bumps the public event cache after any write that can affect it. */
+  async invalidateEventCache() {
+    await this.cache.invalidatePrefix('event:detail:');
+    await this.cache.invalidatePrefix('events:similar:');
+  }
 
   async createEvent(organizerId: string, input: CreateEventInput) {
     const startDate = new Date(input.startDate);
@@ -134,6 +146,10 @@ export class EventsService {
   }
 
   async getPublishedEvent(idOrSlug: string) {
+    const cacheKey = `event:detail:${idOrSlug.toLowerCase()}`;
+    const cached = await this.cache.get<EventDetail>(cacheKey);
+    if (cached) return cached;
+
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
     const event = await this.prisma.event.findFirst({
       where: { ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }), status: 'PUBLISHED' },
@@ -142,6 +158,7 @@ export class EventsService {
     if (!event) {
       throw new NotFoundException('Event not found');
     }
+    await this.cache.set(cacheKey, event, 60);
     return event;
   }
 
@@ -151,6 +168,10 @@ export class EventsService {
    * filtering plus in-memory scoring — no external vector store needed.
    */
   async findSimilarEvents(idOrSlug: string, limit = 4) {
+    const cacheKey = `events:similar:${idOrSlug.toLowerCase()}:${limit}`;
+    const cached = await this.cache.get<unknown>(cacheKey);
+    if (cached) return cached;
+
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
     const event = await this.prisma.event.findFirst({
       where: { ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }), status: 'PUBLISHED' },
@@ -194,7 +215,9 @@ export class EventsService {
       }),
     ]);
 
-    return [...sameCategory, ...sameCity].slice(0, limit);
+    const similar = [...sameCategory, ...sameCity].slice(0, limit);
+    await this.cache.set(cacheKey, similar, 120);
+    return similar;
   }
 
   async updateEvent(organizerId: string, idOrSlug: string, input: UpdateEventInput) {
@@ -222,7 +245,7 @@ export class EventsService {
       throw new ConflictException('End date must be after start date');
     }
 
-    return this.prisma.event.update({
+    const updated = await this.prisma.event.update({
       where: { id: owned.id },
       data: {
         ...(input.title !== undefined && { title: input.title }),
@@ -238,6 +261,8 @@ export class EventsService {
       },
       include: EVENT_DETAIL_MANAGE_INCLUDE,
     });
+    await this.invalidateEventCache();
+    return updated;
   }
 
   async publishEvent(organizerId: string, idOrSlug: string) {
@@ -250,11 +275,13 @@ export class EventsService {
       throw new ConflictException('Cannot publish an event whose start date has passed');
     }
 
-    return this.prisma.event.update({
+    const published = await this.prisma.event.update({
       where: { id: owned.id },
       data: { status: 'PUBLISHED' },
       include: EVENT_DETAIL_MANAGE_INCLUDE,
     });
+    await this.invalidateEventCache();
+    return published;
   }
 
   async cancelEvent(organizerId: string, idOrSlug: string) {
@@ -264,11 +291,13 @@ export class EventsService {
       throw new ConflictException(`Cannot cancel a ${owned.status.toLowerCase()} event`);
     }
 
-    return this.prisma.event.update({
+    const cancelled = await this.prisma.event.update({
       where: { id: owned.id },
       data: { status: 'CANCELLED' },
       include: EVENT_DETAIL_MANAGE_INCLUDE,
     });
+    await this.invalidateEventCache();
+    return cancelled;
   }
 
   async deleteEvent(organizerId: string, idOrSlug: string) {
@@ -281,6 +310,7 @@ export class EventsService {
     }
 
     await this.prisma.event.delete({ where: { id: owned.id } });
+    await this.invalidateEventCache();
     return { message: 'Event deleted' };
   }
 

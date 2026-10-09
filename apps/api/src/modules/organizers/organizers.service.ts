@@ -313,6 +313,46 @@ export class OrganizersService {
     return { ...stats, total, checkedIn: stats.USED };
   }
 
+  /** Attendee list (bookings) for one of your events, newest first. */
+  async eventAttendees(organizerId: string, eventId: string, page: number, limit: number) {
+    await this.requireOwnedEvent(organizerId, eventId);
+    const where = { eventId };
+    const [bookings, total] = await Promise.all([
+      this.prisma.booking.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          status: true,
+          totalAmount: true,
+          createdAt: true,
+          user: { select: { id: true, firstName: true, lastName: true, email: true } },
+          items: {
+            select: {
+              quantity: true,
+              unitPrice: true,
+              ticketType: { select: { id: true, name: true } },
+            },
+          },
+          tickets: {
+            select: {
+              id: true,
+              ticketCode: true,
+              status: true,
+              holderName: true,
+              ticketType: { select: { id: true, name: true } },
+            },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+      }),
+      this.prisma.booking.count({ where }),
+    ]);
+    return { bookings, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
   /** Dashboard aggregates across all of the organizer's events. */
   async getDashboardStats(organizerId: string) {
     const eventGroups = await this.prisma.event.groupBy({

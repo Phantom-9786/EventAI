@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import type { CreateCategoryInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
 
 // ═══════════════════════════════════════════════════
 // Categories: public browsing + admin management.
@@ -14,7 +15,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class CategoriesService {
-  constructor(private readonly prisma: PrismaService) {}
+  private static readonly LIST_CACHE_KEY = 'categories:active';
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
+
+  private async invalidateList() {
+    await this.cache.invalidatePrefix('categories:');
+  }
 
   private slugify(name: string): string {
     return name
@@ -25,6 +35,16 @@ export class CategoriesService {
   }
 
   async listActive() {
+    const cached = await this.cache.get<Awaited<ReturnType<CategoriesService['listActiveUncached']>>>(
+      CategoriesService.LIST_CACHE_KEY,
+    );
+    if (cached) return cached;
+    const categories = await this.listActiveUncached();
+    await this.cache.set(CategoriesService.LIST_CACHE_KEY, categories, 300);
+    return categories;
+  }
+
+  private listActiveUncached() {
     return this.prisma.category.findMany({
       where: { isActive: true },
       orderBy: { name: 'asc' },
@@ -57,6 +77,9 @@ export class CategoriesService {
         icon: input.icon,
         color: input.color,
       },
+    }).then(async (created) => {
+      await this.invalidateList();
+      return created;
     });
   }
 
@@ -72,7 +95,7 @@ export class CategoriesService {
       }
     }
     try {
-      return await this.prisma.category.update({
+      const updated = await this.prisma.category.update({
         where: { id },
         data: {
           ...(input.name !== undefined && { name: input.name }),
@@ -83,6 +106,8 @@ export class CategoriesService {
           ...(input.isActive !== undefined && { isActive: input.isActive }),
         },
       });
+      await this.invalidateList();
+      return updated;
     } catch {
       throw new NotFoundException('Category not found');
     }
@@ -100,6 +125,7 @@ export class CategoriesService {
       where: { id },
       data: { isActive: false },
     });
+    await this.invalidateList();
     return { message: 'Category deactivated' };
   }
 }

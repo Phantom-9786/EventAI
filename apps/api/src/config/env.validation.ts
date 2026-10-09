@@ -43,10 +43,18 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
   }
 
   if (config.NODE_ENV === 'production') {
-    for (const key of ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET'] as const) {
+    for (const key of [
+      'FRONTEND_URL',
+      'RAZORPAY_KEY_ID',
+      'RAZORPAY_KEY_SECRET',
+      'RAZORPAY_WEBHOOK_SECRET',
+    ] as const) {
       if (!config[key] || String(config[key]).trim() === '') {
         errors.push(`Missing required environment variable in production: ${key}`);
       }
+    }
+    if (typeof config.FRONTEND_URL === 'string' && !config.FRONTEND_URL.startsWith('https://')) {
+      errors.push('FRONTEND_URL must be an https:// origin in production');
     }
   }
 
