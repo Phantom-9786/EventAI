@@ -13,6 +13,7 @@ import Razorpay from 'razorpay';
 import { Prisma } from '@prisma/client';
 import type { VerifyPaymentInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 type Tx = Prisma.TransactionClient;
 
@@ -35,7 +36,10 @@ export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
   private razorpayClient: Razorpay | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   // ── Order creation ───────────────────────────────
 
@@ -142,6 +146,7 @@ export class PaymentsService {
     );
 
     this.logger.log(`Booking ${booking.id} confirmed via checkout verification`);
+    this.notifyConfirmation(booking, confirmed);
     return { booking: confirmed };
   }
 
@@ -184,7 +189,7 @@ export class PaymentsService {
       if (payment.status === 'CAPTURED') {
         return { received: true, handled: false }; // duplicate webhook
       }
-      await this.prisma.$transaction(async (tx) =>
+      const webhookConfirmed = await this.prisma.$transaction(async (tx) =>
         this.confirmBooking(tx, {
           paymentId: payment.id,
           bookingId: payment.bookingId,
@@ -194,6 +199,7 @@ export class PaymentsService {
         }),
       );
       this.logger.log(`Booking ${payment.bookingId} confirmed via webhook capture`);
+      this.notifyConfirmation(payment.booking, webhookConfirmed);
       return { received: true, handled: true };
     }
 
@@ -404,6 +410,28 @@ export class PaymentsService {
         },
       },
     });
+  }
+
+  /** Fire-and-forget ticket email after a successful confirmation. */
+  private notifyConfirmation(
+    bookingWithEvent: { user: { email: string }; event: { title: string; startDate: Date } },
+    confirmed: {
+      id: string;
+      totalAmount: number;
+      tickets: { ticketCode: string; holderName: string }[];
+    },
+  ): void {
+    void this.notifications
+      .sendBookingConfirmation({
+        to: bookingWithEvent.user.email,
+        holderName: confirmed.tickets[0]?.holderName ?? 'Guest',
+        eventTitle: bookingWithEvent.event.title,
+        eventStart: bookingWithEvent.event.startDate,
+        bookingId: confirmed.id,
+        totalAmount: confirmed.totalAmount,
+        ticketCodes: confirmed.tickets.map((t) => t.ticketCode),
+      })
+      .catch(() => undefined);
   }
 
   private async loadOwnBooking(userId: string, bookingId: string) {

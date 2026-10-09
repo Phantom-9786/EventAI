@@ -63,6 +63,13 @@ export class OrganizersController {
     return this.organizersService.listOwnEvents(organizerId, query.page, query.limit);
   }
 
+  @Get('me/stats')
+  @ApiOperation({ summary: 'Dashboard aggregates for the authenticated organizer' })
+  async getDashboardStats(@CurrentUser('id') userId: string) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return this.organizersService.getDashboardStats(organizerId);
+  }
+
   @Post('venues')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a venue owned by the authenticated organizer' })

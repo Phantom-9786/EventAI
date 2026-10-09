@@ -6,6 +6,7 @@ import {
 import { Test } from '@nestjs/testing';
 import { createHmac } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentsService } from './payments.service';
 
 describe('PaymentsService', () => {
@@ -37,7 +38,12 @@ describe('PaymentsService', () => {
     items: [
       { id: 'item-1', ticketTypeId: 'tt-1', quantity: 2, unitPrice: 150000 },
     ],
-    user: { firstName: 'Ada', lastName: 'Lovelace' },
+    user: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' },
+    event: {
+      id: 'event-1',
+      title: 'Summer Gig',
+      startDate: new Date(Date.now() + 30 * 86400000),
+    },
   };
 
   const payment = {
@@ -80,7 +86,17 @@ describe('PaymentsService', () => {
     refundsCreate = jest.fn();
 
     const moduleRef = await Test.createTestingModule({
-      providers: [PaymentsService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        PaymentsService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: NotificationsService,
+          useValue: {
+            sendEmail: jest.fn().mockResolvedValue(true),
+            sendBookingConfirmation: jest.fn().mockResolvedValue(true),
+          },
+        },
+      ],
     }).compile();
 
     service = moduleRef.get(PaymentsService);

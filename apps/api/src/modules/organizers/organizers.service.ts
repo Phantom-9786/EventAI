@@ -312,4 +312,57 @@ export class OrganizersService {
     const total = Object.values(stats).reduce((a, b) => a + b, 0);
     return { ...stats, total, checkedIn: stats.USED };
   }
+
+  /** Dashboard aggregates across all of the organizer's events. */
+  async getDashboardStats(organizerId: string) {
+    const eventGroups = await this.prisma.event.groupBy({
+      by: ['status'],
+      where: { organizerId },
+      _count: { _all: true },
+    });
+    const events: Record<string, number> = {
+      total: 0,
+      DRAFT: 0,
+      PUBLISHED: 0,
+      CANCELLED: 0,
+      COMPLETED: 0,
+      SOLDOUT: 0,
+    };
+    for (const g of eventGroups) {
+      events[g.status] = g._count._all;
+      events.total += g._count._all;
+    }
+
+    const bookingGroups = await this.prisma.booking.groupBy({
+      by: ['status'],
+      where: { event: { organizerId }, status: { in: ['CONFIRMED', 'REFUNDED'] } },
+      _count: { _all: true },
+      _sum: { totalAmount: true },
+    });
+    let revenue = 0;
+    let confirmedBookings = 0;
+    let refundedBookings = 0;
+    for (const g of bookingGroups) {
+      if (g.status === 'CONFIRMED') {
+        revenue += g._sum.totalAmount ?? 0;
+        confirmedBookings = g._count._all;
+      } else {
+        refundedBookings = g._count._all;
+      }
+    }
+
+    const ticketGroups = await this.prisma.ticket.groupBy({
+      by: ['status'],
+      where: { event: { organizerId } },
+      _count: { _all: true },
+    });
+    let ticketsIssued = 0;
+    let checkedIn = 0;
+    for (const g of ticketGroups) {
+      ticketsIssued += g._count._all;
+      if (g.status === 'USED') checkedIn = g._count._all;
+    }
+
+    return { events, revenue, confirmedBookings, refundedBookings, ticketsIssued, checkedIn };
+  }
 }

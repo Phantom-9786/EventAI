@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import type { CreateBookingInput } from '@eventai/validation';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -269,12 +270,28 @@ export class BookingsService {
     });
   }
 
+  /** Minute cron: expires stale bookings across all users and releases stock. */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async handleStaleBookingsCron() {
+    const stale = await this.prisma.booking.findMany({
+      where: {
+        status: { in: ['PENDING', 'PAYMENT_PENDING'] },
+        expiresAt: { lt: new Date() },
+      },
+      select: { id: true },
+      take: 200,
+    });
+    for (const { id } of stale) {
+      await this.expireBookingIfStale(id);
+    }
+  }
+
   /** Expires all stale PENDING bookings of a user (lazy sweep on list). */
   private async expireStaleBookings(userId: string) {
     const stale = await this.prisma.booking.findMany({
       where: {
         userId,
-        status: 'PENDING',
+        status: { in: ['PENDING', 'PAYMENT_PENDING'] },
         expiresAt: { lt: new Date() },
       },
       select: { id: true },
@@ -284,10 +301,14 @@ export class BookingsService {
     }
   }
 
-  /** Expires one PENDING booking past its TTL and releases its stock. */
+  /** Expires one stale booking past its TTL and releases its stock. */
   private async expireBookingIfStale(bookingId: string) {
     const booking = await this.prisma.booking.findFirst({
-      where: { id: bookingId, status: 'PENDING', expiresAt: { lt: new Date() } },
+      where: {
+        id: bookingId,
+        status: { in: ['PENDING', 'PAYMENT_PENDING'] },
+        expiresAt: { lt: new Date() },
+      },
       include: { items: true },
     });
     if (!booking) return;
@@ -298,7 +319,12 @@ export class BookingsService {
         where: { id: booking.id },
         select: { status: true },
       });
-      if (!current || current.status !== 'PENDING') return;
+      if (
+        !current ||
+        (current.status !== 'PENDING' && current.status !== 'PAYMENT_PENDING')
+      ) {
+        return;
+      }
 
       await tx.booking.update({
         where: { id: booking.id },

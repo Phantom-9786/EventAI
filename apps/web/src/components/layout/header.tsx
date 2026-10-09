@@ -64,6 +64,11 @@ export function Header() {
                 <Ticket className="mr-1 h-4 w-4" />
                 My Tickets
               </Link>
+              {user.role === 'ORGANIZER' && (
+                <Link href="/dashboard" className={buttonVariants({ variant: 'ghost' })}>
+                  Dashboard
+                </Link>
+              )}
               <span className="max-w-[160px] truncate text-sm font-medium text-muted-foreground">
                 Hi, {user.firstName ?? user.email}
               </span>
