@@ -180,7 +180,7 @@ Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global Validatio
 ## Testing Status
 
 - Jest configured in `apps/api` (unit) with `test/jest-e2e.json` for e2e
-- 79 passing unit tests (health: 3; auth service: 6; users service: 14; events service: 19 — CRUD, ownership, publish/cancel/delete transitions, FTS raw-SQL shape + hydration order, draft-hiding; tickets service: 7 — creation guards, sale windows, section-venue checks, availability derivation on quantity edits, delete-with-bookings refusal; organizers service: 8 — venue update/delete guards, seat-section generation incl. Excel row labels and chunking; venues service: 5 — public search filters/pagination, detail include shape, 404; bookings service: 14 — idempotency fast-path + foreign-key rejection, event/ticket guards, started-event refusal, maxPerBooking merge, sale windows, conditional decrement + server-side pricing, mid-transaction stock-failure rollback, cross-user booking hiding, cancel/closed/confirmed rules)
+- 94 passing unit tests (health: 3; auth service: 6; users service: 14; events service: 19 — CRUD, ownership, publish/cancel/delete transitions, FTS raw-SQL shape + hydration order, draft-hiding; tickets service: 7 — creation guards, sale windows, section-venue checks, availability derivation on quantity edits, delete-with-bookings refusal; organizers service: 8 — venue update/delete guards, seat-section generation incl. Excel row labels and chunking; venues service: 5 — public search filters/pagination, detail include shape, 404; bookings service: 14 — idempotency fast-path + foreign-key rejection, event/ticket guards, started-event refusal, maxPerBooking merge, sale windows, conditional decrement + server-side pricing, mid-transaction stock-failure rollback, cross-user booking hiding, cancel/closed/confirmed rules; payments service: 15 — order reuse on retry, new-order creation + PAYMENT_PENDING, paid/expired booking refusal, signature confirm + ticket minting, tampered-signature rejection, idempotent re-verify, cross-user hiding, webhook captured/failed/invalid-signature/duplicate/unknown-order, QR data URL + cross-user ticket hiding)
 - No tests yet in web/worker/packages
 
 ## Deployment Status
@@ -207,22 +207,33 @@ Docker Compose infra services + per-app Dockerfiles exist. No CI/CD workflow yet
 - API boot requires reachable PostgreSQL (PrismaService fails fast); frontend pages degrade gracefully to empty states when the API is unreachable
 - Password reset email delivery not wired (token logged in dev; email worker planned for Phase 4)
 
+## Payments & Digital Tickets Architecture
+
+Implemented (`apps/api/src/modules/payments/` + booking confirm path), refunds pending:
+- `POST /api/payments/order` (auth): creates a Razorpay order for a booking (amount = booking.totalAmount from the DB, receipt = bookingId). Booking → PAYMENT_PENDING. One payment row per booking (`idempotencyKey = order:{bookingId}` unique); retry reuses the open order, a FAILED payment row is recycled with a fresh order id. Refuses paid/closed/expired bookings.
+- `POST /api/payments/verify` (auth): HMAC-SHA256 over `razorpayOrderId|razorpayPaymentId` with `RAZORPAY_KEY_SECRET`, constant-time compared. Confirm transaction: payment → CAPTURED (+method/reason cleared), booking → CONFIRMED + confirmedAt, mints one digital ticket per unit (idempotent — skipped if tickets exist). Idempotent once captured.
+- `POST /api/payments/webhook` (@Public): signature over the RAW body (`rawBody: true` in main.ts) with `RAZORPAY_WEBHOOK_SECRET`. `payment.captured` → same confirm path (safe for out-of-order delivery: captured beats failed; duplicates no-op). `payment.failed` → payment FAILED + failureReason (paid beats failed). Unknown orders ignored with 200.
+- Digital tickets: `TKT-` + 16 hex chars (unique), `qrData` JSON { code, bookingId, eventId }, holderName from user; included in booking detail (`GET /api/bookings/:id`) and the verify response. `GET /api/payments/tickets/:id/qr` (auth) returns a PNG data URL rendered by the confirmation panel.
+- Frontend: `BookingWidget` on `/events/[slug]` — quantity steppers (maxPerBooking/stock-capped), live total, sign-in gate, then createBooking → createPaymentOrder → Razorpay Checkout.js → verifyPayment → ticket codes + QRs. Checkout dismissal keeps seats held until expiry; missing keys yield an honest "payments not configured" error.
+- Env: `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` optional in dev, enforced in production by env validation.
+- Refunds, organizer-side ticket validation (scan), seat-level selection: pending (schema-ready).
+
 ## Important Architecture Decisions
 
 See `docs/architecture-decisions.md` (ADRs 001–013).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE except Leaflet maps + organizer dashboard, deferred to Phase 4). Phase 3 — Booking Engine (IN PROGRESS): booking core (creation with concurrency-safe stock reservation, idempotency, expiry, history, cancellation) COMPLETE; remaining: Razorpay payments, digital tickets, seat-level selection.
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE except Leaflet maps + organizer dashboard, deferred to Phase 4). Phase 3 — Booking Engine (IN PROGRESS): booking core + Razorpay payments (order/verify/webhook) + digital tickets with QR + booking UI COMPLETE; remaining: refunds, organizer-side ticket scanning, seat-level selection.
 
 ## Current Task
 
-Booking engine core implemented and verified: `BookingsModule` with server-priced, idempotent booking creation guarded by conditional availability decrement (no overselling), lazy expiry releasing reserved stock after SEAT_HOLD_TTL, paginated history, and stock-releasing cancellation for unpaid bookings. Full monorepo pipeline green: lint 9/9, type-check 12/12, 79/79 unit tests, build 6/6.
+Razorpay payments and digital tickets implemented and verified: order creation with open-order reuse and failed-payment recycling, checkout signature verification with constant-time compare, raw-body webhook handling (captured confirms — out-of-order and duplicate safe; failed records the reason), idempotent ticket minting inside the confirm transaction, own-ticket QR endpoint, and the full booking widget on the event page (steppers → booking → Razorpay Checkout → verification → codes + QRs). Full monorepo pipeline green: lint 9/9, type-check 12/12, 94/94 unit tests, build 6/6.
 
 ## Next Task
 
-Phase 3 continuation: Razorpay sandbox payment flow (order creation on booking, `verify-payment` signature check, webhook endpoint, failure handling), then digital ticket generation with QR codes after payment capture, then the frontend booking UI on the event detail page.
+Phase 3 wrap-up: refunds (Razorpay refund API + booking REFUNDED transition), organizer ticket-validation endpoint (scan a ticket code, mark USED), and a "My Tickets" page — or proceed to Phase 4 (caching, BullMQ expiry jobs, notifications).
 
 ## Last Completed Checkpoint
 
-Phase 3 — booking engine core (commit "feat: add booking engine core"); prior checkpoints: frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).
+Phase 3 — Razorpay payments + digital tickets (commit "feat: add razorpay payments and digital tickets"); prior checkpoints: booking engine core (f7551e0), frontend auth & browse pages (2064811), ticket types + venues + event pages (b93a276), event system (052363e).

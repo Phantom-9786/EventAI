@@ -10,6 +10,9 @@ export interface EnvConfig {
   REDIS_URL: string;
   JWT_SECRET: string;
   JWT_EXPIRY: string;
+  RAZORPAY_KEY_ID?: string;
+  RAZORPAY_KEY_SECRET?: string;
+  RAZORPAY_WEBHOOK_SECRET?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvConfig {
@@ -33,6 +36,14 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
   const port = Number(config.PORT ?? 4000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     errors.push(`PORT must be an integer between 1 and 65535, got: ${config.PORT}`);
+  }
+
+  if (config.NODE_ENV === 'production') {
+    for (const key of ['RAZORPAY_KEY_ID', 'RAZORPAY_KEY_SECRET', 'RAZORPAY_WEBHOOK_SECRET'] as const) {
+      if (!config[key] || String(config[key]).trim() === '') {
+        errors.push(`Missing required environment variable in production: ${key}`);
+      }
+    }
   }
 
   if (errors.length > 0) {

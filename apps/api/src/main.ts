@@ -14,6 +14,7 @@ async function bootstrap() {
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['error', 'warn', 'log', 'debug'],
+    rawBody: true, // required for Razorpay webhook signature verification
   });
 
   const configService = app.get(ConfigService);

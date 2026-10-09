@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   Ticket,
 } from 'lucide-react';
-import { buttonVariants } from '@/components/ui/button';
+import { BookingWidget } from '@/components/booking/booking-widget';
 import {
   formatEventDate,
   formatPrice,
@@ -260,17 +260,11 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
                 <p className="mt-1 text-2xl font-bold">To be announced</p>
               </>
             )}
-            <button
-              type="button"
-              disabled
-              className={cn(buttonVariants({ size: 'lg' }), 'mt-5 w-full')}
-              title="Booking arrives with the Phase 3 booking engine"
-            >
-              Book Tickets
-            </button>
-            <p className="mt-3 text-center text-xs text-muted-foreground">
-              Booking engine coming soon
-            </p>
+            <BookingWidget
+              eventId={event.id}
+              eventTitle={event.title}
+              ticketTypes={event.ticketTypes}
+            />
           </div>
 
           <div className="mt-4 rounded-lg border bg-card p-6">

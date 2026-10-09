@@ -12,6 +12,7 @@ import { EventsModule } from './modules/events/events.module';
 import { TicketsModule } from './modules/tickets/tickets.module';
 import { VenuesModule } from './modules/venues/venues.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/auth/guards/roles.guard';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -45,6 +46,7 @@ import { validateEnv } from './config/env.validation';
     TicketsModule,
     VenuesModule,
     BookingsModule,
+    PaymentsModule,
   ],
   providers: [
     {

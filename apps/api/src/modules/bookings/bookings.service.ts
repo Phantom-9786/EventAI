@@ -31,6 +31,16 @@ const BOOKING_DETAIL_INCLUDE = {
     },
   },
   payment: { select: { id: true, status: true, amount: true } },
+  tickets: {
+    select: {
+      id: true,
+      ticketCode: true,
+      holderName: true,
+      status: true,
+      ticketTypeId: true,
+      validatedAt: true,
+    },
+  },
 } satisfies Prisma.BookingInclude;
 
 // ═══════════════════════════════════════════════════

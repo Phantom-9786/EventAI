@@ -122,7 +122,22 @@
 ---
 
 ## Phase 3 — Booking Engine
-**Status: IN PROGRESS — Booking creation (concurrency-safe, idempotent), history, expiry and cancellation complete; seat-level selection, Razorpay payments, and digital tickets next**
+**Status: IN PROGRESS — Booking creation (concurrency-safe, idempotent), history, expiry, cancellation, Razorpay payments (order/verify/webhook), digital tickets with QR codes, and the booking UI on the event page complete; seat-level selection and refunds next**
+
+### Payment
+- [x] Razorpay sandbox integration (lazy Razorpay client; keys optional in dev, required in production via env validation; rawBody enabled for webhooks)
+- [x] Order creation (`POST /api/payments/order` — amount server-priced from the booking, receipt = bookingId, booking → PAYMENT_PENDING, open-order reuse on retry, failed-payment row recycled with a fresh order)
+- [x] Backend payment verification (`POST /api/payments/verify` — HMAC-SHA256 `order|payment` signature check with constant-time compare; confirm transaction marks payment CAPTURED, booking CONFIRMED, mints tickets; idempotent once captured)
+- [x] Webhook handling (`POST /api/payments/webhook` — @Public, `x-razorpay-signature` over the raw body, `payment.captured` confirms (out-of-order delivery safe, duplicate-safe), `payment.failed` marks the payment FAILED)
+- [x] Signature verification (checkout HMAC + webhook HMAC, both constant-time; foreign orders/users 404)
+- [x] Idempotency (1 payment row per booking, `idempotencyKey = order:{bookingId}` unique; verify returns the captured booking on repeat)
+- [x] Failure handling (failed webhook → FAILED + reason; checkout dismissal → seats stay held until expiry; expired/closed bookings refuse orders/verification)
+
+### Digital Tickets
+- [x] Ticket generation after booking (one per unit inside the confirm transaction, idempotent — skipped if already minted; holder from user name)
+- [x] Unique ticket identifiers (`TKT-` + 16 hex chars, unique index)
+- [x] QR code generation (`qrData` JSON { code, bookingId, eventId }; `GET /api/payments/tickets/:id/qr` returns a PNG data URL, own-ticket only, cancelled tickets refused)
+- [x] Ticket retrieval (tickets included in `GET /api/bookings/:id` and the verify response; frontend shows codes + QR images after payment)
 
 ### Seat Management
 - [ ] Seat states (AVAILABLE, HELD, BOOKED, BLOCKED)
@@ -139,27 +154,16 @@
 - [x] Booking history (`GET /api/bookings` paginated newest-first; `GET /api/bookings/:id` own detail with items + event summary)
 - [x] Cancellation (`POST /api/bookings/:id/cancel` — unpaid bookings release stock; CONFIRMED blocked until refunds ship with payments)
 
-### Payment
-- [ ] Razorpay sandbox integration
-- [ ] Order creation
-- [ ] Payment initiation
-- [ ] Backend payment verification
-- [ ] Webhook handling
-- [ ] Signature verification
-- [ ] Idempotency
-- [ ] Failure handling
-
-### Digital Tickets
-- [ ] Ticket generation after booking
-- [ ] Unique ticket identifiers
-- [ ] QR code generation
-- [ ] Ticket retrieval
-
 ### Ticket Validation
 - [ ] QR scanning architecture
 - [ ] Ticket lookup
 - [ ] Valid/invalid/used states
 - [ ] Validation timestamp + validator tracking
+
+### Booking UI (Frontend)
+- [x] Booking widget on the event detail page (`apps/web/src/components/booking/booking-widget.tsx` — per-type quantity steppers capped by maxPerBooking/stock, live total, sale-window filtering, sign-in gate)
+- [x] End-to-end checkout (create booking → create order → Razorpay Checkout.js → verify → confirmation panel with ticket codes + QR images fetched from the QR endpoint)
+- [x] Failure handling in UI (checkout dismissed → held-seats message and retry; missing Razorpay keys → honest "payments not configured" error; per-step busy states)
 
 ### Cancellation / Refund
 - [ ] Cancellation eligibility checks

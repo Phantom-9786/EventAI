@@ -15,6 +15,10 @@ export const createBookingSchema = z.object({
   idempotencyKey: z.string().uuid('Invalid idempotency key'),
 });
 
+export const createPaymentOrderSchema = z.object({
+  bookingId: z.string().uuid('Invalid booking'),
+});
+
 export const verifyPaymentSchema = z.object({
   bookingId: z.string().uuid('Invalid booking'),
   razorpayOrderId: z.string().min(1),
@@ -27,5 +31,6 @@ export const cancelBookingSchema = z.object({
 });
 
 export type CreateBookingInput = z.infer<typeof createBookingSchema>;
+export type CreatePaymentOrderInput = z.infer<typeof createPaymentOrderSchema>;
 export type VerifyPaymentInput = z.infer<typeof verifyPaymentSchema>;
 export type CancelBookingInput = z.infer<typeof cancelBookingSchema>;
