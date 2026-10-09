@@ -11,6 +11,7 @@ import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'crypto';
 import type { TokenPayload, UserRole } from '@eventai/types';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import type { GoogleProfile } from './google-oauth.service';
 
 export const REFRESH_TOKEN_COOKIE = 'eventai_refresh_token';
@@ -59,6 +60,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly notifications: NotificationsService,
   ) {
     this.refreshTtlMs = parseDurationMs(
       this.configService.get<string>('REFRESH_TOKEN_EXPIRY'),
@@ -304,7 +306,7 @@ export class AuthService {
   async requestPasswordReset(email: string): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({
       where: { email },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, firstName: true, lastName: true },
     });
 
     if (user?.isActive) {
@@ -320,9 +322,19 @@ export class AuthService {
         },
       });
 
-      // Email delivery is handled by the worker in Phase 4.
-      // In development we log the raw token so the flow is testable.
-      this.logger.debug(`Password reset token for ${email}: ${token}`);
+      // Degrades gracefully: with no RESEND_API_KEY the send is skipped
+      // and the raw token is logged in dev so the flow stays testable.
+      void this.notifications
+        .sendPasswordResetEmail({
+          to: email,
+          holderName: `${user.firstName} ${user.lastName}`.trim() || 'there',
+          resetToken: token,
+          frontendUrl: this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000'),
+        })
+        .then((sent) => {
+          if (!sent) this.logger.debug(`Password reset token for ${email}: ${token}`);
+        })
+        .catch(() => undefined);
     }
 
     // Always the same response — do not leak whether the account exists

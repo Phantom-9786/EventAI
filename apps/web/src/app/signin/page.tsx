@@ -96,6 +96,11 @@ export default function SignInPage() {
             className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
+        <div className="flex items-center justify-between text-sm">
+          <Link href="/forgot-password" className="text-muted-foreground hover:text-foreground hover:underline">
+            Forgot password?
+          </Link>
+        </div>
         <Button type="submit" disabled={submitting}>
           {submitting && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
           Sign In

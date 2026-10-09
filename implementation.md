@@ -61,7 +61,7 @@
 - [x] Password hashing (Argon2id)
 - [x] JWT tokens / session management (rotating refresh sessions, hashed at rest)
 - [x] Secure cookies (httpOnly, sameSite=lax, path-scoped refresh cookie)
-- [x] Password reset architecture (hashed single-use tokens, 1h expiry; email delivery deferred to Phase 4 worker)
+- [x] Password reset architecture (hashed single-use tokens, 1h expiry) + complete self-service flow: `sendPasswordResetEmail` via Resend (skipped-with-log without a key), `/forgot-password` + `/reset-password` pages, "Forgot password?" link on `/signin` — verified live end-to-end against the seeded DB
 - [x] Email verification architecture (schema-ready: `is_email_verified`; flow pending)
 - [x] Change password
 - [x] Rate limiting on auth endpoints (ThrottlerGuard, 10 req/min on auth)
@@ -253,10 +253,10 @@
 ---
 
 ## Phase 6 — Production Polish
-**Status: PARTIAL — 145 unit tests, Playwright smoke suite (7/7), CI workflow, and the full docs/ set shipped; observability tooling, integration tests, and live third-party verification pending**
+**Status: PARTIAL — 147 unit tests, Playwright smoke suite (7/7), CI workflow, and the full docs/ set shipped; observability tooling, integration tests, and live third-party verification pending**
 
 ### Testing
-- [x] Unit tests (145 passing across 12 suites: auth incl. Google cases, google-oauth service, users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback/cancellation-email, payments incl. signature/webhook/refund/refund-email, AI service, admin stats + user/event/organizer management, health)
+- [x] Unit tests (147 passing across 12 suites: auth incl. Google + password-reset-email cases, google-oauth service, users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback/cancellation-email, payments incl. signature/webhook/refund/refund-email, AI service, admin stats + user/event/organizer management, health)
 - [ ] Integration tests (needs a live Postgres in CI — natural next step)
 - [x] Concurrency logic covered at unit level (conditional-decrement rollback prevents double booking; real parallel-run test pending)
 - [x] E2E tests (Playwright smoke suite `e2e/smoke.spec.ts` — 7/7: landing, discovery, search, event detail + tickets, categories/venues, seeded sign-in, auth gate; booking/pay e2e still pending real Razorpay keys)

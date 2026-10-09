@@ -84,6 +84,26 @@ export class NotificationsService {
     });
   }
 
+  async sendPasswordResetEmail(input: {
+    to: string;
+    holderName: string;
+    resetToken: string;
+    frontendUrl: string;
+  }): Promise<boolean> {
+    const resetUrl = `${input.frontendUrl.replace(/\/$/, '')}/reset-password?token=${input.resetToken}`;
+    return this.sendEmail({
+      to: input.to,
+      subject: 'Reset your EventAI password',
+      html: `
+        <p>Hi ${input.holderName},</p>
+        <p>We received a request to reset your EventAI password. This link is valid for 1 hour:</p>
+        <p><a href="${resetUrl}">Reset your password</a></p>
+        <p>If you didn't request this, you can safely ignore this email — your password will not change.</p>
+        <p>— EventAI</p>
+      `,
+    });
+  }
+
   async sendBookingCancellation(input: {
     to: string;
     holderName: string;

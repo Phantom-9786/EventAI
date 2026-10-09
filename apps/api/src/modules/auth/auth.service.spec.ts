@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AuthService } from './auth.service';
 import type { GoogleProfile } from './google-oauth.service';
 
@@ -43,6 +44,7 @@ describe('AuthService', () => {
       get: jest.fn((key: string) => {
         if (key === 'JWT_SECRET') return 'test-secret-test-secret';
         if (key === 'REFRESH_TOKEN_EXPIRY') return '30d';
+        if (key === 'FRONTEND_URL') return 'http://localhost:3000';
         return undefined;
       }),
     };
@@ -53,6 +55,14 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: configService },
+        {
+          provide: NotificationsService,
+          useValue: {
+            sendEmail: jest.fn().mockResolvedValue(true),
+            sendPasswordResetEmail: jest.fn().mockResolvedValue(false),
+            sendBookingConfirmation: jest.fn().mockResolvedValue(true),
+          },
+        },
       ],
     }).compile();
 
@@ -256,18 +266,64 @@ describe('AuthService', () => {
   });
 
   describe('requestPasswordReset', () => {
+    let sendPasswordResetEmail: jest.Mock;
+
+    beforeEach(() => {
+      sendPasswordResetEmail = (service as unknown as {
+        notifications: { sendPasswordResetEmail: jest.Mock };
+      }).notifications.sendPasswordResetEmail;
+    });
+
     it('returns the same generic message whether or not the account exists', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       const missing = await service.requestPasswordReset('ghost@example.com');
       expect(missing.message).toContain('If an account with that email exists');
       expect(prisma.passwordReset.create).not.toHaveBeenCalled();
+      expect(sendPasswordResetEmail).not.toHaveBeenCalled();
 
-      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', isActive: true });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        isActive: true,
+        firstName: 'Test',
+        lastName: 'User',
+      });
       const existing = await service.requestPasswordReset('test@example.com');
       expect(existing.message).toBe(missing.message);
       expect(prisma.passwordReset.create).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ email: 'test@example.com' }) }),
       );
+    });
+
+    it('sends a reset email pointing at the frontend with the raw token', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'user-1',
+        isActive: true,
+        firstName: 'Test',
+        lastName: 'User',
+      });
+
+      await service.requestPasswordReset('test@example.com');
+
+      expect(sendPasswordResetEmail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'test@example.com',
+          holderName: 'Test User',
+          resetToken: expect.stringMatching(/^[0-9a-f]{64}$/),
+          frontendUrl: 'http://localhost:3000',
+        }),
+      );
+      // The token stored in the database is hashed, not the raw token
+      const stored = prisma.passwordReset.create.mock.calls[0][0].data.token;
+      expect(stored).not.toBe(sendPasswordResetEmail.mock.calls[0][0].resetToken);
+    });
+
+    it('does not send a reset email for an inactive account', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', isActive: false });
+
+      await service.requestPasswordReset('test@example.com');
+
+      expect(prisma.passwordReset.create).not.toHaveBeenCalled();
+      expect(sendPasswordResetEmail).not.toHaveBeenCalled();
     });
   });
 });

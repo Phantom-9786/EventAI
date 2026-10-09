@@ -194,7 +194,7 @@ Helmet, CORS (FRONTEND_URL origin, credentials), cookie-parser, global Validatio
 ## Testing Status
 
 - Jest configured in `apps/api` (unit) with `test/jest-e2e.json` for e2e
-- 145 passing unit tests across 12 suites (health, auth service incl. Google cases, google-oauth service, users, events, tickets, organizers, venues, bookings incl. cancellation-email hook, payments incl. refund-email hook, AI service, admin stats + user management + event moderation + organizer verification)
+- 147 passing unit tests across 12 suites (health, auth service incl. Google + password-reset-email cases, google-oauth service, users, events, tickets, organizers, venues, bookings incl. cancellation-email hook, payments incl. refund-email hook, AI service, admin stats + user management + event moderation + organizer verification)
 - Playwright smoke suite (`e2e/smoke.spec.ts`, `npx playwright test` with auto-started dev web server): 7/7 passing against the seeded stack — landing, discovery, search narrowing, event detail + ticket table, categories/venues, seeded sign-in, unauthenticated tickets gate. Requires PostgreSQL + Redis (docker compose up), seeded DB (`npm run db:seed`), and the API on :4000
 - No tests yet in web/worker/packages
 
@@ -218,7 +218,7 @@ Docker Compose infra services + per-app Dockerfiles exist. GitHub Actions CI wor
 - Frontend has no tests yet (API client, auth provider, pages are untested; web `test` script is a placeholder)
 - Landing page uses placeholder content; not yet backed by the API
 - API boot requires reachable PostgreSQL (PrismaService fails fast); frontend pages degrade gracefully to empty states when the API is unreachable
-- Password reset email delivery not wired (token logged in dev; same Resend dependency as confirmation emails)
+- Password reset: full self-service flow (`/forgot-password` → email with 1-hour single-use token → `/reset-password`); with no `RESEND_API_KEY` the email is skipped and the raw token is logged in dev — live delivery blocked on a real key
 
 ## Payments & Digital Tickets Architecture
 
@@ -240,15 +240,15 @@ See `docs/architecture-decisions.md` (ADRs 001–014).
 
 ## Current Phase
 
-Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE): auth incl. Google OAuth (live login pending real Google Cloud credentials), RBAC, profiles, events/FTS, ticket types, venues + Leaflet maps, frontend pages. Phase 3 — Booking Engine (COMPLETE except seat-level selection, deferred and documented): booking core + Razorpay payments + refunds + digital tickets with QR + check-in + booking UI. Phase 4 — Platform Engineering (COMPLETE except BullMQ split, charts/analytics, and audit logs — all documented as deferred): expiry cron, Resend confirmation + cancellation + refund emails, organizer stats + dashboard + attendee list + door scanner, admin stats + user management + event moderation + organizer verification (API + UI), Redis caching via CacheService. Phase 5 — AI Layer (PARTIAL): catalog-grounded Grok chat + similar-event recommendations + `/ai` page shipped (blocked on a real `GROK_API_KEY`); Pinecone RAG and tool-calling deferred. Phase 6 — Production Polish (PARTIAL): 145 unit tests + Playwright smoke suite 7/7, CI workflow, docs/ set complete; observability tooling and live third-party verification pending.
+Phase 1 — Foundation (COMPLETE). Phase 2 — Core Platform (COMPLETE): auth incl. Google OAuth (live login pending real Google Cloud credentials) + self-service password reset, RBAC, profiles, events/FTS, ticket types, venues + Leaflet maps, frontend pages. Phase 3 — Booking Engine (COMPLETE except seat-level selection, deferred and documented): booking core + Razorpay payments + refunds + digital tickets with QR + check-in + booking UI. Phase 4 — Platform Engineering (COMPLETE except BullMQ split, charts/analytics, and audit logs — all documented as deferred): expiry cron, Resend confirmation + cancellation + refund emails, organizer stats + dashboard + attendee list + door scanner, admin stats + user management + event moderation + organizer verification (API + UI), Redis caching via CacheService. Phase 5 — AI Layer (PARTIAL): catalog-grounded Grok chat + similar-event recommendations + `/ai` page shipped (blocked on a real `GROK_API_KEY`); Pinecone RAG and tool-calling deferred. Phase 6 — Production Polish (PARTIAL): 147 unit tests + Playwright smoke suite 7/7, CI workflow, docs/ set complete; observability tooling and live third-party verification pending.
 
 ## Current Task
 
-Phase 4 admin management batch: `GET /api/admin/users|events|organizers` (search/filter/paginate), `PATCH /api/admin/users/:id/status` (deactivate + session revoke, self-deactivation refused), `POST /api/admin/events/:id/moderate` (cancel published events, logged reason), `PATCH /api/admin/organizers/:id/verification` (verified badge toggle) — verified live with the seeded admin. New schemas in `packages/validation/src/admin.ts`. `/admin` UI now has Users/Events/Organizers tabs (search, filters, pagination, activate/deactivate, cancel-event moderation, verify-badge toggle). Cancellation + refund emails wired: `sendBookingCancellation` fires after unpaid-booking cancellation (bookings service), `sendRefundConfirmation` after a Razorpay refund (payments service) — both fire-and-forget with Resend-placeholder skip behavior. Unit tests now 145.
+Password-reset completion (Phase 2 auth closure): `sendPasswordResetEmail` in NotificationsService (1-hour link to `/reset-password?token=...`), `requestPasswordReset` fires it fire-and-forget and only logs the raw token when the email is skipped (no `RESEND_API_KEY`); new `/forgot-password` and `/reset-password` pages with a "Forgot password?" link on `/signin`. Verified live end-to-end against the seeded DB (forgot → reset → login with the new password → restored seed password). Unit tests now 147.
 
 ## Next Task
 
-Remaining Phase 6 work: production readiness (structured logging, error tracking, Redis/worker health depth, integration tests in CI), then credential-blocked verifications (Razorpay sandbox, `GROK_API_KEY`, `RESEND_API_KEY`, Google Cloud OAuth client) as keys arrive. UI/UX polish and public deployment are explicitly deferred by the user.
+Remaining Phase 6 work: structured logging + error tracking, CI e2e job (needs the workflow pushed to a remote to verify), then credential-blocked verifications (Razorpay sandbox, `GROK_API_KEY`, `RESEND_API_KEY`, Google Cloud OAuth client) as keys arrive. UI/UX polish and public deployment are explicitly deferred by the user.
 
 ## Last Completed Checkpoint
 
