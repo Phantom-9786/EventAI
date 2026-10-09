@@ -47,6 +47,22 @@ export class EventsController {
     return { event: await this.eventsService.getPublishedEvent(idOrSlug) };
   }
 
+  @Public()
+  @Get(':idOrSlug/similar')
+  @ApiOperation({ summary: 'Upcoming events similar to this one (category/city based)' })
+  async similar(
+    @Param('idOrSlug') idOrSlug: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsed = Number.parseInt(limit ?? '', 10);
+    return {
+      events: await this.eventsService.findSimilarEvents(
+        idOrSlug,
+        Number.isInteger(parsed) ? Math.min(Math.max(parsed, 1), 8) : 4,
+      ),
+    };
+  }
+
   @Roles('ORGANIZER')
   @Post()
   @HttpCode(HttpStatus.CREATED)

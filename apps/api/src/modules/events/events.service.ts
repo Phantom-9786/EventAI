@@ -145,6 +145,58 @@ export class EventsService {
     return event;
   }
 
+  /**
+   * Content-based recommendations: upcoming published events ranked by
+   * category match first, then same-city, then nearest in time. Postgres
+   * filtering plus in-memory scoring — no external vector store needed.
+   */
+  async findSimilarEvents(idOrSlug: string, limit = 4) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrSlug);
+    const event = await this.prisma.event.findFirst({
+      where: { ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }), status: 'PUBLISHED' },
+      select: { id: true, categoryId: true, venue: { select: { city: true } } },
+    });
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+
+    const include = {
+      category: { select: { id: true, name: true, slug: true } },
+      venue: { select: { id: true, name: true, city: true } },
+      organizer: { select: { id: true, organizationName: true } },
+    } satisfies Prisma.EventInclude;
+
+    // Same-category candidates are the strongest signal; same-city others
+    // fill the remainder. Both pools are upcoming published events.
+    const [sameCategory, sameCity] = await this.prisma.$transaction([
+      this.prisma.event.findMany({
+        where: {
+          id: { not: event.id },
+          status: 'PUBLISHED',
+          startDate: { gte: new Date() },
+          categoryId: event.categoryId,
+        },
+        include,
+        orderBy: { startDate: 'asc' },
+        take: limit,
+      }),
+      this.prisma.event.findMany({
+        where: {
+          id: { not: event.id },
+          status: 'PUBLISHED',
+          startDate: { gte: new Date() },
+          categoryId: { not: event.categoryId },
+          venue: { city: { equals: event.venue.city, mode: 'insensitive' } },
+        },
+        include,
+        orderBy: { startDate: 'asc' },
+        take: limit,
+      }),
+    ]);
+
+    return [...sameCategory, ...sameCity].slice(0, limit);
+  }
+
   async updateEvent(organizerId: string, idOrSlug: string, input: UpdateEventInput) {
     const owned = await this.findOwned(organizerId, idOrSlug);
 

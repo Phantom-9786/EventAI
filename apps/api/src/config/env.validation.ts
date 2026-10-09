@@ -13,6 +13,10 @@ export interface EnvConfig {
   RAZORPAY_KEY_ID?: string;
   RAZORPAY_KEY_SECRET?: string;
   RAZORPAY_WEBHOOK_SECRET?: string;
+  GROK_API_KEY?: string;
+  GROK_MODEL?: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvConfig {

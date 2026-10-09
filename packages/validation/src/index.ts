@@ -8,4 +8,5 @@ export * from './event';
 export * from './venue';
 export * from './ticket';
 export * from './booking';
+export * from './ai';
 export * from './common';

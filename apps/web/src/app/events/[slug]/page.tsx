@@ -11,10 +11,12 @@ import {
   Ticket,
 } from 'lucide-react';
 import { BookingWidget } from '@/components/booking/booking-widget';
+import { EventCard } from '@/components/events/event-card';
 import {
   formatEventDate,
   formatPrice,
   getEvent,
+  getSimilarEvents,
   type TicketTypeView,
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -57,6 +59,7 @@ function saleWindow(t: TicketTypeView): string | null {
 export default async function EventDetailPage({ params }: EventDetailPageProps) {
   const event = await getEvent(params.slug).catch(() => null);
   if (!event) notFound();
+  const similar = await getSimilarEvents(event.slug, 4).catch(() => []);
 
   const startDate = new Date(event.startDate);
   const endDate = new Date(event.endDate);
@@ -282,6 +285,18 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           </div>
         </aside>
       </div>
+
+      {/* Recommendations */}
+      {similar.length > 0 && (
+        <section className="mt-14">
+          <h2 className="text-xl font-semibold">You might also like</h2>
+          <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {similar.map((s) => (
+              <EventCard key={s.id} event={s} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

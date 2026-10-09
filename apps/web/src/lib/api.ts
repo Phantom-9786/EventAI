@@ -122,6 +122,13 @@ export async function getEvent(slug: string): Promise<EventDetail> {
   return event;
 }
 
+export async function getSimilarEvents(slug: string, limit = 4): Promise<EventSummary[]> {
+  const { events } = await getJson<{ events: EventSummary[] }>(
+    `/events/${encodeURIComponent(slug)}/similar?limit=${limit}`,
+  );
+  return events;
+}
+
 export async function getCategories(): Promise<Category[]> {
   const { categories } = await getJson<{ categories: Category[] }>('/categories');
   return categories;

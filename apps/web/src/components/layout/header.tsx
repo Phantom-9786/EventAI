@@ -12,6 +12,7 @@ const navLinks = [
   { href: '/events', label: 'Discover' },
   { href: '/categories', label: 'Categories' },
   { href: '/venues', label: 'Venues' },
+  { href: '/ai', label: 'AI Assistant' },
 ];
 
 export function Header() {
