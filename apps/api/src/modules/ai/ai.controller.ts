@@ -1,5 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { aiChatSchema } from '@eventai/validation';
 import type { AiChatInput } from '@eventai/validation';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -14,6 +15,9 @@ export class AiController {
   @Public()
   @Post('chat')
   @HttpCode(HttpStatus.OK)
+  // Stricter than the global guard so anonymous callers cannot easily exhaust
+  // the provider quota (global: RATE_LIMIT_MAX per RATE_LIMIT_TTL).
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: 'Chat with the EventAI assistant (grounded in the live catalog)' })
   async chat(@Body(new ZodValidationPipe(aiChatSchema)) body: AiChatInput) {
     return {

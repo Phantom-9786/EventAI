@@ -13,8 +13,8 @@ export interface EnvConfig {
   RAZORPAY_KEY_ID?: string;
   RAZORPAY_KEY_SECRET?: string;
   RAZORPAY_WEBHOOK_SECRET?: string;
-  GROK_API_KEY?: string;
-  GROK_MODEL?: string;
+  GROQ_API_KEY?: string;
+  GROQ_MODEL?: string;
   BREVO_API_KEY?: string;
   EMAIL_FROM?: string;
   // Google OAuth 2.0 (optional — sign-in with Google is feature-gated)

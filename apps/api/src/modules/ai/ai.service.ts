@@ -7,15 +7,15 @@ interface ChatMessage {
   content: string;
 }
 
-interface XaiCompletionResponse {
+interface LlmCompletionResponse {
   choices?: { message?: { content?: string } }[];
 }
 
 /**
- * EventAI assistant backed by xAI (Grok) via the OpenAI-compatible
+ * EventAI assistant backed by Groq via the OpenAI-compatible
  * chat-completions API. The live catalog of upcoming events is injected
  * into the system prompt so recommendations are grounded in real data.
- * Degrades gracefully: without GROK_API_KEY the endpoint returns 503.
+ * Degrades gracefully: without GROQ_API_KEY the endpoint returns 503.
  */
 @Injectable()
 export class AiService {
@@ -24,8 +24,8 @@ export class AiService {
   constructor(private readonly prisma: PrismaService) {}
 
   isConfigured(): boolean {
-    const key = process.env.GROK_API_KEY;
-    return !!key && !key.startsWith('xai-xxxx');
+    const key = process.env.GROQ_API_KEY;
+    return !!key && !key.startsWith('gsk_xxxx');
   }
 
   private async loadCatalog() {
@@ -60,7 +60,7 @@ export class AiService {
   async chat(messages: AiChatInput['messages']): Promise<string> {
     if (!this.isConfigured()) {
       throw new ServiceUnavailableException(
-        'The AI assistant is not configured on this server yet (missing GROK_API_KEY).',
+        'The AI assistant is not configured on this server yet (missing GROQ_API_KEY).',
       );
     }
 
@@ -92,14 +92,14 @@ export class AiService {
 
     let response: Response;
     try {
-      response = await fetch('https://api.x.ai/v1/chat/completions', {
+      response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.GROK_API_KEY}`,
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.GROK_MODEL ?? 'grok-3-mini',
+          model: process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile',
           messages: payload,
           temperature: 0.6,
           max_tokens: 600,
@@ -108,20 +108,20 @@ export class AiService {
       });
     } catch (error) {
       this.logger.warn(
-        `xAI request failed: ${error instanceof Error ? error.message : 'unknown'}`,
+        `Groq request failed: ${error instanceof Error ? error.message : 'unknown'}`,
       );
       throw new ServiceUnavailableException('The AI assistant is unreachable right now.');
     }
 
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { error?: { message?: string } };
-      this.logger.warn(`xAI error ${response.status}: ${body.error?.message ?? 'unknown'}`);
+      this.logger.warn(`Groq error ${response.status}: ${body.error?.message ?? 'unknown'}`);
       throw new ServiceUnavailableException(
         'The AI assistant could not process this request. Please try again later.',
       );
     }
 
-    const body = (await response.json()) as XaiCompletionResponse;
+    const body = (await response.json()) as LlmCompletionResponse;
     const reply = body.choices?.[0]?.message?.content?.trim();
     if (!reply) {
       throw new ServiceUnavailableException('The AI assistant returned an empty reply.');

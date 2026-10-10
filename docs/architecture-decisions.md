@@ -107,17 +107,19 @@
 
 ---
 
-## ADR-009: Grok/xAI with Provider Abstraction
-**Date:** 2026-10-08
-**Decision:** Use Grok/xAI as the primary LLM provider, accessed through a provider abstraction layer.
+## ADR-009: LLM Provider — Grok/xAI, migrated to Groq
+**Date:** 2026-10-08 (amended 2026-10-10: provider migrated to Groq)
+**Decision:** Use Groq as the primary LLM provider. The original decision chose Grok/xAI; the provider was migrated to Groq on 2026-10-10 at the owner's direction.
 **Context:** The developer needs an affordable LLM API. The architecture must remain provider-agnostic.
 **Options Considered:**
 1. OpenAI — expensive, industry standard
 2. Gemini — Google, competitive pricing
-3. Grok/xAI — affordable, available
-**Chosen:** Grok/xAI (with abstraction allowing future provider swap)
-**Reason:** Budget constraints. The provider abstraction (`ai/llm.ts` → `providers/grok.provider.ts`) ensures the AI layer can be swapped without rewriting business logic.
-**Trade-offs:** Grok may have fewer features than OpenAI, but the abstraction mitigates lock-in risk.
+3. Grok/xAI — affordable, available (original choice)
+4. Groq — OpenAI-compatible API, generous free tier, fast inference (final choice)
+**Chosen:** Groq (`https://api.groq.com/openai/v1/chat/completions`, default model `llama-3.3-70b-versatile` from Groq's production catalog, configurable via `GROQ_MODEL`)
+**Reason:** Budget constraints and free-tier availability. Because both providers expose the same OpenAI-compatible chat-completions shape, the migration touched only one service (`ai.service.ts`) plus env/docs — demonstrating that the "abstraction" this ADR originally promised is effectively delivered by the OpenAI-compatible standard itself rather than a custom adapter layer.
+**Honest amendment:** the originally documented abstraction files (`ai/llm.ts`, `providers/grok.provider.ts`) were never implemented — the integration is a single service with a hardcoded OpenAI-compatible endpoint. A future provider swap means editing that one file (and env names), as this migration showed.
+**Trade-offs:** Groq's model catalog differs from xAI's; model IDs are configurable via `GROQ_MODEL` to absorb future deprecations (see Groq's deprecation policy). Single-provider integration, no failover (deliberate — see docs/ai.md deferrals).
 
 ---
 
@@ -199,6 +201,6 @@
 **Date:** 2026-10-10
 **Decision:** Run integration tests (`apps/api/test/*.int-spec.ts`) against a real PostgreSQL database provisioned by `prisma migrate deploy` — the same migrations production uses — in a dedicated test database; wire them into CI as a step after unit tests with a `postgres:16` service container.
 **Context:** The 180 unit tests mock Prisma entirely, so transactional behavior (stock decrements, FTS triggers, unique-constraint effects) was never exercised against a real engine.
-**Implementation:** Separate Jest config (`test/jest-integration.json`, serial `maxWorkers: 1`, dedicated `test/tsconfig.integration.json` because the main tsconfig's `rootDir` is `src`). A hard guard in `test/db.ts` refuses to run against any database whose name does not contain "test". Every fixture is namespaced with a unique per-run suffix so assertions stay exact on the shared database. All external services (Brevo, Razorpay, Google, Grok) are stubbed — CI never needs real credentials. Env: `TEST_DATABASE_URL`.
+**Implementation:** Separate Jest config (`test/jest-integration.json`, serial `maxWorkers: 1`, dedicated `test/tsconfig.integration.json` because the main tsconfig's `rootDir` is `src`). A hard guard in `test/db.ts` refuses to run against any database whose name does not contain "test". Every fixture is namespaced with a unique per-run suffix so assertions stay exact on the shared database. All external services (Brevo, Razorpay, Google, Groq) are stubbed — CI never needs real credentials. Env: `TEST_DATABASE_URL`.
 **Findings:** The suite immediately caught a real bug — two logins within the same second produced byte-identical JWTs (same payload + `iat`), violating the unique `sessions.token` hash; fixed by adding a random `jti` claim to the token payload (ADR note: no behavioral change otherwise).
 **Trade-offs:** Serial execution is slower than parallel; suites share one database so fixtures must stay self-scoped; CI runs migrations from scratch on every run (cost is ~2s).

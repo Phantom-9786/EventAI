@@ -11,7 +11,7 @@ import { PrismaClient } from '@eventai/database';
  * are isolated from dev/production data in three ways:
  *  1. A dedicated database whose name must contain "test" (hard guard).
  *  2. Every fixture is namespaced with a unique per-run suffix.
- *  3. All external services (Brevo, Razorpay, Google, Grok) are stubbed
+ *  3. All external services (Brevo, Razorpay, Google, Groq) are stubbed
  *     in the specs — no network calls, no real credentials required.
  */
 

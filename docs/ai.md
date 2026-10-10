@@ -2,10 +2,10 @@
 
 ## Assistant
 
-`POST /api/ai/chat` (public) forwards a validated message history (≤12 turns) to xAI's OpenAI-compatible endpoint (`https://api.x.ai/v1/chat/completions`, model from `GROK_MODEL`, default `grok-3-mini`, 30s timeout).
+`POST /api/ai/chat` (public, rate-limited to 10 requests/min per IP on top of the global throttle) forwards a validated message history (≤12 turns) to Groq's OpenAI-compatible endpoint (`https://api.groq.com/openai/v1/chat/completions`, model from `GROQ_MODEL`, default `llama-3.3-70b-versatile`, 30s timeout).
 
 - **Grounding**: the system prompt injects the next 12 upcoming published events (title, city, category, from-price, link path) and instructs the model to recommend only catalog events — no hallucinated events, no user data leaves the system.
-- **Configuration detection**: `isConfigured()` treats a missing key and the shipped `xai-xxxx…` placeholder as unconfigured and returns **503** with an operator-actionable message instead of leaking an upstream error.
+- **Configuration detection**: `isConfigured()` treats a missing key and the shipped `gsk_xxxx…` placeholder as unconfigured and returns **503** with an operator-actionable message instead of leaking an upstream error.
 - **Errors**: upstream failures map to 503 with a stable message; the frontend (`/ai`) renders them inline.
 
 ## Recommendations

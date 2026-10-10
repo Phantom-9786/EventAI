@@ -13,19 +13,21 @@ describe('AiService', () => {
       providers: [AiService, { provide: PrismaService, useValue: prisma }],
     }).compile();
     service = moduleRef.get(AiService);
-    delete process.env.GROK_API_KEY;
+    delete process.env.GROQ_API_KEY;
+    delete process.env.GROQ_MODEL;
   });
 
   afterEach(() => {
-    delete process.env.GROK_API_KEY;
+    delete process.env.GROQ_API_KEY;
+    delete process.env.GROQ_MODEL;
     jest.restoreAllMocks();
   });
 
   it('treats a missing or placeholder key as unconfigured', () => {
     expect(service.isConfigured()).toBe(false);
-    process.env.GROK_API_KEY = 'xai-xxxxxxxxxxxxxxxxxxxxxxxx';
+    process.env.GROQ_API_KEY = 'gsk_xxxxxxxxxxxxxxxxxxxxxxxx';
     expect(service.isConfigured()).toBe(false);
-    process.env.GROK_API_KEY = 'xai-real-key-1234567890';
+    process.env.GROQ_API_KEY = 'gsk-real-key-1234567890';
     expect(service.isConfigured()).toBe(true);
   });
 
@@ -38,7 +40,7 @@ describe('AiService', () => {
   });
 
   it('returns the assistant reply grounded in the catalog when configured', async () => {
-    process.env.GROK_API_KEY = 'xai-real-key-1234567890';
+    process.env.GROQ_API_KEY = 'gsk-real-key-1234567890';
     prisma.event.findMany.mockResolvedValue([
       {
         title: 'Summer Gig',
@@ -60,8 +62,50 @@ describe('AiService', () => {
     const reply = await service.chat([{ role: 'user', content: 'What should I attend?' }]);
 
     expect(reply).toBe('Go to Summer Gig!');
-    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
-    const body = JSON.parse(String(init.body)) as { messages: { content: string }[] };
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.groq.com/openai/v1/chat/completions');
+    const body = JSON.parse(String(init.body)) as {
+      model: string;
+      messages: { content: string }[];
+    };
+    expect(body.model).toBe('llama-3.3-70b-versatile');
     expect(body.messages[0].content).toContain('Summer Gig');
+  });
+
+  it('maps provider errors to 503 with a generic message', async () => {
+    process.env.GROQ_API_KEY = 'gsk-real-key-1234567890';
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: { message: 'rate limit exceeded' } }), { status: 429 }),
+    );
+
+    await expect(service.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(
+      new ServiceUnavailableException(
+        'The AI assistant could not process this request. Please try again later.',
+      ),
+    );
+  });
+
+  it('maps network failures to 503', async () => {
+    process.env.GROQ_API_KEY = 'gsk-real-key-1234567890';
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));
+
+    await expect(service.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(
+      new ServiceUnavailableException('The AI assistant is unreachable right now.'),
+    );
+  });
+
+  it('rejects empty replies with 503', async () => {
+    process.env.GROQ_API_KEY = 'gsk-real-key-1234567890';
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ choices: [{ message: { content: '   ' } }] }), {
+          status: 200,
+        }),
+      );
+
+    await expect(service.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(
+      new ServiceUnavailableException('The AI assistant returned an empty reply.'),
+    );
   });
 });

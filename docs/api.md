@@ -16,7 +16,7 @@ Base URL `http://localhost:4000/api` (global prefix). Interactive docs at `/api/
 | Venues | `GET /venues`, `GET /venues/:id` (public) |
 | Bookings | `POST /bookings` (idempotency key), `GET /bookings`, `GET /bookings/:id`, `POST /bookings/:id/cancel` (delegates to refund when CONFIRMED) |
 | Payments | `POST /payments/order`, `POST /payments/verify`, `POST /payments/webhook` (public, raw-body HMAC), `POST /payments/refund`, `GET /payments/tickets/:id/qr` |
-| AI | `POST /ai/chat` (public; 503 with actionable message when `GROK_API_KEY` is missing/placeholder) |
+| AI | `POST /ai/chat` (public; 10 req/min per IP on top of the global throttle; 503 with actionable message when `GROQ_API_KEY` is missing/placeholder) |
 | Admin | `GET /admin/stats` (admin) |
 
 ## Conventions

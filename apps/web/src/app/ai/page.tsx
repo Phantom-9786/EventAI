@@ -101,7 +101,7 @@ export default function AiPage() {
           {error}{' '}
           {error.includes('not configured') && (
             <span className="text-muted-foreground">
-              The operator needs to set a <code>GROK_API_KEY</code> on the API server.
+              The operator needs to set a <code>GROQ_API_KEY</code> on the API server.
             </span>
           )}
         </p>
