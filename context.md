@@ -270,7 +270,9 @@ Previous: Brevo email migration (per user request — Resend retired): `Notifica
 
 ## Next Task
 
-Razorpay checkout round-trip is now live-verified end-to-end. Next: refund flow verification (`POST /api/payments/refund` on a CONFIRMED Test Mode booking), then remaining credential-blocked verifications: `GROK_API_KEY`, Sentry DSN. UI/UX polish and public deployment are explicitly deferred by the user.
+Razorpay **refund flow live-verified 2026-10-10 (Test Mode):** full ₹499 refund of the CONFIRMED booking (`9326a8d6…` / `pay_Tm3b2kUdbA2nmL`) via `POST /api/payments/refund` with the signed-in user's own session token (invoked from the app's own origin — no auth bypass; note: the frontend has no cancel/refund button yet, so the endpoint was called the way its API client would). Razorpay accepted it: refund id `rfnd_Tm3tHQgeeSP85G`, `amount_refunded: 49900`, `refund_status: full`, payment `refunded`. DB verified: payment REFUNDED (+refundId/refundAmount), booking REFUNDED, ticket VALID→CANCELLED, GA stock restored exactly once (199→200). Idempotency verified: identical repeat request → 409 "This booking was already refunded", zero state change, stock still 200. Refund unit tests pass (21/21 in payments.service.spec: success, non-confirmed 409, already-refunded 409, intruder 404). Known gaps (documented, not defects): no `refund.processed` webhook handling (sync response is authoritative); refund-confirmation email fired fire-and-forget (delivery not separately verified this run). Refund verification used the earlier UI-checkout booking because the embedded browser's coordinate space broke mid-session (known glitch); the booking itself was created through the full UI flow minutes earlier.
+
+Razorpay checkout round-trip is live-verified end-to-end (checkout + verify + idempotency + refund). Remaining credential-blocked verifications: `GROK_API_KEY`, Sentry DSN. UI/UX polish and public deployment are explicitly deferred by the user.
 
 ## Last Completed Checkpoint
 

@@ -171,7 +171,7 @@
 ### Cancellation / Refund
 - [x] Cancellation eligibility checks (closed bookings 409; state re-checked inside the transaction)
 - [x] Booking cancellation flow (`POST /api/bookings/:id/cancel` with optional reason; unpaid → CANCELLED + stock released)
-- [x] Refund state management (`POST /api/payments/refund` — Razorpay `payments.refund`, payment → REFUNDED with refundId/refundAmount, booking → REFUNDED, VALID tickets → CANCELLED, stock restored; CONFIRMED cancel delegates here; re-check prevents double refund)
+- [x] Refund state management (`POST /api/payments/refund` — Razorpay `payments.refund`, payment → REFUNDED with refundId/refundAmount, booking → REFUNDED, VALID tickets → CANCELLED, stock restored; CONFIRMED cancel delegates here; re-check prevents double refund) — **live-verified 2026-10-10 (Test Mode):** full ₹499 refund of a CONFIRMED booking through the authenticated endpoint → Razorpay returned `rfnd_…` (`refund_status: full`, payment `refunded`), DB: payment REFUNDED + refundId/refundAmount stored, booking REFUNDED, ticket VALID→CANCELLED, stock restored exactly once (199→200). Repeat request correctly 409 with no state change. Note: no frontend cancel/refund button exists yet (UI gap); refund-webhook events (`refund.processed`) are not handled — the synchronous Razorpay response is authoritative.
 - [x] User notification (confirmation email fired on payment capture; refund status visible in My Tickets)
 
 ---
