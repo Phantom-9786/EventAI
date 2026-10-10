@@ -14,6 +14,7 @@ export interface EnvConfig {
   RAZORPAY_KEY_SECRET?: string;
   RAZORPAY_WEBHOOK_SECRET?: string;
   GROQ_API_KEY?: string;
+  GROQ_API_KEYS?: string;
   GROQ_MODEL?: string;
   BREVO_API_KEY?: string;
   EMAIL_FROM?: string;
