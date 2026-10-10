@@ -7,6 +7,7 @@
 - **Grounding**: the system prompt injects the next 12 upcoming published events (title, city, category, from-price, link path) and instructs the model to recommend only catalog events — no hallucinated events, no user data leaves the system.
 - **Configuration detection**: `isConfigured()` treats a missing key and the shipped `gsk_xxxx…` placeholder as unconfigured and returns **503** with an operator-actionable message instead of leaking an upstream error.
 - **Errors**: upstream failures map to 503 with a stable message; the frontend (`/ai`) renders them inline.
+- **Structured recommendations (2026-10-10)**: the model is instructed to append one final machine-readable line `EVENTS: <slug1>, <slug2>` (catalog slugs only). The backend strips the trailer from the prose, tolerates markdown decoration around it (`**EVENTS:**`), maps each slug to a **real, published, upcoming** catalog row (unknown/invented slugs are dropped — the model can never fabricate events, prices, or URLs), and returns `{ reply, events }` where `events` mirrors the web app's `EventSummary`. The `/ai` page renders the prose as safe Markdown (`react-markdown`; bold, lists, links — raw HTML is not rendered) and each event as the existing interactive `<EventCard showDescription />` (title, description, date, venue, price, image, organizer), linking to `/events/[slug]`. Replies with no recommendations are plain conversational Markdown with no cards.
 
 ## Multi-key management
 

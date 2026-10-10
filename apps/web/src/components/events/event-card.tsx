@@ -4,7 +4,14 @@ import type { EventSummary } from '@/lib/api';
 import { formatEventDate, formatPriceRange } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-export function EventCard({ event }: { event: EventSummary }) {
+export function EventCard({
+  event,
+  showDescription = false,
+}: {
+  event: EventSummary;
+  /** Optional: render the short description (used by the AI assistant cards). */
+  showDescription?: boolean;
+}) {
   return (
     <Link
       href={`/events/${event.slug}`}
@@ -39,6 +46,11 @@ export function EventCard({ event }: { event: EventSummary }) {
         <h3 className="line-clamp-2 font-semibold leading-snug group-hover:text-primary">
           {event.title}
         </h3>
+        {showDescription && event.shortDescription && (
+          <p className="line-clamp-2 text-xs text-muted-foreground">
+            {event.shortDescription}
+          </p>
+        )}
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <CalendarDays className="h-3.5 w-3.5 shrink-0" />
           {formatEventDate(event.startDate)}

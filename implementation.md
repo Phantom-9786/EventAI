@@ -236,6 +236,7 @@
 ### AI Event Assistant
 - [x] Chat endpoint (`POST /api/ai/chat` — public, zod-validated message history ≤12 turns)
 - [x] Catalog grounding (system prompt injects the next 12 upcoming published events with city, date, category, from-price and link path — the model is instructed to recommend only real events)
+- [x] Structured event recommendations (2026-10-10): `EVENTS:` trailer protocol — model emits catalog slugs only; backend strips it (markdown-tolerant) and maps slugs to real published/upcoming rows (`AiEventCard` ≡ web `EventSummary`; invented slugs dropped); `POST /ai/chat` returns `{ configured, reply, events }`; `/ai` renders prose via `react-markdown` + interactive `EventCard` grid (desktop/mobile responsive) linking to `/events/[slug]`. LIVE-VERIFIED: grounded reply with two real event cards in the UI. 3 dedicated unit tests (trailer strip + mapping, no-trailer, invented-slug drop).
 - [x] Chat UI (`/ai` — message list, busy state, error surfacing, header "AI Assistant" link)
 - [ ] Tool calling (searchEvents/booking-intent tools) — deferred; catalog grounding covers discovery
 - [ ] Conversation persistence — deferred (client-held history)

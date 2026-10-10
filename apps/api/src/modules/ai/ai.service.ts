@@ -16,6 +16,27 @@ interface LlmCompletionResponse {
   choices?: { message?: { content?: string } }[];
 }
 
+/**
+ * Shape mirrors the web app's EventSummary so the frontend can render the
+ * existing <EventCard> directly. Every field comes from real catalog rows —
+ * the model can only reference events, never define them.
+ */
+export interface AiEventCard {
+  id: string;
+  title: string;
+  slug: string;
+  shortDescription: string | null;
+  startDate: string;
+  endDate: string;
+  images: string[];
+  isFeatured: boolean;
+  minPrice: number | null;
+  maxPrice: number | null;
+  category: { id: string; name: string; slug: string };
+  venue: { id: string; name: string; city: string };
+  organizer: { id: string; organizationName: string };
+}
+
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_TIMEOUT_MS = 30_000;
 /** Bounded work per request: at most one attempt per key plus one transient retry. */
@@ -104,7 +125,84 @@ export class AiService {
     );
   }
 
-  async chat(messages: AiChatInput['messages']): Promise<string> {
+  /**
+   * Strips the machine-readable `EVENTS: slug1, slug2` trailer the model is
+   * instructed to append and returns the referenced slugs. Malformed output
+   * (missing line) simply yields no events — the prose is still shown.
+   */
+  private extractRecommendedSlugs(reply: string): { reply: string; slugs: string[] } {
+    // Tolerate markdown decoration the model sometimes adds (**EVENTS:** etc.).
+    const match = reply.match(/(^|\n)[*_\s]*EVENTS[*_\s]*:\s*([^\n]+)\s*$/i);
+    if (!match) return { reply: reply.trim(), slugs: [] };
+    const slugs = match[2]
+      .split(/[,\s]+/)
+      .map((s) =>
+        s
+          .replace(/^\/?events\//i, '')
+          .replace(/^[*_\s]+|[*_\s]+$/g, '')
+          .trim(),
+      )
+      .filter(Boolean);
+    const prose = (
+      reply.slice(0, match.index ?? 0) + reply.slice((match.index ?? 0) + match[0].length)
+    ).trim();
+    return { reply: prose, slugs };
+  }
+
+  /** Loads only real, published, upcoming catalog rows for the given slugs. */
+  private async mapRecommendedEvents(slugs: string[]): Promise<AiEventCard[]> {
+    if (slugs.length === 0) return [];
+    const events = await this.prisma.event.findMany({
+      where: {
+        slug: { in: slugs },
+        status: 'PUBLISHED',
+        startDate: { gte: new Date() },
+      },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        shortDescription: true,
+        startDate: true,
+        endDate: true,
+        images: true,
+        coverImage: true,
+        isFeatured: true,
+        category: { select: { id: true, name: true, slug: true } },
+        venue: { select: { id: true, name: true, city: true } },
+        organizer: { select: { id: true, organizationName: true } },
+        ticketTypes: {
+          where: { isActive: true },
+          select: { price: true },
+          orderBy: { price: 'asc' },
+        },
+      },
+    });
+    // Preserve the model's recommendation order when possible.
+    const bySlug = new Map(events.map((e) => [e.slug, e]));
+    const ordered = slugs
+      .map((s) => bySlug.get(s))
+      .filter((e): e is (typeof events)[number] => !!e);
+    return ordered.map((e) => ({
+      id: e.id,
+      title: e.title,
+      slug: e.slug,
+      shortDescription: e.shortDescription,
+      startDate: e.startDate.toISOString(),
+      endDate: e.endDate.toISOString(),
+      images: e.images.length > 0 ? e.images : e.coverImage ? [e.coverImage] : [],
+      isFeatured: e.isFeatured,
+      minPrice: e.ticketTypes[0]?.price ?? null,
+      maxPrice: e.ticketTypes.length > 0 ? e.ticketTypes[e.ticketTypes.length - 1].price : null,
+      category: e.category,
+      venue: e.venue,
+      organizer: { id: e.organizer.id, organizationName: e.organizer.organizationName ?? 'EventAI' },
+    }));
+  }
+
+  async chat(
+    messages: AiChatInput['messages'],
+  ): Promise<{ reply: string; events: AiEventCard[] }> {
     if (!this.isConfigured()) {
       throw new ServiceUnavailableException(
         'The AI assistant is not configured on this server yet (missing GROQ_API_KEY).',
@@ -130,9 +228,14 @@ export class AiService {
         content:
           'You are EventAI, a friendly assistant for an event ticketing platform in India. ' +
           'Help users discover events, plan visits, and answer general event questions. ' +
-          'Recommend only events from the catalog when asked for suggestions, and mention the event link path. ' +
+          'Recommend only events from the catalog when asked for suggestions. ' +
           'Prices are in INR. Keep answers concise (under 150 words). If you do not know something, say so.' +
-          catalogText,
+          catalogText +
+          '\n\nFormatting rules: write conversational prose — bold event names with **, use simple dash lists, ' +
+          'and keep it readable. Do NOT put event URLs, link paths, or price figures in the prose. ' +
+          'When you recommend one or more catalog events, end your reply with exactly one final line in this format: ' +
+          'EVENTS: <slug1>, <slug2> — using only slugs from the catalog above, comma-separated. ' +
+          'If you recommend no events, omit the EVENTS line entirely. Never invent slugs.',
       },
       ...messages,
     ];
@@ -210,11 +313,13 @@ export class AiService {
       }
 
       const body = (await response.json()) as LlmCompletionResponse;
-      const reply = body.choices?.[0]?.message?.content?.trim();
-      if (!reply) {
+      const rawReply = body.choices?.[0]?.message?.content?.trim();
+      if (!rawReply) {
         this.unavailable('The AI assistant returned an empty reply.');
       }
-      return reply;
+      const { reply, slugs } = this.extractRecommendedSlugs(rawReply);
+      const events = await this.mapRecommendedEvents(slugs);
+      return { reply, events };
     }
 
     // Every key is auth-failed or rate-limited — nothing left to try.

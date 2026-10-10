@@ -20,9 +20,11 @@ export class AiController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: 'Chat with the EventAI assistant (grounded in the live catalog)' })
   async chat(@Body(new ZodValidationPipe(aiChatSchema)) body: AiChatInput) {
+    const result = await this.aiService.chat(body.messages);
     return {
       configured: this.aiService.isConfigured(),
-      reply: await this.aiService.chat(body.messages),
+      reply: result.reply,
+      events: result.events,
     };
   }
 }

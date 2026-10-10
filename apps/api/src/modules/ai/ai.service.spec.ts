@@ -10,14 +10,43 @@ function groqResponse(status: number, body: unknown, headers?: Record<string, st
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-async function makeService(env: { key?: string; keys?: string }) {
+const CATALOG_ROW = {
+  id: 'evt-1',
+  title: 'Mumbai Indie Night',
+  slug: 'mumbai-indie-night',
+  shortDescription: 'An evening of indie music by the sea.',
+  startDate: new Date('2026-10-24T18:00:00Z'),
+  endDate: new Date('2026-10-24T22:00:00Z'),
+  images: [],
+  coverImage: 'https://cdn.example.test/indie-night.jpg',
+  isFeatured: false,
+  category: { id: 'cat-1', name: 'Music', slug: 'music' },
+  venue: { id: 'ven-1', name: 'Demo Arena', city: 'Mumbai' },
+  organizer: { id: 'org-1', organizationName: 'Indie Collective' },
+  ticketTypes: [{ price: 49900 }, { price: 149700 }],
+};
+
+function makePrismaMock(catalog: unknown[] = [], matched: unknown[] = []) {
+  return {
+    event: {
+      findMany: jest.fn().mockImplementation((args: { where: Record<string, unknown> }) =>
+        'slug' in args.where ? Promise.resolve(matched) : Promise.resolve(catalog),
+      ),
+    },
+  };
+}
+
+async function makeService(
+  env: { key?: string; keys?: string },
+  prisma = makePrismaMock(),
+) {
   delete process.env.GROQ_API_KEY;
   delete process.env.GROQ_API_KEYS;
   delete process.env.GROQ_MODEL;
   if (env.key) process.env.GROQ_API_KEY = env.key;
   if (env.keys) process.env.GROQ_API_KEYS = env.keys;
   const moduleRef = await Test.createTestingModule({
-    providers: [AiService, { provide: PrismaService, useValue: { event: { findMany: jest.fn().mockResolvedValue([]) } } }],
+    providers: [AiService, { provide: PrismaService, useValue: prisma }],
   }).compile();
   return moduleRef.get(AiService);
 }
@@ -54,8 +83,9 @@ describe('AiService key management', () => {
     );
     const service = await makeService({ keys: process.env.GROQ_API_KEYS });
     expect(service.isConfigured()).toBe(true);
-    const reply = await service.chat([{ role: 'user', content: 'hi' }]);
-    expect(reply).toBe('Hello!');
+    const result = await service.chat([{ role: 'user', content: 'hi' }]);
+    expect(result.reply).toBe('Hello!');
+    expect(result.events).toEqual([]);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(authHeaderOf(fetchSpy.mock.calls[0] as unknown as [string, RequestInit])).toBe(
       `Bearer ${KEY_A}`,
@@ -69,9 +99,9 @@ describe('AiService key management', () => {
       .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: 'Fallback!' } }] }));
     const service = await makeService({ keys: `${KEY_A},${KEY_B}` });
 
-    const reply = await service.chat([{ role: 'user', content: 'hi' }]);
+    const result = await service.chat([{ role: 'user', content: 'hi' }]);
 
-    expect(reply).toBe('Fallback!');
+    expect(result.reply).toBe('Fallback!');
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(authHeaderOf(fetchSpy.mock.calls[0] as unknown as [string, RequestInit])).toBe(`Bearer ${KEY_A}`);
     expect(authHeaderOf(fetchSpy.mock.calls[1] as unknown as [string, RequestInit])).toBe(`Bearer ${KEY_B}`);
@@ -145,7 +175,9 @@ describe('AiService key management', () => {
       .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: 'Recovered' } }] }));
     const service = await makeService({ key: KEY_A });
 
-    await expect(service.chat([{ role: 'user', content: 'hi' }])).resolves.toBe('Recovered');
+    await expect(service.chat([{ role: 'user', content: 'hi' }])).resolves.toMatchObject({
+      reply: 'Recovered',
+    });
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -185,40 +217,85 @@ describe('AiService key management', () => {
       new ServiceUnavailableException('The AI assistant returned an empty reply.'),
     );
   });
+});
 
-  it('returns the assistant reply grounded in the catalog and honors GROQ_MODEL', async () => {
-    process.env.GROQ_MODEL = 'openai/gpt-oss-20b';
-    const prisma = { event: { findMany: jest.fn().mockResolvedValue([
-      {
-        title: 'Summer Gig',
-        slug: 'summer-gig',
-        startDate: new Date('2026-12-01T18:00:00Z'),
-        category: { name: 'Music' },
-        venue: { city: 'Mumbai' },
-        ticketTypes: [{ price: 150000 }],
-      },
-    ]) } };
+describe('AiService structured event recommendations', () => {
+  afterEach(() => {
     delete process.env.GROQ_API_KEY;
     delete process.env.GROQ_API_KEYS;
-    process.env.GROQ_API_KEY = KEY_A;
-    const moduleRef = await Test.createTestingModule({
-      providers: [AiService, { provide: PrismaService, useValue: prisma }],
-    }).compile();
-    const service = moduleRef.get(AiService);
-    const fetchSpy = jest
+    delete process.env.GROQ_MODEL;
+    jest.restoreAllMocks();
+  });
+
+  it('strips the EVENTS trailer (even when the model bolds it) and maps slugs to real catalog records', async () => {
+    const prisma = makePrismaMock([], [CATALOG_ROW]);
+    const service = await makeService({ key: KEY_A }, prisma);
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      groqResponse(
+        200,
+        {
+          choices: [
+            {
+              message: {
+                content:
+                  'You could catch **Mumbai Indie Night** by the sea this month.\n\n**EVENTS:** mumbai-indie-night',
+              },
+            },
+          ],
+        },
+      ),
+    );
+
+    const result = await service.chat([{ role: 'user', content: 'recommend something' }]);
+
+    expect(result.reply).toBe('You could catch **Mumbai Indie Night** by the sea this month.');
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({
+      id: 'evt-1',
+      title: 'Mumbai Indie Night',
+      slug: 'mumbai-indie-night',
+      startDate: '2026-10-24T18:00:00.000Z',
+      minPrice: 49900,
+      maxPrice: 149700,
+      images: ['https://cdn.example.test/indie-night.jpg'],
+      venue: { name: 'Demo Arena', city: 'Mumbai' },
+    });
+    // The mapping query must be slug-scoped to real, published, upcoming rows.
+    const mappingCall = (prisma.event.findMany as jest.Mock).mock.calls.find(
+      (c) => 'slug' in c[0].where,
+    );
+    expect(mappingCall[0].where).toMatchObject({
+      slug: { in: ['mumbai-indie-night'] },
+      status: 'PUBLISHED',
+    });
+  });
+
+  it('returns no events when the reply has no EVENTS trailer', async () => {
+    const service = await makeService({ key: KEY_A });
+    jest
       .spyOn(global, 'fetch')
-      .mockResolvedValue(groqResponse(200, { choices: [{ message: { content: 'Go to Summer Gig!' } }] }));
+      .mockResolvedValue(groqResponse(200, { choices: [{ message: { content: 'Plan with **bold** and - lists' } }] }));
 
-    const reply = await service.chat([{ role: 'user', content: 'What should I attend?' }]);
+    const result = await service.chat([{ role: 'user', content: 'hi' }]);
 
-    expect(reply).toBe('Go to Summer Gig!');
-    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe('https://api.groq.com/openai/v1/chat/completions');
-    const body = JSON.parse(String(init.body)) as {
-      model: string;
-      messages: { content: string }[];
-    };
-    expect(body.model).toBe('openai/gpt-oss-20b');
-    expect(body.messages[0].content).toContain('Summer Gig');
+    expect(result.reply).toBe('Plan with **bold** and - lists');
+    expect(result.events).toEqual([]);
+  });
+
+  it('drops invented/unknown slugs instead of fabricating events', async () => {
+    const prisma = makePrismaMock([], []); // DB knows nothing about the slugs
+    const service = await makeService({ key: KEY_A }, prisma);
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      groqResponse(200, {
+        choices: [
+          { message: { content: 'Check out **Fake Fest**!\n\nEVENTS: fake-fest, never-happened' } },
+        ],
+      }),
+    );
+
+    const result = await service.chat([{ role: 'user', content: 'hi' }]);
+
+    expect(result.reply).toBe('Check out **Fake Fest**!');
+    expect(result.events).toEqual([]);
   });
 });

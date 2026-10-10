@@ -2,13 +2,35 @@
 
 import { useRef, useState } from 'react';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
 import { Loader2, Send, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { EventCard } from '@/components/events/event-card';
+import type { EventSummary } from '@/lib/api';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  events?: EventSummary[];
 }
+
+/** Safe Markdown styling for assistant prose (bold, lists, links only). */
+const markdownComponents = {
+  p: ({ children }: { children?: React.ReactNode }) => (
+    <p className="mb-1.5 last:mb-0">{children}</p>
+  ),
+  ul: ({ children }: { children?: React.ReactNode }) => (
+    <ul className="mb-1.5 ml-4 list-disc space-y-0.5 last:mb-0">{children}</ul>
+  ),
+  ol: ({ children }: { children?: React.ReactNode }) => (
+    <ol className="mb-1.5 ml-4 list-decimal space-y-0.5 last:mb-0">{children}</ol>
+  ),
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+      {children}
+    </a>
+  ),
+};
 
 export default function AiPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -43,11 +65,22 @@ export default function AiPage() {
             .slice(-12),
         }),
       });
-      const body = (await res.json().catch(() => ({}))) as { reply?: string; message?: string };
+      const body = (await res.json().catch(() => ({}))) as {
+        reply?: string;
+        events?: EventSummary[];
+        message?: string;
+      };
       if (!res.ok) {
         setError(body.message ?? 'The assistant is unavailable right now.');
       } else {
-        setMessages((m) => [...m, { role: 'assistant', content: body.reply ?? '…' }]);
+        setMessages((m) => [
+          ...m,
+          {
+            role: 'assistant',
+            content: body.reply ?? '…',
+            events: Array.isArray(body.events) ? body.events : [],
+          },
+        ]);
       }
     } catch {
       setError('Could not reach the server. Please try again.');
@@ -75,20 +108,31 @@ export default function AiPage() {
 
       <div
         ref={scrollRef}
-        className="mt-6 flex max-h-[55vh] min-h-[320px] flex-col gap-3 overflow-y-auto rounded-lg border bg-card p-4"
+        className="mt-6 flex max-h-[70vh] min-h-[320px] flex-col gap-3 overflow-y-auto rounded-lg border bg-card p-4"
       >
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={
-              m.role === 'user'
-                ? 'self-end rounded-2xl rounded-br-sm bg-primary px-4 py-2 text-sm text-primary-foreground'
-                : 'self-start rounded-2xl rounded-bl-sm bg-muted px-4 py-2 text-sm'
-            }
-          >
-            {m.content}
-          </div>
-        ))}
+        {messages.map((m, i) =>
+          m.role === 'user' ? (
+            <div
+              key={i}
+              className="self-end rounded-2xl rounded-br-sm bg-primary px-4 py-2 text-sm text-primary-foreground"
+            >
+              {m.content}
+            </div>
+          ) : (
+            <div key={i} className="flex max-w-full flex-col gap-3 self-stretch">
+              <div className="self-start rounded-2xl rounded-bl-sm bg-muted px-4 py-2 text-sm">
+                <ReactMarkdown components={markdownComponents}>{m.content}</ReactMarkdown>
+              </div>
+              {m.events && m.events.length > 0 && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {m.events.map((event) => (
+                    <EventCard key={event.id} event={event} showDescription />
+                  ))}
+                </div>
+              )}
+            </div>
+          ),
+        )}
         {sending && (
           <div className="self-start rounded-2xl bg-muted px-4 py-2">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
