@@ -68,7 +68,7 @@ describe('AiService', () => {
       model: string;
       messages: { content: string }[];
     };
-    expect(body.model).toBe('llama-3.3-70b-versatile');
+    expect(body.model).toBe('openai/gpt-oss-120b');
     expect(body.messages[0].content).toContain('Summer Gig');
   });
 

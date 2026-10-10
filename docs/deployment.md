@@ -22,7 +22,7 @@ Health: `GET http://localhost:4000/api/health` → `{ status, dependencies: { da
 | `REDIS_URL` | always | cache degrades gracefully if unreachable |
 | `FRONTEND_URL` | production | must be `https://`; used as the single CORS origin |
 | `RAZORPAY_KEY_ID/_SECRET/_WEBHOOK_SECRET` | production | optional in dev (checkout shows an honest "not configured" error) |
-| `GROQ_API_KEY` / `GROQ_MODEL` | optional | AI chat 503s with an actionable message until a real key is set (Groq; default model `llama-3.3-70b-versatile`) |
+| `GROQ_API_KEY` / `GROQ_MODEL` | optional | AI chat 503s with an actionable message until a real key is set (Groq; default model `openai/gpt-oss-120b`) |
 | `BREVO_API_KEY` / `EMAIL_FROM` | optional | transactional emails skip with a dev log until set; `EMAIL_FROM` must be a sender verified in Brevo |
 | `SEAT_HOLD_TTL_SECONDS` | optional | seat-hold window (default 600) |
 | `RATE_LIMIT_TTL` / `RATE_LIMIT_MAX` | optional | global throttle window/limit |

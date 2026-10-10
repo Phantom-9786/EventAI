@@ -116,7 +116,7 @@
 2. Gemini — Google, competitive pricing
 3. Grok/xAI — affordable, available (original choice)
 4. Groq — OpenAI-compatible API, generous free tier, fast inference (final choice)
-**Chosen:** Groq (`https://api.groq.com/openai/v1/chat/completions`, default model `llama-3.3-70b-versatile` from Groq's production catalog, configurable via `GROQ_MODEL`)
+**Chosen:** Groq (`https://api.groq.com/openai/v1/chat/completions`, default model `openai/gpt-oss-120b` from Groq's production catalog, configurable via `GROQ_MODEL`)
 **Reason:** Budget constraints and free-tier availability. Because both providers expose the same OpenAI-compatible chat-completions shape, the migration touched only one service (`ai.service.ts`) plus env/docs — demonstrating that the "abstraction" this ADR originally promised is effectively delivered by the OpenAI-compatible standard itself rather than a custom adapter layer.
 **Honest amendment:** the originally documented abstraction files (`ai/llm.ts`, `providers/grok.provider.ts`) were never implemented — the integration is a single service with a hardcoded OpenAI-compatible endpoint. A future provider swap means editing that one file (and env names), as this migration showed.
 **Trade-offs:** Groq's model catalog differs from xAI's; model IDs are configurable via `GROQ_MODEL` to absorb future deprecations (see Groq's deprecation policy). Single-provider integration, no failover (deliberate — see docs/ai.md deferrals).

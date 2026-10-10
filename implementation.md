@@ -227,7 +227,7 @@
 **Status: PARTIAL — catalog-grounded Groq assistant (with graceful degradation) and content-based recommendations shipped; Pinecone RAG and tool-calling deferred (see context.md for the credential blocker)**
 
 ### AI Provider
-- [x] Groq integration via the OpenAI-compatible `api.groq.com/openai/v1/chat/completions` endpoint (model configurable via `GROQ_MODEL`, default `llama-3.3-70b-versatile` from Groq's production catalog; 30s timeout; errors mapped to 503 with clear messages) — **migrated from Grok/xAI on 2026-10-10 (ADR-009 amendment); 6 unit tests (placeholder detection, 503 unconfigured, grounded reply + endpoint/model assertion, provider-error 503, network-failure 503, empty-reply 503)**
+- [x] Groq integration via the OpenAI-compatible `api.groq.com/openai/v1/chat/completions` endpoint (model configurable via `GROQ_MODEL`, default `openai/gpt-oss-120b` from Groq's production catalog; 30s timeout; errors mapped to 503 with clear messages) — **migrated from Grok/xAI on 2026-10-10 (ADR-009 amendment); 6 unit tests (placeholder detection, 503 unconfigured, grounded reply + endpoint/model assertion, provider-error 503, network-failure 503, empty-reply 503)**
 - [x] Credential detection (`isConfigured()` — missing or placeholder `GROQ_API_KEY` → 503 "not configured"; frontend surfaces an actionable notice)
 - [x] AI-specific rate limiting (`@Throttle` 10 req/min per IP on `POST /ai/chat`, on top of the global ThrottlerGuard)
 - [ ] Provider abstraction interface (single provider today; extract when a second provider is needed)

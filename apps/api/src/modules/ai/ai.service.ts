@@ -99,7 +99,7 @@ export class AiService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile',
+          model: process.env.GROQ_MODEL ?? 'openai/gpt-oss-120b',
           messages: payload,
           temperature: 0.6,
           max_tokens: 600,
