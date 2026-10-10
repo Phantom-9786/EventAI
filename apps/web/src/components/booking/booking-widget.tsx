@@ -158,7 +158,7 @@ export function BookingWidget({
         prefill: { email: user.email },
         theme: { color: '#6d28d9' },
         redirect: true,
-        callback_url: `${window.location.origin}/bookings/payment-callback?bookingId=${booking.id}`,
+        callback_url: `${window.location.origin}/bookings/payment-callback/handler?bookingId=${booking.id}`,
         handler: (response) => {
           void (async () => {
             setPhase('verifying');
