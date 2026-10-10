@@ -11,9 +11,14 @@ import { resolve } from 'path';
 import * as fs from 'fs';
 import { AppModule } from './app.module';
 import { isJsonLogging, StructuredLogger } from './common/logging/structured-logger';
+import { initSentry } from './config/sentry';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
+
+  // ── Error monitoring (no-op without SENTRY_DSN). Must run before the Nest
+  // app is created so the nest integration can capture early exceptions. ──
+  initSentry();
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: ['error', 'warn', 'log', 'debug'],

@@ -295,7 +295,7 @@
 - [x] Structured logging (`StructuredLogger`: single-line JSON entries with context/level/requestId when `LOG_FORMAT=json` or NODE_ENV=production; human-readable otherwise; request logs carry method/url/statusCode/durationMs/requestId; error envelope now includes `requestId`; 10 unit tests)
 - [x] Request IDs (request-id middleware in main.ts, echoed as `X-Request-Id` and correlated into request/error logs)
 - [x] Health endpoints (DB connectivity check at `/api/health`; Redis/Worker depth pending)
-- [ ] Error tracking setup (Sentry DSN placeholder in `.env.example`; blocked on a real DSN)
+- [x] Error tracking (2026-10-10, code wired; disabled until a DSN is set): `@sentry/nestjs` v11 (`nestIntegration()` + `beforeSend` scrubber + request-id tag; 8 unit tests for optional config and PII scrubbing) + `@sentry/nextjs` v11 (`sentry.{client,server,edge}.config.ts` injected via `withSentryConfig`, shared web scrubber, source-map upload only with `SENTRY_AUTH_TOKEN`). Two-project setup (eventai-api / eventai-web) documented in docs/deployment.md with manual dashboard steps.
 
 ### Documentation
 - [x] README.md (complete)

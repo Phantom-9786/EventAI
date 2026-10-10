@@ -16,6 +16,11 @@ export interface EnvConfig {
   GROQ_API_KEY?: string;
   GROQ_API_KEYS?: string;
   GROQ_MODEL?: string;
+  // Sentry (optional — error monitoring stays disabled without a DSN)
+  SENTRY_DSN?: string;
+  SENTRY_ENVIRONMENT?: string;
+  SENTRY_RELEASE?: string;
+  SENTRY_TRACES_SAMPLE_RATE?: string;
   BREVO_API_KEY?: string;
   EMAIL_FROM?: string;
   // Google OAuth 2.0 (optional — sign-in with Google is feature-gated)
