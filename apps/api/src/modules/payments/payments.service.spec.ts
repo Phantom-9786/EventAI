@@ -251,6 +251,34 @@ describe('PaymentsService', () => {
         }),
       ).rejects.toThrow(NotFoundException);
     });
+
+    it('rejects a callback whose order id matches no payment row', async () => {
+      prisma.payment.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.verifyPayment(userId, {
+          bookingId,
+          razorpayOrderId: 'order_UNKNOWN',
+          razorpayPaymentId: 'pay_abc',
+          razorpaySignature: sign('order_UNKNOWN|pay_abc'),
+        }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects a callback whose bookingId does not match the order booking', async () => {
+      prisma.payment.findUnique.mockResolvedValue(payment);
+
+      await expect(
+        service.verifyPayment(userId, {
+          bookingId: 'bc99562e-2a31-4b8a-9f17-37ef3d5f34a0', // different booking
+          razorpayOrderId: 'order_123',
+          razorpayPaymentId: 'pay_abc',
+          razorpaySignature: sign('order_123|pay_abc'),
+        }),
+      ).rejects.toThrow(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
   });
 
   describe('handleWebhook', () => {

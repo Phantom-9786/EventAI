@@ -117,6 +117,11 @@ export class PaymentsService {
     if (!payment || payment.booking.userId !== userId) {
       throw new NotFoundException('Payment not found');
     }
+    // Booking/order association: the callback's bookingId must be the one the
+    // order was created for — never confirm across bookings.
+    if (payment.bookingId !== input.bookingId) {
+      throw new NotFoundException('Payment not found');
+    }
 
     // Idempotent: already captured → return the confirmed booking
     if (payment.status === 'CAPTURED') {

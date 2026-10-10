@@ -26,6 +26,15 @@ interface RazorpayCheckoutOptions {
   description?: string;
   prefill?: { email?: string };
   theme?: { color?: string };
+  /**
+   * Redirect-based checkout (documented Razorpay option for environments
+   * where the checkout popup does not appear): the whole flow runs on a
+   * Razorpay page and the customer returns to callback_url with
+   * razorpay_order_id / razorpay_payment_id / razorpay_signature as GET
+   * params. Signature verification stays server-side (/payments/verify).
+   */
+  redirect?: boolean;
+  callback_url?: string;
   handler: (response: {
     razorpay_order_id: string;
     razorpay_payment_id: string;
@@ -148,6 +157,8 @@ export function BookingWidget({
         description: eventTitle,
         prefill: { email: user.email },
         theme: { color: '#6d28d9' },
+        redirect: true,
+        callback_url: `${window.location.origin}/bookings/payment-callback?bookingId=${booking.id}`,
         handler: (response) => {
           void (async () => {
             setPhase('verifying');
