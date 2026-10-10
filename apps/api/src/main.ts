@@ -24,6 +24,7 @@ async function bootstrap() {
     logger: ['error', 'warn', 'log', 'debug'],
     rawBody: true, // required for Razorpay webhook signature verification
   });
+  app.enableShutdownHooks();
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 4000);
@@ -44,15 +45,18 @@ async function bootstrap() {
   // ── Request IDs + structured request logging ─────
   const httpLogger = new StructuredLogger('HTTP', jsonMode);
   app.use((req: Request, res: Response, next: NextFunction) => {
-    const requestId = (req.headers['x-request-id'] as string) || randomUUID();
+    const suppliedRequestId = req.headers['x-request-id'];
+    const requestId = typeof suppliedRequestId === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(suppliedRequestId)
+      ? suppliedRequestId
+      : randomUUID();
     req.headers['x-request-id'] = requestId;
     res.setHeader('X-Request-Id', requestId);
     const start = Date.now();
     res.on('finish', () => {
       const durationMs = Date.now() - start;
-      httpLogger.logWithMeta('log', `${req.method} ${req.originalUrl}`, {
+      httpLogger.logWithMeta('log', `${req.method} ${req.path}`, {
         method: req.method,
-        url: req.originalUrl,
+        url: req.path,
         statusCode: res.statusCode,
         durationMs,
         requestId,
@@ -71,6 +75,19 @@ async function bootstrap() {
 
   // ── Global prefix ─────────────────────────────────
   app.setGlobalPrefix('api');
+
+  // ── Root landing route (friendly status endpoint) ─
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.get('/', (_req: Request, res: Response) => {
+    res.json({
+      status: 'ok',
+      service: 'EventAI API',
+      version: '1.0.0',
+      docs: '/api/docs',
+      health: '/api/health',
+      frontend: frontendUrl,
+    });
+  });
 
   // ── Static uploads ────────────────────────────────
   // Serve locally-stored uploads (avatars etc.) at /uploads

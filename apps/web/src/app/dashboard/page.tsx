@@ -108,6 +108,10 @@ export default function DashboardPage() {
     <div className="container py-10">
       <h1 className="text-3xl font-bold tracking-tight">{profile.organizationName}</h1>
       <p className="mt-1 text-sm text-muted-foreground">Organizer dashboard</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link href="/organizer/events" className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm font-medium hover:bg-accent">Manage events</Link>
+        <Link href="/organizer/events/new" className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90">Create event</Link>
+      </div>
 
       {error && (
         <p role="alert" className="mt-6 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -152,6 +156,7 @@ export default function DashboardPage() {
                 >
                   Door scan
                 </Link>
+                <Link href={`/organizer/events/${encodeURIComponent(event.id)}`} className="text-sm font-medium text-primary hover:underline">Manage</Link>
               </div>
             </div>
           ))}

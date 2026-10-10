@@ -17,6 +17,9 @@ import {
   createAdminCategory,
   deactivateAdminCategory,
   listAdminEvents,
+  getAdminBooking,
+  listAdminBookings,
+  reconcileAdminRefund,
   listAdminOrganizers,
   listAdminUsers,
   moderateAdminEvent,
@@ -24,18 +27,21 @@ import {
   setAdminUserStatus,
   useAdminData,
   type AdminEventRow,
+  type AdminBookingDetail,
+  type AdminBookingRow,
   type AdminOrganizerRow,
   type AdminUser,
 } from '@/lib/admin';
 import { formatPrice } from '@/lib/api';
 
-type Tab = 'overview' | 'users' | 'events' | 'organizers';
+type Tab = 'overview' | 'users' | 'events' | 'organizers' | 'bookings';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'users', label: 'Users' },
   { id: 'events', label: 'Events' },
   { id: 'organizers', label: 'Organizers' },
+  { id: 'bookings', label: 'Bookings & payments' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -245,6 +251,151 @@ export default function AdminPage() {
       {tab === 'users' && <UsersTab busy={busy} onAction={runAction} />}
       {tab === 'events' && <EventsTab busy={busy} onAction={runAction} />}
       {tab === 'organizers' && <OrganizersTab busy={busy} onAction={runAction} />}
+      {tab === 'bookings' && <BookingsTab />}
+    </div>
+  );
+}
+
+function BookingsTab() {
+  const [bookings, setBookings] = useState<AdminBookingRow[]>([]);
+  const [detail, setDetail] = useState<AdminBookingDetail | null>(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    void listAdminBookings({
+      search: debouncedSearch || undefined,
+      status: status || undefined,
+      page,
+      signal: controller.signal,
+    }).then((body) => {
+      if (controller.signal.aborted) return;
+      setBookings(body.bookings);
+      setPages(body.pages);
+      setError(null);
+    }).catch((err: unknown) => {
+      if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Failed to load bookings');
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
+    });
+    return () => controller.abort();
+  }, [debouncedSearch, status, page]);
+
+  const openDetail = async (id: string) => {
+    setDetailLoading(true);
+    setError(null);
+    setActionMessage(null);
+    try {
+      setDetail(await getAdminBooking(id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load booking details');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const reconcile = async () => {
+    if (!detail || !window.confirm('Check Razorpay’s authoritative refund status for this booking? This will not create or retry a refund.')) return;
+    setReconciling(true);
+    setError(null);
+    setActionMessage(null);
+    try {
+      const result = await reconcileAdminRefund(detail.id);
+      const freshDetail = await getAdminBooking(detail.id);
+      setDetail(freshDetail);
+      setBookings((current) => current.map((item) => item.id !== result.bookingId ? item : {
+        ...item,
+        status: result.status === 'REFUNDED' ? 'REFUNDED' : result.outcome === 'failed' ? 'CONFIRMED' : item.status,
+        payment: item.payment ? {
+          ...item.payment,
+          status: result.outcome === 'processed' ? 'REFUNDED' : result.outcome === 'failed' ? 'CAPTURED' : item.payment.status,
+        } : null,
+      }));
+      setActionMessage(result.outcome === 'processed'
+        ? 'Razorpay confirmed the refund. Booking and ticket inventory were reconciled.'
+        : result.outcome === 'failed'
+          ? 'Razorpay confirmed the refund failed. The payment is retryable; the booking and tickets remain active.'
+          : result.outcome === 'not_pending'
+            ? `No reconciliation was needed; current payment status is ${result.status}.`
+            : 'Razorpay has not provided a definitive outcome. The refund remains pending and no booking or inventory state was changed.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Refund reconciliation failed');
+    } finally {
+      setReconciling(false);
+    }
+  };
+
+  return (
+    <div className="mt-8">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); setDetail(null); }} placeholder="Booking ID, customer email, or event" aria-label="Search bookings" className="h-9 w-80 rounded-md border border-input bg-background pl-8 pr-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+        </div>
+        <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); setDetail(null); }} aria-label="Filter bookings by status" className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+          <option value="">All booking statuses</option>
+          {['PENDING', 'PAYMENT_PENDING', 'CONFIRMED', 'CANCELLED', 'EXPIRED', 'REFUNDED'].map((value) => <option key={value}>{value}</option>)}
+        </select>
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+      {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
+      {actionMessage && <p role="status" className="mt-3 text-sm text-muted-foreground">{actionMessage}</p>}
+      <div className="mt-3 overflow-x-auto rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-4 py-2.5">Booking / event</th><th className="px-4 py-2.5">Customer</th><th className="px-4 py-2.5">Booking</th><th className="px-4 py-2.5">Payment</th><th className="px-4 py-2.5">Amount</th><th className="px-4 py-2.5 text-right">Details</th></tr></thead>
+          <tbody className="divide-y">
+            {bookings.map((booking) => <tr key={booking.id}>
+              <td className="px-4 py-3"><p className="font-medium">{booking.event.title}</p><p className="font-mono text-[11px] text-muted-foreground">{booking.id}</p></td>
+              <td className="px-4 py-3"><p>{booking.user.firstName} {booking.user.lastName}</p><p className="text-xs text-muted-foreground">{booking.user.email}</p></td>
+              <td className="px-4 py-3">{booking.status}</td><td className="px-4 py-3">{booking.payment?.status ?? 'No payment'}</td><td className="px-4 py-3">{formatPrice(booking.totalAmount)}</td>
+              <td className="px-4 py-3 text-right"><Button size="sm" variant="outline" disabled={detailLoading} onClick={() => void openDetail(booking.id)}>View</Button></td>
+            </tr>)}
+            {!loading && bookings.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No bookings match the filters.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {pages > 1 && <div className="mt-3 flex items-center justify-end gap-2 text-sm"><Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button><span className="text-muted-foreground">Page {page} of {pages}</span><Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>Next</Button></div>}
+      {detailLoading && <div className="mt-6 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Loading booking details…</div>}
+      {detail && <section aria-label="Booking detail" className="mt-6 rounded-lg border bg-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-2"><div><h2 className="font-semibold">Booking details</h2><p className="mt-1 font-mono text-xs text-muted-foreground">{detail.id}</p></div><Button size="sm" variant="ghost" onClick={() => setDetail(null)}>Close</Button></div>
+        <div className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+          <p><span className="text-muted-foreground">Customer:</span><br />{detail.user.firstName} {detail.user.lastName} · {detail.user.email}</p>
+          <p><span className="text-muted-foreground">Event:</span><br />{detail.event.title}</p>
+          <p><span className="text-muted-foreground">Booking status:</span><br />{detail.status}</p>
+          <p><span className="text-muted-foreground">Payment status:</span><br />{detail.payment?.status ?? 'No payment'}</p>
+          <p><span className="text-muted-foreground">Booking amount:</span><br />{formatPrice(detail.totalAmount)}</p>
+          <p><span className="text-muted-foreground">Refund amount:</span><br />{detail.payment?.refundAmount == null ? '—' : formatPrice(detail.payment.refundAmount)}</p>
+          <p><span className="text-muted-foreground">Payment method:</span><br />{detail.payment?.method ?? '—'}</p>
+          <p><span className="text-muted-foreground">Refund reference:</span><br /><span className="font-mono text-xs">{detail.payment?.refundId ?? '—'}</span></p>
+          <p><span className="text-muted-foreground">Created:</span><br />{new Date(detail.createdAt).toLocaleString()}</p>
+        </div>
+        <h3 className="mt-5 text-sm font-semibold">Items and tickets</h3>
+        <ul className="mt-2 space-y-1 text-sm">{detail.items.map((item, index) => <li key={`${item.ticketType.name}-${index}`}>{item.ticketType.name} · {item.quantity} × {formatPrice(item.unitPrice)} = {formatPrice(item.totalPrice)}</li>)}</ul>
+        <p className="mt-3 text-xs text-muted-foreground">Ticket states: {Object.entries(detail.ticketCounts).map(([state, count]) => `${state}: ${count}`).join(' · ') || 'No tickets issued'}</p>
+        {detail.cancellationReason && <p className="mt-3 text-sm text-muted-foreground">Cancellation reason: {detail.cancellationReason}</p>}
+        {detail.payment?.status === 'REFUND_PENDING' && <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md bg-muted p-3">
+          <p className="flex-1 text-xs text-muted-foreground">The refund outcome is unresolved. This action checks Razorpay and never issues another refund.</p>
+          <Button size="sm" variant="outline" disabled={reconciling} onClick={() => void reconcile()}>
+            {reconciling && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+            {reconciling ? 'Checking provider…' : 'Reconcile refund'}
+          </Button>
+        </div>}
+      </section>}
     </div>
   );
 }

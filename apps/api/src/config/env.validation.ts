@@ -32,6 +32,11 @@ export interface EnvConfig {
 export function validateEnv(config: Record<string, unknown>): EnvConfig {
   const errors: string[] = [];
 
+  const nodeEnv = config.NODE_ENV;
+  if (!['development', 'test', 'production'].includes(String(nodeEnv))) {
+    errors.push('NODE_ENV must be development, test, or production');
+  }
+
   const required = ['DATABASE_URL', 'JWT_SECRET'] as const;
   for (const key of required) {
     if (!config[key] || String(config[key]).trim() === '') {
@@ -47,24 +52,93 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
     errors.push('JWT_SECRET is still the placeholder value — set a real secret');
   }
 
+  if (config.SENTRY_TRACES_SAMPLE_RATE !== undefined) {
+    const sampleRate = Number(config.SENTRY_TRACES_SAMPLE_RATE);
+    if (
+      String(config.SENTRY_TRACES_SAMPLE_RATE).trim() === '' ||
+      !Number.isFinite(sampleRate) ||
+      sampleRate < 0 ||
+      sampleRate > 1
+    ) {
+      errors.push('SENTRY_TRACES_SAMPLE_RATE must be a number between 0 and 1');
+    }
+  }
+
   const port = Number(config.PORT ?? 4000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    errors.push(`PORT must be an integer between 1 and 65535, got: ${config.PORT}`);
+    errors.push('PORT must be an integer between 1 and 65535');
   }
 
   if (config.NODE_ENV === 'production') {
     for (const key of [
       'FRONTEND_URL',
+      'REDIS_URL',
       'RAZORPAY_KEY_ID',
       'RAZORPAY_KEY_SECRET',
       'RAZORPAY_WEBHOOK_SECRET',
+      'BREVO_API_KEY',
+      'EMAIL_FROM',
     ] as const) {
       if (!config[key] || String(config[key]).trim() === '') {
         errors.push(`Missing required environment variable in production: ${key}`);
       }
     }
-    if (typeof config.FRONTEND_URL === 'string' && !config.FRONTEND_URL.startsWith('https://')) {
-      errors.push('FRONTEND_URL must be an https:// origin in production');
+
+    if (typeof config.JWT_SECRET === 'string' && config.JWT_SECRET.length < 32) {
+      errors.push('JWT_SECRET must be at least 32 characters in production');
+    }
+
+    if (typeof config.FRONTEND_URL === 'string') {
+      try {
+        const url = new URL(config.FRONTEND_URL);
+        if (
+          url.protocol !== 'https:' ||
+          url.username ||
+          url.password ||
+          (url.pathname !== '/' && url.pathname !== '') ||
+          url.search ||
+          url.hash
+        ) {
+          errors.push('FRONTEND_URL must be an https:// origin in production');
+        }
+      } catch {
+        errors.push('FRONTEND_URL must be a valid https:// origin in production');
+      }
+    }
+
+    for (const key of ['DATABASE_URL', 'REDIS_URL'] as const) {
+      const value = config[key];
+      if (typeof value !== 'string') continue;
+      try {
+        const url = new URL(value);
+        const validProtocol = key === 'DATABASE_URL'
+          ? ['postgres:', 'postgresql:'].includes(url.protocol)
+          : ['redis:', 'rediss:'].includes(url.protocol);
+        if (!validProtocol || !url.hostname) {
+          errors.push(`${key} must be a valid ${key === 'DATABASE_URL' ? 'PostgreSQL' : 'Redis'} URL in production`);
+        }
+      } catch {
+        errors.push(`${key} must be a valid ${key === 'DATABASE_URL' ? 'PostgreSQL' : 'Redis'} URL in production`);
+      }
+    }
+
+    for (const key of [
+      'RAZORPAY_KEY_ID',
+      'RAZORPAY_KEY_SECRET',
+      'RAZORPAY_WEBHOOK_SECRET',
+      'BREVO_API_KEY',
+    ] as const) {
+      const value = String(config[key] ?? '');
+      if (/x{6,}|placeholder|change[-_ ]?me|your[-_ ]?(key|secret)|example/i.test(value)) {
+        errors.push(`${key} must not contain a placeholder value in production`);
+      }
+    }
+
+    if (typeof config.EMAIL_FROM === 'string') {
+      const email = config.EMAIL_FROM.match(/<([^>]+)>/)?.[1] ?? config.EMAIL_FROM;
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || /your[-_ ]?domain|example\./i.test(email)) {
+        errors.push('EMAIL_FROM must be a valid, non-placeholder sender address in production');
+      }
     }
   }
 

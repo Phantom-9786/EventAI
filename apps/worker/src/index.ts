@@ -22,8 +22,8 @@ const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379'
   maxRetriesPerRequest: null,
 });
 
-connection.on('error', (err) => {
-  console.error('[worker] Redis connection error:', err.message);
+connection.on('error', () => {
+  console.error('[worker] Redis connection unavailable');
 });
 
 connection.on('connect', () => {
@@ -52,7 +52,7 @@ function startWorkers(): void {
     });
 
     worker.on('failed', (job, err) => {
-      console.error(`[worker] ${queue}: job ${job?.id} failed: ${err.message}`);
+      console.error(`[worker] ${queue}: job ${job?.id} failed (${err.name})`);
     });
 
     workers.push(worker);

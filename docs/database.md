@@ -27,6 +27,10 @@ npm run db:seed      # categories + demo users/organizer/events
 npm run db:studio    # Prisma Studio
 ```
 
-Seeded accounts (password `DemoPass123`): `admin@eventai.test` (ADMIN), `demo.organizer@eventai.test` (ORGANIZER with venue + published events), `customer@eventai.test` (CUSTOMER).
+`npm run db:seed` is blocked unless `NODE_ENV=development` and does not create an ADMIN account. It creates demo organizer/customer accounts and content with development-only credentials. Do not rely on older demo-account documentation for existing databases: a database seeded by an earlier version may still contain a legacy ADMIN. Never run the seed against production.
+
+Use `npm run db:migrate --workspace=@eventai/database` for development migrations and `npm run db:deploy --workspace=@eventai/database` for production migration deployment. Select the corresponding database URL in the command environment first. Production deployment must use `migrate deploy`, never `db push` or `migrate dev`.
+
+To provision the first administrator, first verify the target database contains no existing ADMIN, and confirm that the intended account already exists, is active, and has a verified email. Then run `npm run db:provision-admin --workspace=@eventai/database` locally and confirm the prompt. The script is one-time and records an audit entry; it must not be run against a database until the operator has confirmed its target and current admin state.
 
 > Note: the native Windows Postgres on this dev machine occupies 5432, so Docker maps Postgres to host port **5433** (`DATABASE_URL` uses 5433).

@@ -25,8 +25,8 @@ export class CacheService implements OnModuleDestroy {
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false,
     });
-    this.client.on('error', (err) => {
-      this.logger.warn(`Redis unavailable: ${err.message}`);
+    this.client.on('error', () => {
+      this.logger.warn('Redis unavailable; cache operations will be skipped');
     });
     void this.client.connect().catch(() => {
       /* first-connect failure logged via 'error'; cache stays disabled */

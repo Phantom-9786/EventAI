@@ -110,7 +110,7 @@ export class AuthController {
 
     if (googleError) {
       // User denied consent or Google reported a problem
-      this.logger.warn(`Google sign-in aborted by Google: ${googleError}`);
+      this.logger.warn('Google sign-in was cancelled or rejected by the provider');
       return fail('google_cancelled');
     }
 
@@ -141,10 +141,7 @@ export class AuthController {
       const message = err instanceof Error ? err.message : '';
       if (message.includes('not verified')) return fail('google_email_unverified');
       if (message.includes('disabled')) return fail('google_account_disabled');
-      this.logger.error(
-        `Google sign-in failed: ${message}`,
-        err instanceof Error ? err.stack : undefined,
-      );
+      this.logger.error('Google sign-in failed');
       return fail('google_failed');
     }
   }

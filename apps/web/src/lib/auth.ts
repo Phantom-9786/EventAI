@@ -8,6 +8,26 @@
 import { API_URL } from './api';
 
 const TOKEN_KEY = 'eventai_access_token';
+const API_REQUEST_TIMEOUT_MS = 15_000;
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const callerSignal = init.signal;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) abortFromCaller();
+  else callerSignal?.addEventListener('abort', abortFromCaller, { once: true });
+  const timer = setTimeout(
+    () => controller.abort(new DOMException('API request timed out', 'TimeoutError')),
+    API_REQUEST_TIMEOUT_MS,
+  );
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+    callerSignal?.removeEventListener('abort', abortFromCaller);
+  }
+}
 
 export interface AuthUser {
   id: string;
@@ -53,17 +73,24 @@ export function setAccessToken(token: string | null): void {
 
 /** Refreshes the access token using the httpOnly refresh cookie. */
 export async function refreshAccessToken(): Promise<string | null> {
-  const res = await fetch(`${API_URL}/auth/refresh`, {
-    method: 'POST',
-    credentials: 'include',
-  });
-  if (!res.ok) {
-    setAccessToken(null);
-    return null;
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const res = await fetchWithTimeout(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        setAccessToken(null);
+        return null;
+      }
+      const body = (await res.json()) as { accessToken: string };
+      setAccessToken(body.accessToken);
+      return body.accessToken;
+    })().finally(() => {
+      refreshInFlight = null;
+    });
   }
-  const body = (await res.json()) as { accessToken: string };
-  setAccessToken(body.accessToken);
-  return body.accessToken;
+  return refreshInFlight;
 }
 
 /** Authenticated fetch: attaches the bearer token, refreshes once on 401. */
@@ -75,12 +102,12 @@ export async function authFetch(path: string, init: RequestInit = {}): Promise<R
     headers.set('Content-Type', 'application/json');
   }
 
-  let res = await fetch(`${API_URL}${path}`, { ...init, headers, credentials: 'include' });
+  let res = await fetchWithTimeout(`${API_URL}${path}`, { ...init, headers, credentials: 'include' });
   if (res.status === 401) {
     const newToken = await refreshAccessToken();
     if (newToken) {
       headers.set('Authorization', `Bearer ${newToken}`);
-      res = await fetch(`${API_URL}${path}`, { ...init, headers, credentials: 'include' });
+      res = await fetchWithTimeout(`${API_URL}${path}`, { ...init, headers, credentials: 'include' });
     }
   }
   return res;

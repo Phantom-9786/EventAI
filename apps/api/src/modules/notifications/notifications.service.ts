@@ -46,7 +46,7 @@ export class NotificationsService {
       process.env.EMAIL_FROM ?? 'EventAI <noreply@eventai.dev>',
     );
     if (!apiKey || apiKey.startsWith('xkeysib-xxxx')) {
-      this.logger.log(`Email skipped (no BREVO_API_KEY): "${input.subject}" to ${input.to}`);
+      this.logger.log('Email skipped because the email provider is not configured');
       return false;
     }
 
@@ -67,16 +67,14 @@ export class NotificationsService {
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as BrevoSendResponse;
-        this.logger.warn(`Brevo send failed (${res.status}): ${body.message ?? 'unknown'}`);
+        this.logger.warn(`Brevo send failed (HTTP ${res.status})`);
         return false;
       }
       const body = (await res.json()) as BrevoSendResponse;
-      this.logger.log(`Email sent (${body.messageId ?? 'ok'}): "${input.subject}" to ${input.to}`);
+      this.logger.log('Email sent successfully');
       return true;
-    } catch (error) {
-      this.logger.warn(
-        `Brevo request errored: ${error instanceof Error ? error.message : 'unknown'}`,
-      );
+    } catch {
+      this.logger.warn('Brevo request failed');
       return false;
     }
   }

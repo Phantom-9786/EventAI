@@ -252,7 +252,7 @@ export class AiService {
       let response: Response;
       try {
         response = await this.callGroq(key, payload);
-      } catch (error) {
+      } catch {
         // Network failure or timeout — transient. One bounded backoff retry
         // on the same key, then give up.
         if (transientRetries < GROQ_TRANSIENT_RETRIES) {
@@ -260,9 +260,7 @@ export class AiService {
           await new Promise((r) => setTimeout(r, GROQ_TRANSIENT_BACKOFF_MS));
           continue;
         }
-        this.logger.warn(
-          `Groq request failed after retry: ${error instanceof Error ? error.message : 'unknown'}`,
-        );
+        this.logger.warn('Groq request failed after retry');
         this.unavailable('The AI assistant is unreachable right now.');
       }
 
@@ -291,10 +289,7 @@ export class AiService {
           await new Promise((r) => setTimeout(r, GROQ_TRANSIENT_BACKOFF_MS));
           continue;
         }
-        const body = (await response.json().catch(() => ({}))) as {
-          error?: { message?: string };
-        };
-        this.logger.warn(`Groq error ${response.status}: ${body.error?.message ?? 'unknown'}`);
+        this.logger.warn(`Groq request failed (HTTP ${response.status})`);
         this.unavailable(
           'The AI assistant could not process this request. Please try again later.',
         );
@@ -303,10 +298,7 @@ export class AiService {
       if (!response.ok) {
         // Other 4xx (bad request, unknown model, …) — permanent for this
         // request shape; retrying would not help.
-        const body = (await response.json().catch(() => ({}))) as {
-          error?: { message?: string };
-        };
-        this.logger.warn(`Groq error ${response.status}: ${body.error?.message ?? 'unknown'}`);
+        this.logger.warn(`Groq request rejected (HTTP ${response.status})`);
         this.unavailable(
           'The AI assistant could not process this request. Please try again later.',
         );

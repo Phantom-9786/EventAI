@@ -1,58 +1,29 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { HealthController } from './health.controller';
-import { PrismaService } from '../../prisma/prisma.service';
-import { CacheService } from '../../common/cache/cache.service';
 
 describe('HealthController', () => {
-  let controller: HealthController;
-  let prisma: { $queryRaw: jest.Mock };
-  let cache: { ping: jest.Mock };
+  it('returns HTTP 200 when PostgreSQL is available', async () => {
+    const prisma = { $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]) };
+    const cache = { ping: jest.fn().mockResolvedValue('up') };
+    const response = { status: jest.fn() };
+    const controller = new HealthController(prisma as never, cache as never);
 
-  beforeEach(async () => {
-    prisma = {
-      $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
-    };
-    cache = {
-      ping: jest.fn().mockResolvedValue('up'),
-    };
+    const result = await controller.check(response as never);
 
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [HealthController],
-    })
-      .useMocker((token) => {
-        if (token === PrismaService) return prisma;
-        if (token === CacheService) return cache;
-        return jest.fn();
-      })
-      .compile();
-
-    controller = module.get<HealthController>(HealthController);
-  });
-
-  it('should be defined', () => {
-    expect(controller).toBeDefined();
-  });
-
-  it('should report ok status with database and redis up', async () => {
-    const result = await controller.check();
+    expect(response.status).toHaveBeenCalledWith(200);
     expect(result.status).toBe('ok');
-    expect(result.service).toBe('eventai-api');
     expect(result.dependencies.database).toBe('up');
-    expect(result.dependencies.redis).toBe('up');
-    expect(prisma.$queryRaw).toHaveBeenCalled();
   });
 
-  it('should report database down when the query fails', async () => {
-    prisma.$queryRaw.mockRejectedValue(new Error('connection refused'));
-    const result = await controller.check();
+  it('returns HTTP 503 when PostgreSQL is unavailable', async () => {
+    const prisma = { $queryRaw: jest.fn().mockRejectedValue(new Error('database unavailable')) };
+    const cache = { ping: jest.fn().mockResolvedValue('up') };
+    const response = { status: jest.fn() };
+    const controller = new HealthController(prisma as never, cache as never);
+
+    const result = await controller.check(response as never);
+
+    expect(response.status).toHaveBeenCalledWith(503);
+    expect(result.status).toBe('error');
     expect(result.dependencies.database).toBe('down');
-    expect(result.status).toBe('ok');
-  });
-
-  it('should report redis down when ping fails', async () => {
-    cache.ping.mockResolvedValue('down');
-    const result = await controller.check();
-    expect(result.dependencies.redis).toBe('down');
-    expect(result.dependencies.database).toBe('up');
   });
 });

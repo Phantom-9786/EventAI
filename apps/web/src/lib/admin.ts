@@ -22,6 +22,75 @@ export interface AdminCategory {
   eventCount: number;
 }
 
+export interface AdminBookingRow {
+  id: string;
+  status: string;
+  totalAmount: number;
+  currency: string;
+  createdAt: string;
+  user: { id: string; email: string; firstName: string; lastName: string };
+  event: { id: string; title: string; startDate: string };
+  payment: { status: string; amount: number; refundAmount: number | null; updatedAt: string } | null;
+}
+
+export interface AdminBookingDetail extends AdminBookingRow {
+  updatedAt: string;
+  confirmedAt: string | null;
+  cancelledAt: string | null;
+  cancellationReason: string | null;
+  items: { quantity: number; unitPrice: number; totalPrice: number; ticketType: { name: string } }[];
+  payment: (NonNullable<AdminBookingRow['payment']> & {
+    currency: string;
+    method: string | null;
+    refundId: string | null;
+    failureReason: string | null;
+    createdAt: string;
+  }) | null;
+  ticketCounts: Record<string, number>;
+}
+
+export async function listAdminBookings(params: { search?: string; status?: string; page?: number; signal?: AbortSignal } = {}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.status) qs.set('status', params.status);
+  if (params.page) qs.set('page', String(params.page));
+  const res = await authFetch(`/admin/bookings?${qs.toString()}`, { signal: params.signal });
+  if (!res.ok) throw new Error(`Failed to load bookings (${res.status})`);
+  return res.json() as Promise<{ bookings: AdminBookingRow[]; total: number; page: number; pages: number }>;
+}
+
+export async function getAdminBooking(id: string): Promise<AdminBookingDetail> {
+  const res = await authFetch(`/admin/bookings/${id}`);
+  if (!res.ok) throw new Error(`Failed to load booking details (${res.status})`);
+  const body = (await res.json()) as { booking: AdminBookingDetail };
+  return body.booking;
+}
+
+export async function reconcileAdminRefund(bookingId: string): Promise<{
+  bookingId: string;
+  refundId?: string;
+  status: string;
+  outcome: 'processed' | 'failed' | 'unknown' | 'provider_unavailable' | 'not_pending';
+}> {
+  const res = await authFetch(`/admin/bookings/${bookingId}/refund/reconcile`, { method: 'POST' });
+  const body = (await res.json().catch(() => ({}))) as {
+    bookingId?: string;
+    refundId?: string;
+    status?: string;
+    outcome?: 'processed' | 'failed' | 'unknown' | 'provider_unavailable' | 'not_pending';
+    message?: string | string[];
+  };
+  if (!res.ok) {
+    throw new Error(Array.isArray(body.message) ? body.message.join(', ') : body.message ?? `Refund reconciliation failed (${res.status})`);
+  }
+  return {
+    bookingId: body.bookingId ?? bookingId,
+    status: body.status ?? 'REFUND_PENDING',
+    outcome: body.outcome ?? 'unknown',
+    ...(body.refundId ? { refundId: body.refundId } : {}),
+  };
+}
+
 export async function getAdminStats(): Promise<AdminStats> {
   const res = await authFetch('/admin/stats');
   if (!res.ok) throw new Error(`Failed to load platform stats (${res.status})`);

@@ -20,6 +20,7 @@ describe('BookingsService', () => {
       findMany: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
       count: jest.Mock;
     };
     event: { findFirst: jest.Mock };
@@ -65,6 +66,7 @@ describe('BookingsService', () => {
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
         count: jest.fn().mockResolvedValue(0),
       },
       event: { findFirst: jest.fn() },
@@ -231,14 +233,27 @@ describe('BookingsService', () => {
     });
   });
 
+  describe('listOwn', () => {
+    it('bounds the lazy stale-booking sweep before loading the page', async () => {
+      prisma.booking.findMany.mockResolvedValue([]);
+      prisma.$transaction.mockResolvedValue([[], 0]);
+
+      await service.listOwn('user-1', 1, 20);
+
+      expect(prisma.booking.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ userId: 'user-1' }),
+        take: 200,
+      }));
+    });
+  });
+
   describe('cancelOwn', () => {
     it('cancels an unpaid booking and restores stock', async () => {
       prisma.booking.findUnique.mockResolvedValue(booking);
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
-      prisma.booking.findUnique
-        .mockResolvedValueOnce(booking) // initial load
-        .mockResolvedValueOnce({ status: 'PENDING' }); // re-check inside tx
-      prisma.booking.update.mockResolvedValue({ ...booking, status: 'CANCELLED' });
+      prisma.booking.findUnique.mockResolvedValue(booking);
+      prisma.booking.updateMany.mockResolvedValue({ count: 1 });
+      prisma.booking.findUniqueOrThrow.mockResolvedValue({ ...booking, status: 'CANCELLED' });
       prisma.ticketType.updateMany.mockResolvedValue({ count: 1 });
 
       const result = (await service.cancelOwn('user-1', 'bk-1', 'changed plans')) as {
@@ -246,9 +261,9 @@ describe('BookingsService', () => {
       };
 
       expect(result.status).toBe('CANCELLED');
-      expect(prisma.booking.update).toHaveBeenCalledWith(
+      expect(prisma.booking.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'bk-1' },
+          where: { id: 'bk-1', status: 'PENDING' },
           data: expect.objectContaining({ status: 'CANCELLED' }),
         }),
       );
@@ -270,6 +285,15 @@ describe('BookingsService', () => {
       prisma.booking.findUnique.mockResolvedValue({ ...booking, status: 'EXPIRED' });
 
       await expect(service.cancelOwn('user-1', 'bk-1')).rejects.toThrow(ConflictException);
+    });
+
+    it('does not release stock if another request already changed the booking', async () => {
+      prisma.booking.findUnique.mockResolvedValue(booking);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.booking.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.cancelOwn('user-1', 'bk-1')).rejects.toThrow(/status changed/i);
+      expect(prisma.ticketType.updateMany).not.toHaveBeenCalled();
     });
 
     it('refunds a confirmed booking through the payments service', async () => {

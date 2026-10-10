@@ -13,7 +13,8 @@ const footerSections = [
   {
     title: 'Organizers',
     links: [
-      { href: '/organizer', label: 'Organizer Dashboard' },
+      { href: '/dashboard', label: 'Organizer Dashboard' },
+      { href: '/organizer/events', label: 'Manage Events' },
       { href: '/organizer/events/new', label: 'Create an Event' },
     ],
   },

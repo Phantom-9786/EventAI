@@ -187,10 +187,11 @@ model Event {
   tickets      Ticket[]
 
   @@index([categoryId])
-  @@index([organizerId])
+  @@index([organizerId, createdAt])
   @@index([venueId])
   @@index([startDate])
   @@index([status])
+  @@index([status, startDate])
   @@index([isFeatured])
   @@index([searchVector], type: Gin, map: "events_search_vector_idx")
   @@map("events")
@@ -347,11 +348,10 @@ model Booking {
   payment  Payment?
   tickets  Ticket[]
 
-  @@index([userId])
+  @@index([userId, createdAt])
   @@index([eventId])
-  @@index([status])
+  @@index([status, expiresAt])
   @@index([idempotencyKey])
-  @@index([expiresAt])
   @@map("bookings")
 }
 
@@ -383,6 +383,7 @@ enum PaymentStatus {
   AUTHORIZED
   CAPTURED
   FAILED
+  REFUND_PENDING
   REFUNDED
   PARTIALLY_REFUNDED
 }
@@ -402,6 +403,7 @@ model Payment {
   failureReason      String?       @map("failure_reason")
   refundId           String?       @map("refund_id")
   refundAmount       Int?          @map("refund_amount")
+  refundAttemptKey   String?       @map("refund_attempt_key")
   webhookVerified    Boolean       @default(false) @map("webhook_verified")
 
   createdAt DateTime @default(now()) @map("created_at")

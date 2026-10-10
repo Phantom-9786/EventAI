@@ -1,0 +1,1 @@
+ALTER TABLE "payments" ADD COLUMN "refund_attempt_key" TEXT;

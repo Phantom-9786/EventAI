@@ -6,6 +6,10 @@
 import { PrismaClient } from '@prisma/client';
 import argon2 from 'argon2';
 
+if (process.env.NODE_ENV !== 'development') {
+  throw new Error('Database seed is restricted to NODE_ENV=development');
+}
+
 const prisma = new PrismaClient();
 
 const categories = [
@@ -56,20 +60,6 @@ const demoEvents: DemoEvent[] = [
 async function seedDemoUsers() {
   const passwordHash = await argon2.hash(DEMO_PASSWORD, { type: argon2.argon2id });
 
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@eventai.test' },
-    update: {},
-    create: {
-      email: 'admin@eventai.test',
-      passwordHash,
-      firstName: 'Site',
-      lastName: 'Admin',
-      username: 'eventai-admin',
-      role: 'ADMIN',
-      isActive: true,
-    },
-  });
-
   const organizerUser = await prisma.user.upsert({
     where: { email: 'demo.organizer@eventai.test' },
     update: {},
@@ -98,7 +88,7 @@ async function seedDemoUsers() {
     },
   });
 
-  return { admin, organizerUser, customer };
+  return { organizerUser, customer };
 }
 
 async function seedDemoOrganizerContent(organizerUserId: string) {
@@ -208,7 +198,7 @@ async function main() {
 
   const { organizerUser } = await seedDemoUsers();
   await seedDemoOrganizerContent(organizerUser.id);
-  console.log('Seeded demo users (admin@eventai.test, demo.organizer@eventai.test, customer@eventai.test — password DemoPass123) and demo events');
+  console.log('Seeded demo organizer/customer accounts and demo events');
 }
 
 main()

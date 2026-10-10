@@ -31,6 +31,14 @@ interface RazorpayWebhookPayment {
   error_description?: string;
 }
 
+interface RazorpayRefundRecord {
+  id: string;
+  payment_id: string;
+  amount: number;
+  status: 'pending' | 'processed' | 'failed' | string;
+  notes?: Record<string, string | number>;
+}
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -65,12 +73,21 @@ export class PaymentsService {
       return this.orderResponse(existing.razorpayOrderId, booking.totalAmount, existing.currency);
     }
 
-    const order = await this.ensureClient().orders.create({
-      amount: booking.totalAmount, // paise
-      currency: booking.currency,
-      receipt: booking.id,
-      notes: { bookingId: booking.id, userId },
-    }) as RazorpayOrder;
+    let order: RazorpayOrder;
+    try {
+      order = (await this.ensureClient().orders.create({
+        amount: booking.totalAmount, // paise
+        currency: booking.currency,
+        receipt: booking.id,
+        notes: { bookingId: booking.id, userId },
+      })) as RazorpayOrder;
+    } catch (err: any) {
+      const statusCode = Number(err?.statusCode);
+      this.logger.error(
+        `Razorpay order creation failed${Number.isInteger(statusCode) ? ` (HTTP ${statusCode})` : ''}`,
+      );
+      throw new BadRequestException('Payment gateway error: unable to create payment order');
+    }
 
     const payment = existing
       ? // A previous attempt failed — recycle the row with the fresh order
@@ -161,7 +178,7 @@ export class PaymentsService {
     if (!signature) {
       throw new BadRequestException('Missing x-razorpay-signature header');
     }
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    const secret = process.env.RAZORPAY_WEBHOOK_SECRET?.trim();
     if (!secret) {
       throw new ServiceUnavailableException('Webhook secret is not configured');
     }
@@ -170,11 +187,48 @@ export class PaymentsService {
       throw new ForbiddenException('Invalid webhook signature');
     }
 
-    let parsed: { event: string; payload?: { payment?: { entity?: RazorpayWebhookPayment } } };
+    let parsed: {
+      event: string;
+      payload?: {
+        payment?: { entity?: RazorpayWebhookPayment };
+        refund?: { entity?: RazorpayRefundRecord };
+      };
+    };
     try {
       parsed = JSON.parse(typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8'));
     } catch {
       throw new BadRequestException('Webhook body is not valid JSON');
+    }
+
+    const refundEvent = parsed.payload?.refund?.entity;
+    if (parsed.event.startsWith('refund.') && refundEvent) {
+      // Webhook signatures are verified above. Refund webhooks only act on the
+      // exact refund ID already recorded for a pending local attempt. If the
+      // create call timed out before returning an ID, the admin reconciliation
+      // lookup will correlate it from Razorpay's payment refund list instead.
+      const payment = await this.prisma.payment.findFirst({
+        where: { razorpayPaymentId: refundEvent.payment_id },
+        include: {
+          booking: {
+            include: {
+              items: true,
+              user: { select: { email: true, firstName: true, lastName: true } },
+              event: { select: { title: true } },
+            },
+          },
+        },
+      });
+      const webhookAttemptKey = String(refundEvent.notes?.eventaiRefundAttempt ?? '');
+      if (
+        !payment ||
+        payment.status !== 'REFUND_PENDING' ||
+        (payment.refundId !== refundEvent.id &&
+          (!payment.refundAttemptKey || payment.refundAttemptKey !== webhookAttemptKey))
+      ) {
+        return { received: true, handled: false };
+      }
+      const state = await this.applyRefundStatus(payment, refundEvent, null);
+      return { received: true, handled: state !== 'unknown' };
     }
 
     const entity = parsed.payload?.payment?.entity;
@@ -262,72 +316,319 @@ export class PaymentsService {
       throw new ConflictException('No captured payment exists for this booking');
     }
 
-    const refund = await this.ensureClient().payments.refund(
-      payment.razorpayPaymentId,
-      { speed: 'normal', notes: { bookingId: booking.id, reason: reason ?? 'user-requested' } },
-    ) as { id: string; amount: number; status: string };
+    // Validate local provider configuration before claiming a refund. Client
+    // construction is local-only; no provider request is made here.
+    const razorpay = this.ensureClient();
+
+    // Claim the payment durably before calling Razorpay so overlapping requests
+    // across API instances cannot both create an irreversible refund.
+    const refundAttemptKey = randomBytes(16).toString('hex');
+    const claimed = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.payment.updateMany({
+        where: { id: payment.id, status: 'CAPTURED' },
+        data: { status: 'REFUND_PENDING', refundId: null, refundAttemptKey },
+      });
+      if (result.count === 1) {
+        await tx.auditLog.create({
+          data: {
+            userId,
+            action: 'REFUND_REQUESTED',
+            entity: 'PAYMENT',
+            entityId: payment.id,
+            details: { bookingId: booking.id, outcome: 'claimed' },
+          },
+        });
+      }
+      return result.count === 1;
+    });
+    if (!claimed) {
+      throw new ConflictException('A refund is already in progress or this payment is no longer eligible');
+    }
+
+    let refund: { id: string; amount: number; status: string };
+    try {
+      refund = await razorpay.payments.refund(
+        payment.razorpayPaymentId,
+        {
+          speed: 'normal',
+          notes: {
+            bookingId: booking.id,
+            eventaiRefundAttempt: refundAttemptKey,
+            reason: reason ?? 'user-requested',
+          },
+        },
+      ) as { id: string; amount: number; status: string };
+    } catch (error) {
+      const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
+        ? Number((error as { statusCode?: unknown }).statusCode)
+        : NaN;
+      // Any transport/provider exception is ambiguous: even a 4xx surfaced by
+      // an intermediary must not release the claim without authoritative data.
+      await this.auditRefundOutcome(payment.id, userId, 'REFUND_RECONCILIATION_REQUIRED', {
+        bookingId: booking.id,
+        providerStatusCode: Number.isInteger(statusCode) ? statusCode : undefined,
+        outcome: 'unknown',
+      });
+      throw new ServiceUnavailableException(
+        'Refund outcome is pending provider reconciliation; do not retry yet',
+      );
+    }
+    const state = await this.applyRefundStatus(
+      { ...payment, status: 'REFUND_PENDING', refundAttemptKey },
+      { ...refund, payment_id: payment.razorpayPaymentId },
+      userId,
+      reason,
+    );
+    if (state === 'failed') {
+      throw new BadRequestException('The payment provider could not process the refund');
+    }
+    if (state === 'unknown') {
+      return {
+        booking: await this.prisma.booking.findUniqueOrThrow({
+          where: { id: booking.id },
+          include: {
+            items: true,
+            payment: true,
+            tickets: { select: { id: true, ticketCode: true, holderName: true, status: true, ticketTypeId: true } },
+          },
+        }),
+        refundId: refund.id,
+        refundAmount: null,
+        refundStatus: 'pending',
+        reconciliationRequired: true,
+      };
+    }
+    return {
+      booking: await this.prisma.booking.findUniqueOrThrow({
+        where: { id: booking.id },
+        include: {
+          items: true,
+          payment: true,
+          tickets: { select: { id: true, ticketCode: true, holderName: true, status: true, ticketTypeId: true } },
+        },
+      }),
+      refundId: refund.id,
+      refundAmount: refund.amount,
+      refundStatus: 'processed',
+    };
+  }
+
+  /** Admin-only lookup; this never creates a refund and never treats missing data as failure. */
+  async reconcileRefund(adminUserId: string, bookingId: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { bookingId },
+      include: {
+        booking: {
+          include: {
+            items: true,
+            user: { select: { email: true, firstName: true, lastName: true } },
+            event: { select: { title: true } },
+          },
+        },
+      },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+    if (payment.status !== 'REFUND_PENDING' || !payment.razorpayPaymentId) {
+      return { bookingId, status: payment.status, outcome: 'not_pending' };
+    }
+
+    let refund: RazorpayRefundRecord | undefined;
+    try {
+      const client = this.ensureClient();
+      if (payment.refundId) {
+        refund = await client.payments.fetchRefund(
+          payment.razorpayPaymentId,
+          payment.refundId,
+        ) as RazorpayRefundRecord;
+      } else {
+        const result = await client.payments.fetchMultipleRefund(payment.razorpayPaymentId, { count: 100 });
+        const matches = result.items.filter((candidate) =>
+          candidate.payment_id === payment.razorpayPaymentId &&
+          candidate.amount === payment.amount &&
+          (payment.refundAttemptKey
+            ? String(candidate.notes?.eventaiRefundAttempt ?? '') === payment.refundAttemptKey
+            : String(candidate.notes?.bookingId ?? '') === payment.bookingId),
+        );
+        if (matches.length === 1) refund = matches[0] as RazorpayRefundRecord;
+      }
+      if (
+        !refund ||
+        refund.payment_id !== payment.razorpayPaymentId ||
+        (payment.refundId !== null && refund.id !== payment.refundId)
+      ) {
+        await this.auditRefundOutcome(payment.id, adminUserId, 'REFUND_RECONCILIATION_REQUIRED', {
+          bookingId: payment.bookingId,
+          outcome: 'unknown',
+        });
+        return { bookingId, status: 'REFUND_PENDING', outcome: 'unknown' };
+      }
+    } catch {
+      await this.auditRefundOutcome(payment.id, adminUserId, 'REFUND_RECONCILIATION_REQUIRED', {
+        bookingId: payment.bookingId,
+        outcome: 'provider_unavailable',
+      });
+      return { bookingId, status: 'REFUND_PENDING', outcome: 'provider_unavailable' };
+    }
+    const state = await this.applyRefundStatus(payment, refund, adminUserId);
+    return {
+      bookingId,
+      refundId: refund.id,
+      status: state === 'processed' ? 'REFUNDED' : state === 'failed' ? 'CAPTURED' : 'REFUND_PENDING',
+      outcome: state,
+    };
+  }
+
+  private async applyRefundStatus(
+    payment: {
+      id: string;
+      bookingId: string;
+      amount: number;
+      status: string;
+      refundId: string | null;
+      refundAttemptKey: string | null;
+      booking: {
+        id: string;
+        items: { ticketTypeId: string; quantity: number }[];
+        user: { email: string; firstName: string; lastName: string };
+        event: { title: string };
+      };
+    },
+    refund: RazorpayRefundRecord,
+    actorUserId: string | null,
+    reason?: string,
+  ): Promise<'processed' | 'failed' | 'unknown'> {
+    if (payment.status !== 'REFUND_PENDING') {
+      return payment.status === 'REFUNDED' && payment.refundId === refund.id
+        ? 'processed'
+        : 'unknown';
+    }
+    if (refund.amount !== payment.amount) {
+      await this.auditRefundOutcome(payment.id, actorUserId, 'REFUND_RECONCILIATION_REQUIRED', {
+        bookingId: payment.bookingId,
+        refundId: refund.id,
+        outcome: 'amount_mismatch',
+      });
+      return 'unknown';
+    }
+
+    // Bind the provider refund to this pending local record before changing
+    // terminal state. Competing/out-of-order results must match this ID.
+    if (payment.refundId !== refund.id) {
+      const bound = await this.prisma.payment.updateMany({
+        where: {
+          id: payment.id,
+          status: 'REFUND_PENDING',
+          refundId: payment.refundId,
+          refundAttemptKey: payment.refundAttemptKey,
+        },
+        data: { refundId: refund.id },
+      });
+      if (bound.count !== 1) return 'unknown';
+    }
+
+    if (refund.status !== 'processed' && refund.status !== 'failed') {
+      await this.auditRefundOutcome(payment.id, actorUserId, 'REFUND_RECONCILIATION_REQUIRED', {
+        bookingId: payment.bookingId,
+        refundId: refund.id,
+        providerStatus: refund.status,
+        outcome: 'pending',
+      });
+      return 'unknown';
+    }
+
+    if (refund.status === 'failed') {
+      const changed = await this.prisma.$transaction(async (tx) => {
+        const result = await tx.payment.updateMany({
+          where: {
+            id: payment.id,
+            status: 'REFUND_PENDING',
+            refundId: refund.id,
+            refundAttemptKey: payment.refundAttemptKey,
+          },
+          data: { status: 'CAPTURED' },
+        });
+        if (result.count === 1) {
+          await tx.auditLog.create({
+            data: {
+              userId: actorUserId,
+              action: 'REFUND_RECONCILIATION_FAILED',
+              entity: 'PAYMENT',
+              entityId: payment.id,
+              details: { bookingId: payment.bookingId, refundId: refund.id, providerStatus: 'failed' },
+            },
+          });
+        }
+        return result.count === 1;
+      });
+      return changed ? 'failed' : 'unknown';
+    }
 
     const refunded = await this.prisma.$transaction(async (tx) => {
-      // Re-check: a concurrent refund may have gone through
-      const current = await tx.payment.findUnique({
-        where: { id: payment.id },
-        select: { status: true },
-      });
-      if (!current || current.status !== 'CAPTURED') {
-        throw new ConflictException('This booking was already refunded');
-      }
-
-      await tx.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: 'REFUNDED',
+      const paymentUpdated = await tx.payment.updateMany({
+        where: {
+          id: payment.id,
+          status: 'REFUND_PENDING',
           refundId: refund.id,
-          refundAmount: refund.amount,
+          refundAttemptKey: payment.refundAttemptKey,
         },
+        data: { status: 'REFUNDED', refundAmount: refund.amount },
       });
-
-      await tx.booking.update({
-        where: { id: booking.id },
+      if (paymentUpdated.count !== 1) return null;
+      const bookingUpdated = await tx.booking.updateMany({
+        where: { id: payment.bookingId, status: 'CONFIRMED' },
         data: {
           status: 'REFUNDED',
           cancelledAt: new Date(),
           cancellationReason: reason ?? 'Customer refund',
         },
       });
-
-      // Cancel unused tickets and release the stock back for resale
+      if (bookingUpdated.count !== 1) {
+        throw new ConflictException('Provider refund succeeded but booking state needs reconciliation');
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: actorUserId,
+          action: 'REFUND_COMPLETED',
+          entity: 'PAYMENT',
+          entityId: payment.id,
+          details: { bookingId: payment.bookingId, refundId: refund.id, refundAmount: refund.amount },
+        },
+      });
       await tx.ticket.updateMany({
-        where: { bookingId: booking.id, status: 'VALID' },
+        where: { bookingId: payment.bookingId, status: 'VALID' },
         data: { status: 'CANCELLED' },
       });
-      for (const item of booking.items) {
+      for (const item of payment.booking.items) {
         await tx.ticketType.updateMany({
           where: { id: item.ticketTypeId },
           data: { availableQuantity: { increment: item.quantity } },
         });
       }
-
       return tx.booking.findUniqueOrThrow({
-        where: { id: booking.id },
+        where: { id: payment.bookingId },
         include: {
           items: true,
           payment: true,
-          tickets: {
-            select: {
-              id: true,
-              ticketCode: true,
-              holderName: true,
-              status: true,
-              ticketTypeId: true,
-            },
-          },
+          tickets: { select: { id: true, ticketCode: true, holderName: true, status: true, ticketTypeId: true } },
         },
       });
     });
+    if (!refunded) return 'unknown';
+    this.logger.log(`Refund reconciled as processed for payment ${payment.id}`);
+    this.notifyRefund(payment.booking, refund.id, refund.amount, reason);
+    return 'processed';
+  }
 
-    this.logger.log(`Booking ${booking.id} refunded (${refund.id})`);
-    this.notifyRefund(booking, refund.id, refund.amount, reason);
-    return { booking: refunded, refundId: refund.id, refundAmount: refund.amount };
+  private async auditRefundOutcome(
+    paymentId: string,
+    userId: string | null,
+    action: string,
+    details: Record<string, string | number | undefined>,
+  ) {
+    const safeDetails = Object.fromEntries(Object.entries(details).filter(([, value]) => value !== undefined));
+    await this.prisma.auditLog.create({
+      data: { userId, action, entity: 'PAYMENT', entityId: paymentId, details: safeDetails },
+    });
   }
 
   /** Fire-and-forget refund email after a successful refund. */
@@ -383,8 +684,10 @@ export class PaymentsService {
       method: string | null;
     },
   ) {
-    await tx.payment.update({
-      where: { id: input.paymentId },
+    // Compare-and-set the payment before minting tickets. Browser verification
+    // and the Razorpay webhook may race; only one transaction may win capture.
+    const captured = await tx.payment.updateMany({
+      where: { id: input.paymentId, status: { in: ['CREATED', 'PENDING'] } },
       data: {
         status: 'CAPTURED',
         razorpayPaymentId: input.razorpayPaymentId,
@@ -393,6 +696,9 @@ export class PaymentsService {
         failureReason: null,
       },
     });
+    if (captured.count !== 1) {
+      throw new ConflictException('Payment was already processed; retry to load its current status');
+    }
 
     await tx.booking.update({
       where: { id: input.bookingId },
@@ -485,13 +791,13 @@ export class PaymentsService {
       orderId,
       amount,
       currency,
-      keyId: process.env.RAZORPAY_KEY_ID ?? null,
+      keyId: process.env.RAZORPAY_KEY_ID?.trim() ?? null,
     };
   }
 
   private ensureClient(): Razorpay {
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    const keyId = process.env.RAZORPAY_KEY_ID?.trim();
+    const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
     if (!keyId || !keySecret) {
       throw new ServiceUnavailableException(
         'Payments are not configured (missing Razorpay keys)',
@@ -504,7 +810,7 @@ export class PaymentsService {
   }
 
   private requireSecret(): string {
-    const secret = process.env.RAZORPAY_KEY_SECRET;
+    const secret = process.env.RAZORPAY_KEY_SECRET?.trim();
     if (!secret) {
       throw new ServiceUnavailableException(
         'Payments are not configured (missing Razorpay key secret)',

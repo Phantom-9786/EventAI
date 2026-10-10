@@ -12,14 +12,17 @@ import { PaymentsService } from './payments.service';
 describe('PaymentsService', () => {
   let service: PaymentsService;
   let prisma: {
-    booking: { findUnique: jest.Mock; update: jest.Mock; findUniqueOrThrow: jest.Mock };
-    payment: { findUnique: jest.Mock; create: jest.Mock; update: jest.Mock };
+    booking: { findUnique: jest.Mock; update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
+    payment: { findUnique: jest.Mock; findFirst: jest.Mock; create: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     ticket: { count: jest.Mock; create: jest.Mock; findUnique: jest.Mock; updateMany: jest.Mock };
     ticketType: { updateMany: jest.Mock };
+    auditLog: { create: jest.Mock };
     $transaction: jest.Mock;
   };
   let ordersCreate: jest.Mock;
   let refundsCreate: jest.Mock;
+  let refundsFetch: jest.Mock;
+  let refundsList: jest.Mock;
   let sendRefundConfirmation: jest.Mock;
 
   const keyId = 'rzp_test_key';
@@ -72,8 +75,8 @@ describe('PaymentsService', () => {
 
   beforeEach(async () => {
     prisma = {
-      booking: { findUnique: jest.fn(), update: jest.fn(), findUniqueOrThrow: jest.fn() },
-      payment: { findUnique: jest.fn(), create: jest.fn(), update: jest.fn() },
+      booking: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findUniqueOrThrow: jest.fn() },
+      payment: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
       ticket: {
         count: jest.fn().mockResolvedValue(0),
         create: jest.fn(),
@@ -81,10 +84,13 @@ describe('PaymentsService', () => {
         updateMany: jest.fn(),
       },
       ticketType: { updateMany: jest.fn() },
+      auditLog: { create: jest.fn() },
       $transaction: jest.fn(),
     };
     ordersCreate = jest.fn();
     refundsCreate = jest.fn();
+    refundsFetch = jest.fn();
+    refundsList = jest.fn();
     sendRefundConfirmation = jest.fn().mockResolvedValue(true);
 
     const moduleRef = await Test.createTestingModule({
@@ -107,7 +113,7 @@ describe('PaymentsService', () => {
     // Inject a stubbed Razorpay client
     (service as unknown as { razorpayClient: unknown }).razorpayClient = {
       orders: { create: ordersCreate },
-      payments: { refund: refundsCreate },
+      payments: { refund: refundsCreate, fetchRefund: refundsFetch, fetchMultipleRefund: refundsList },
     };
   });
 
@@ -177,7 +183,7 @@ describe('PaymentsService', () => {
     it('confirms the booking and mints tickets on a valid signature', async () => {
       prisma.payment.findUnique.mockResolvedValue(payment);
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
-      prisma.payment.update.mockResolvedValue(payment);
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
       prisma.booking.update.mockResolvedValue({ ...booking, status: 'CONFIRMED' });
       prisma.booking.findUniqueOrThrow
         .mockResolvedValueOnce({ ...booking, status: 'CONFIRMED' }) // load for minting
@@ -190,8 +196,8 @@ describe('PaymentsService', () => {
         razorpaySignature: sign('order_123|pay_abc'),
       });
 
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'pay-row-1' },
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: { id: 'pay-row-1', status: { in: ['CREATED', 'PENDING'] } },
         data: expect.objectContaining({ status: 'CAPTURED' }),
       });
       expect(prisma.booking.update).toHaveBeenCalledWith({
@@ -202,6 +208,20 @@ describe('PaymentsService', () => {
       expect(prisma.ticket.create).toHaveBeenCalledTimes(2);
       expect(prisma.ticket.create.mock.calls[0][0].data.holderName).toBe('Ada Lovelace');
       expect(confirmed.status).toBe('CONFIRMED');
+    });
+
+    it('does not mint tickets when another callback already claimed capture', async () => {
+      prisma.payment.findUnique.mockResolvedValue(payment);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.payment.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.verifyPayment(userId, {
+        bookingId,
+        razorpayOrderId: 'order_123',
+        razorpayPaymentId: 'pay_abc',
+        razorpaySignature: sign('order_123|pay_abc'),
+      })).rejects.toThrow(/already processed/i);
+      expect(prisma.ticket.create).not.toHaveBeenCalled();
     });
 
     it('rejects a tampered signature', async () => {
@@ -291,7 +311,7 @@ describe('PaymentsService', () => {
       const b = body('payment.captured', { id: 'pay_x', order_id: 'order_123', method: 'upi' });
       prisma.payment.findUnique.mockResolvedValue(payment);
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
-      prisma.payment.update.mockResolvedValue(payment);
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
       prisma.booking.update.mockResolvedValue(booking);
       prisma.booking.findUniqueOrThrow
         .mockResolvedValueOnce(booking)
@@ -304,10 +324,8 @@ describe('PaymentsService', () => {
         where: { id: bookingId },
         data: expect.objectContaining({ status: 'CONFIRMED' }),
       });
-      expect(prisma.payment.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ method: 'upi' }),
-        }),
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ method: 'upi' }) }),
       );
     });
 
@@ -356,6 +374,47 @@ describe('PaymentsService', () => {
 
       expect(result).toEqual({ received: true, handled: false });
     });
+
+    it('accepts only a verified refund webhook for the current pending attempt', async () => {
+      const refund = {
+        id: 'rfnd_1', payment_id: 'pay_abc', amount: 300000, status: 'processed',
+        notes: { eventaiRefundAttempt: 'current-attempt' },
+      };
+      const b = Buffer.from(JSON.stringify({ event: 'refund.processed', payload: { refund: { entity: refund } } }));
+      prisma.payment.findFirst.mockResolvedValue({
+        id: 'pay-row-1', bookingId, amount: 300000, status: 'REFUND_PENDING', refundId: null,
+        refundAttemptKey: 'current-attempt',
+        booking: { ...booking, status: 'CONFIRMED' },
+      });
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.booking.updateMany.mockResolvedValue({ count: 1 });
+      prisma.ticket.updateMany.mockResolvedValue({ count: 2 });
+      prisma.booking.findUniqueOrThrow.mockResolvedValue({ ...booking, status: 'REFUNDED', tickets: [] });
+
+      const result = await service.handleWebhook(b, signBody(b));
+      expect(result).toEqual({ received: true, handled: true });
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ refundAttemptKey: 'current-attempt' }),
+      }));
+    });
+
+    it('ignores a correctly signed stale refund webhook for an older attempt', async () => {
+      const refund = {
+        id: 'rfnd_old', payment_id: 'pay_abc', amount: 300000, status: 'failed',
+        notes: { eventaiRefundAttempt: 'old-attempt' },
+      };
+      const b = Buffer.from(JSON.stringify({ event: 'refund.failed', payload: { refund: { entity: refund } } }));
+      prisma.payment.findFirst.mockResolvedValue({
+        id: 'pay-row-1', status: 'REFUND_PENDING', refundId: null,
+        refundAttemptKey: 'current-attempt',
+      });
+
+      const result = await service.handleWebhook(b, signBody(b));
+      expect(result).toEqual({ received: true, handled: false });
+      expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+      expect(prisma.booking.updateMany).not.toHaveBeenCalled();
+    });
   });
 
   describe('refundBooking', () => {
@@ -364,6 +423,8 @@ describe('PaymentsService', () => {
       bookingId,
       userId,
       status: 'CAPTURED',
+      amount: 300000,
+      refundId: null,
       razorpayPaymentId: 'pay_abc',
       booking: { ...booking, status: 'CONFIRMED' },
     };
@@ -373,9 +434,8 @@ describe('PaymentsService', () => {
       refundsCreate.mockResolvedValue({ id: 'rfnd_1', amount: 300000, status: 'processed' });
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
       prisma.payment.findUnique.mockResolvedValueOnce(paidPayment); // load
-      prisma.payment.findUnique.mockResolvedValueOnce({ status: 'CAPTURED' }); // tx re-check
-      prisma.payment.update.mockResolvedValue(paidPayment);
-      prisma.booking.update.mockResolvedValue({ ...booking, status: 'REFUNDED' });
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.booking.updateMany.mockResolvedValue({ count: 1 });
       prisma.ticket.updateMany.mockResolvedValue({ count: 2 });
       prisma.booking.findUniqueOrThrow.mockResolvedValue({
         ...booking,
@@ -389,12 +449,14 @@ describe('PaymentsService', () => {
         'pay_abc',
         expect.objectContaining({ speed: 'normal' }),
       );
-      expect(prisma.payment.update).toHaveBeenCalledWith({
-        where: { id: 'pay-row-1' },
-        data: expect.objectContaining({ status: 'REFUNDED', refundId: 'rfnd_1' }),
+      expect(prisma.payment.updateMany).toHaveBeenLastCalledWith({
+        where: {
+          id: 'pay-row-1', status: 'REFUND_PENDING', refundId: 'rfnd_1', refundAttemptKey: expect.any(String),
+        },
+        data: { status: 'REFUNDED', refundAmount: 300000 },
       });
-      expect(prisma.booking.update).toHaveBeenCalledWith({
-        where: { id: bookingId },
+      expect(prisma.booking.updateMany).toHaveBeenCalledWith({
+        where: { id: bookingId, status: 'CONFIRMED' },
         data: expect.objectContaining({ status: 'REFUNDED' }),
       });
       expect(prisma.ticket.updateMany).toHaveBeenCalledWith({
@@ -416,6 +478,57 @@ describe('PaymentsService', () => {
           refundAmount: 300000,
         }),
       );
+    });
+
+    it('does not call the provider when another request has already claimed the refund', async () => {
+      prisma.payment.findUnique.mockResolvedValue(paidPayment);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.payment.updateMany.mockResolvedValue({ count: 0 });
+
+      await expect(service.refundBooking(userId, bookingId)).rejects.toThrow(/already in progress/i);
+      expect(refundsCreate).not.toHaveBeenCalled();
+    });
+
+    it('does not claim a refund when local Razorpay configuration is missing', async () => {
+      prisma.payment.findUnique.mockResolvedValue(paidPayment);
+      const previousKeyId = process.env.RAZORPAY_KEY_ID;
+      const previousKeySecret = process.env.RAZORPAY_KEY_SECRET;
+      delete process.env.RAZORPAY_KEY_ID;
+      delete process.env.RAZORPAY_KEY_SECRET;
+      try {
+        await expect(service.refundBooking(userId, bookingId)).rejects.toThrow(/not configured/i);
+      } finally {
+        process.env.RAZORPAY_KEY_ID = previousKeyId;
+        process.env.RAZORPAY_KEY_SECRET = previousKeySecret;
+      }
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(refundsCreate).not.toHaveBeenCalled();
+    });
+
+    it('keeps an ambiguous provider outcome pending to prevent a duplicate refund', async () => {
+      prisma.payment.findUnique.mockResolvedValue(paidPayment);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      refundsCreate.mockRejectedValue({ statusCode: 500 });
+
+      await expect(service.refundBooking(userId, bookingId)).rejects.toThrow(/pending provider reconciliation/i);
+      expect(prisma.payment.updateMany).toHaveBeenCalledTimes(1); // claim remains REFUND_PENDING
+    });
+
+    it('keeps a provider-pending response pending and stores its refund ID', async () => {
+      prisma.payment.findUnique.mockResolvedValue(paidPayment);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      refundsCreate.mockResolvedValue({ id: 'rfnd_wait', amount: 300000, status: 'pending' });
+
+      const result = await service.refundBooking(userId, bookingId);
+
+      expect(result).toMatchObject({ refundId: 'rfnd_wait', refundStatus: 'pending', reconciliationRequired: true });
+      expect(prisma.payment.updateMany).toHaveBeenLastCalledWith({
+        where: { id: 'pay-row-1', status: 'REFUND_PENDING', refundId: null, refundAttemptKey: expect.any(String) },
+        data: { refundId: 'rfnd_wait' },
+      });
+      expect(prisma.ticketType.updateMany).not.toHaveBeenCalled();
     });
 
     it('refuses to refund an unpaid booking', async () => {
@@ -448,6 +561,99 @@ describe('PaymentsService', () => {
 
       await expect(service.refundBooking('intruder', bookingId)).rejects.toThrow(NotFoundException);
       expect(refundsCreate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reconcileRefund', () => {
+    const pendingPayment = {
+      id: 'pay-row-1',
+      bookingId,
+      userId,
+      status: 'REFUND_PENDING',
+      amount: 300000,
+      refundId: null,
+      refundAttemptKey: 'attempt-current',
+      razorpayPaymentId: 'pay_abc',
+      booking: { ...booking, status: 'CONFIRMED' },
+    };
+    const providerRefund = {
+      id: 'rfnd_1', payment_id: 'pay_abc', amount: 300000,
+      status: 'processed', notes: { bookingId, eventaiRefundAttempt: 'attempt-current' },
+    };
+
+    beforeEach(() => {
+      prisma.payment.findUnique.mockResolvedValue(pendingPayment);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      refundsList.mockResolvedValue({ items: [providerRefund] });
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+      prisma.booking.updateMany.mockResolvedValue({ count: 1 });
+      prisma.ticket.updateMany.mockResolvedValue({ count: 2 });
+      prisma.booking.findUniqueOrThrow.mockResolvedValue({ ...booking, status: 'REFUNDED', tickets: [] });
+    });
+
+    it('applies an authoritative processed status once and restores inventory', async () => {
+      const result = await service.reconcileRefund('admin-1', bookingId);
+      expect(result).toMatchObject({ bookingId, status: 'REFUNDED', outcome: 'processed', refundId: 'rfnd_1' });
+      expect(prisma.booking.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.ticket.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.ticketType.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ action: 'REFUND_COMPLETED', userId: 'admin-1' }),
+      }));
+    });
+
+    it('restores retryable payment state only for provider-confirmed failure', async () => {
+      refundsList.mockResolvedValue({ items: [{ ...providerRefund, status: 'failed' }] });
+      const result = await service.reconcileRefund('admin-1', bookingId);
+      expect(result).toMatchObject({ bookingId, status: 'CAPTURED', outcome: 'failed' });
+      expect(prisma.booking.updateMany).not.toHaveBeenCalled();
+      expect(prisma.ticket.updateMany).not.toHaveBeenCalled();
+      expect(prisma.payment.updateMany).toHaveBeenLastCalledWith({
+        where: { id: 'pay-row-1', status: 'REFUND_PENDING', refundId: 'rfnd_1', refundAttemptKey: 'attempt-current' },
+        data: { status: 'CAPTURED' },
+      });
+    });
+
+    it('retains pending state when the provider has no correlated refund', async () => {
+      refundsList.mockResolvedValue({ items: [] });
+      const result = await service.reconcileRefund('admin-1', bookingId);
+      expect(result).toMatchObject({ bookingId, status: 'REFUND_PENDING', outcome: 'unknown' });
+      expect(prisma.payment.updateMany).not.toHaveBeenCalled();
+      expect(prisma.booking.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('retains pending state when the fetched refund ID differs from the locally recorded ID', async () => {
+      prisma.payment.findUnique.mockResolvedValue({ ...pendingPayment, refundId: 'rfnd_expected' });
+      refundsFetch.mockResolvedValue({ ...providerRefund, id: 'rfnd_other' });
+
+      const result = await service.reconcileRefund('admin-1', bookingId);
+
+      expect(refundsFetch).toHaveBeenCalledWith('pay_abc', 'rfnd_expected');
+      expect(result).toMatchObject({ status: 'REFUND_PENDING', outcome: 'unknown' });
+      expect(prisma.booking.updateMany).not.toHaveBeenCalled();
+      expect(prisma.ticketType.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('does not process duplicate reconciliation after the payment is terminal', async () => {
+      prisma.payment.findUnique.mockResolvedValue({ ...pendingPayment, status: 'REFUNDED', refundId: 'rfnd_1' });
+      const result = await service.reconcileRefund('admin-1', bookingId);
+      expect(result).toMatchObject({ status: 'REFUNDED', outcome: 'not_pending' });
+      expect(refundsList).not.toHaveBeenCalled();
+      expect(prisma.ticketType.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('allows only one concurrent reconciliation to finalize and restore stock', async () => {
+      prisma.payment.findUnique.mockResolvedValue(pendingPayment);
+      prisma.payment.updateMany
+        .mockResolvedValueOnce({ count: 1 }) // bind the provider refund ID
+        .mockResolvedValueOnce({ count: 0 }); // competing reconciler loses the bind
+      const results = await Promise.all([
+        service.reconcileRefund('admin-1', bookingId),
+        service.reconcileRefund('admin-2', bookingId),
+      ]);
+      expect(results.filter((result) => result.outcome === 'processed')).toHaveLength(1);
+      expect(prisma.booking.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.ticketType.updateMany).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -247,21 +247,20 @@ export class BookingsService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
-      const current = await tx.booking.findUnique({
-        where: { id: booking.id },
-        select: { status: true },
-      });
-      if (!current || current.status !== booking.status) {
-        throw new ConflictException('Booking status changed, please retry');
-      }
-
-      const updated = await tx.booking.update({
-        where: { id: booking.id },
+      const transitioned = await tx.booking.updateMany({
+        where: { id: booking.id, status: booking.status },
         data: {
           status: 'CANCELLED',
           cancelledAt: new Date(),
           cancellationReason: reason,
         },
+      });
+      if (transitioned.count !== 1) {
+        throw new ConflictException('Booking status changed, please retry');
+      }
+
+      const updated = await tx.booking.findUniqueOrThrow({
+        where: { id: booking.id },
         include: BOOKING_DETAIL_INCLUDE,
       });
 
@@ -324,6 +323,7 @@ export class BookingsService {
         expiresAt: { lt: new Date() },
       },
       select: { id: true },
+      take: 200,
     });
     for (const { id } of stale) {
       await this.expireBookingIfStale(id);
@@ -343,22 +343,17 @@ export class BookingsService {
     if (!booking) return;
 
     await this.prisma.$transaction(async (tx) => {
-      // Re-check inside the transaction: the user may have paid concurrently
-      const current = await tx.booking.findUnique({
-        where: { id: booking.id },
-        select: { status: true },
-      });
-      if (
-        !current ||
-        (current.status !== 'PENDING' && current.status !== 'PAYMENT_PENDING')
-      ) {
-        return;
-      }
-
-      await tx.booking.update({
-        where: { id: booking.id },
+      // Compare-and-set makes inventory release happen only for the request
+      // that actually transitions this still-expired booking.
+      const transitioned = await tx.booking.updateMany({
+        where: {
+          id: booking.id,
+          status: { in: ['PENDING', 'PAYMENT_PENDING'] },
+          expiresAt: { lt: new Date() },
+        },
         data: { status: 'EXPIRED' },
       });
+      if (transitioned.count !== 1) return;
       for (const item of booking.items) {
         await tx.ticketType.updateMany({
           where: { id: item.ticketTypeId },

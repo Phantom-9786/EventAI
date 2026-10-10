@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { CalendarDays, MapPin, Ticket } from 'lucide-react';
 import type { EventSummary } from '@/lib/api';
 import { formatEventDate, formatPriceRange } from '@/lib/api';
@@ -19,11 +20,12 @@ export function EventCard({
     >
       <div className="relative flex h-40 items-center justify-center overflow-hidden bg-muted">
         {event.images[0] ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={event.images[0]}
             alt={event.title}
-            className="h-full w-full object-cover transition-transform group-hover:scale-105"
+            fill
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+            className="object-cover transition-transform group-hover:scale-105"
           />
         ) : (
           <CalendarDays

@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import type {
   AdminEventListInput,
+  AdminBookingListInput,
   AdminModerateEventInput,
   AdminOrganizerListInput,
   AdminSetOrganizerVerificationInput,
@@ -20,6 +21,96 @@ export class AdminService {
   private readonly logger = new Logger(AdminService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Search bookings with explicitly limited customer, event and payment fields. */
+  async listBookings(query: AdminBookingListInput) {
+    const { page, limit, search, status } = query;
+    const where = {
+      AND: [
+        status ? { status } : {},
+        search
+          ? {
+              OR: [
+                { id: { equals: search } },
+                { user: { email: { contains: search, mode: 'insensitive' as const } } },
+                { event: { title: { contains: search, mode: 'insensitive' as const } } },
+              ],
+            }
+          : {},
+      ],
+    };
+    const [bookings, total] = await this.prisma.$transaction([
+      this.prisma.booking.findMany({
+        where,
+        select: {
+          id: true,
+          status: true,
+          totalAmount: true,
+          currency: true,
+          createdAt: true,
+          user: { select: { id: true, email: true, firstName: true, lastName: true } },
+          event: { select: { id: true, title: true, startDate: true } },
+          payment: { select: { status: true, amount: true, refundAmount: true, updatedAt: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.booking.count({ where }),
+    ]);
+    return { bookings, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  /** Detail view deliberately omits provider signatures, QR data and ticket codes. */
+  async getBooking(bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        status: true,
+        totalAmount: true,
+        currency: true,
+        createdAt: true,
+        updatedAt: true,
+        confirmedAt: true,
+        cancelledAt: true,
+        cancellationReason: true,
+        user: { select: { id: true, email: true, firstName: true, lastName: true } },
+        event: { select: { id: true, title: true, startDate: true } },
+        items: {
+          select: {
+            quantity: true,
+            unitPrice: true,
+            totalPrice: true,
+            ticketType: { select: { name: true } },
+          },
+        },
+        payment: {
+          select: {
+            status: true,
+            amount: true,
+            currency: true,
+            method: true,
+            refundId: true,
+            refundAmount: true,
+            failureReason: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+        tickets: { select: { status: true } },
+      },
+    });
+    if (!booking) throw new NotFoundException('Booking not found');
+    const { tickets, ...detail } = booking;
+    return {
+      ...detail,
+      ticketCounts: tickets.reduce<Record<string, number>>((counts, ticket) => {
+        counts[ticket.status] = (counts[ticket.status] ?? 0) + 1;
+        return counts;
+      }, {}),
+    };
+  }
 
   /** Platform-wide aggregates for the admin dashboard. */
   async platformStats() {

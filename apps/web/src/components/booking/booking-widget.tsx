@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, Minus, Plus, ShieldCheck, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -83,6 +83,8 @@ export function BookingWidget({
   const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<BookingView | null>(null);
   const [qrUrls, setQrUrls] = useState<Record<string, string>>({});
+  const attemptRef = useRef<{ fingerprint: string; idempotencyKey: string } | null>(null);
+  const submitLock = useRef(false);
 
   const purchasable = useMemo(
     () => ticketTypes.filter((t) => t.availableQuantity > 0 && saleWindowOpen(t)),
@@ -121,6 +123,7 @@ export function BookingWidget({
   }
 
   async function onBook() {
+    if (submitLock.current) return;
     setError(null);
     if (!user) return; // button renders a sign-in link when logged out
     const items = purchasable
@@ -128,13 +131,29 @@ export function BookingWidget({
       .filter((i) => i.quantity > 0);
     if (items.length === 0) return;
 
+    submitLock.current = true;
+    const fingerprint = JSON.stringify({ eventId, items });
+    if (attemptRef.current?.fingerprint !== fingerprint) {
+      attemptRef.current = { fingerprint, idempotencyKey: crypto.randomUUID() };
+    }
+
     setPhase('creating');
     try {
       const booking = await createBooking({
         eventId,
         items,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: attemptRef.current.idempotencyKey,
       });
+
+      // Recover when an earlier create/verify response timed out after the API
+      // committed it; the stable key returns the original booking on retry.
+      if (booking.status === 'CONFIRMED') {
+        setConfirmed(booking);
+        attemptRef.current = null;
+        setPhase('done');
+        if (booking.tickets) void loadQrUrls(booking.tickets);
+        return;
+      }
 
       setPhase('paying');
       const order = await createPaymentOrder(booking.id);
@@ -170,11 +189,14 @@ export function BookingWidget({
                 razorpaySignature: response.razorpay_signature,
               });
               setConfirmed(result);
+              attemptRef.current = null;
               setPhase('done');
               if (result.tickets) void loadQrUrls(result.tickets);
             } catch (err) {
               setError(err instanceof Error ? err.message : 'Payment verification failed');
               setPhase('idle');
+            } finally {
+              submitLock.current = false;
             }
           })();
         },
@@ -191,6 +213,8 @@ export function BookingWidget({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       setPhase('idle');
+    } finally {
+      submitLock.current = false;
     }
   }
 

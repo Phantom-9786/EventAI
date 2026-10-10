@@ -5,6 +5,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
   adminEventListSchema,
+  adminBookingListSchema,
   adminModerateEventSchema,
   adminOrganizerListSchema,
   adminSetOrganizerVerificationSchema,
@@ -13,11 +14,15 @@ import {
   idParamSchema,
 } from '@eventai/validation';
 import { AdminService } from './admin.service';
+import { PaymentsService } from '../payments/payments.service';
 
 @ApiTags('admin')
 @Controller('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   @Roles('ADMIN')
   @Get('stats')
@@ -35,6 +40,32 @@ export class AdminController {
     @Query(new ZodValidationPipe(adminUserListSchema)) query: Record<string, unknown>,
   ) {
     return this.adminService.listUsers(query as never);
+  }
+
+  @Roles('ADMIN')
+  @Get('bookings')
+  @ApiOperation({ summary: 'Search bookings and payment status (admin only)' })
+  async listBookings(
+    @Query(new ZodValidationPipe(adminBookingListSchema)) query: Record<string, unknown>,
+  ) {
+    return this.adminService.listBookings(query as never);
+  }
+
+  @Roles('ADMIN')
+  @Get('bookings/:id')
+  @ApiOperation({ summary: 'View booking and payment oversight details (admin only)' })
+  async bookingDetail(@Param(new ZodValidationPipe(idParamSchema)) params: { id: string }) {
+    return { booking: await this.adminService.getBooking(params.id) };
+  }
+
+  @Roles('ADMIN')
+  @Post('bookings/:id/refund/reconcile')
+  @ApiOperation({ summary: 'Safely inspect and reconcile a pending Razorpay refund (admin only)' })
+  async reconcileRefund(
+    @CurrentUser('id') adminUserId: string,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.paymentsService.reconcileRefund(adminUserId, params.id);
   }
 
   @Roles('ADMIN')

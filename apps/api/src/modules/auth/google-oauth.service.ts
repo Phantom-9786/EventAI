@@ -137,10 +137,8 @@ export class GoogleOauthService {
     let tokens;
     try {
       ({ tokens } = await client.getToken(code));
-    } catch (err) {
-      this.logger.warn(
-        `Google token exchange failed: ${err instanceof Error ? err.message : 'unknown error'}`,
-      );
+    } catch {
+      this.logger.warn('Google token exchange failed');
       throw new UnauthorizedException('Google authorization failed');
     }
     if (!tokens.id_token) {

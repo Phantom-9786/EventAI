@@ -338,11 +338,9 @@ export class AuthService {
         verificationToken: token,
         frontendUrl: this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000'),
       });
-      if (!sent) this.logger.debug(`Email verification token for ${email}: ${token}`);
-    })().catch((err) => {
-      this.logger.warn(
-        `Email verification issue failed: ${err instanceof Error ? err.message : 'unknown'}`,
-      );
+      if (!sent) this.logger.debug('Email verification message was not delivered');
+    })().catch(() => {
+      this.logger.warn('Email verification request failed');
     });
   }
 
@@ -402,8 +400,7 @@ export class AuthService {
         },
       });
 
-      // Degrades gracefully: with no BREVO_API_KEY the send is skipped
-      // and the raw token is logged in dev so the flow stays testable.
+      // Degrades gracefully: with no BREVO_API_KEY the send is skipped.
       void this.notifications
         .sendPasswordResetEmail({
           to: email,
@@ -412,7 +409,7 @@ export class AuthService {
           frontendUrl: this.configService.get<string>('FRONTEND_URL', 'http://localhost:3000'),
         })
         .then((sent) => {
-          if (!sent) this.logger.debug(`Password reset token for ${email}: ${token}`);
+          if (!sent) this.logger.debug('Password reset message was not delivered');
         })
         .catch(() => undefined);
     }

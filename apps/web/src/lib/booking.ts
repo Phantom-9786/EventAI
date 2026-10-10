@@ -7,6 +7,13 @@
 
 import { authFetch } from './auth';
 
+export class BookingApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+    this.name = 'BookingApiError';
+  }
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const res = await authFetch(path, {
     method: 'POST',
@@ -19,9 +26,27 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     const message = Array.isArray(data.message)
       ? data.message.join(', ')
       : (data.message ?? `Request failed (${res.status})`);
-    throw new Error(message);
+    throw new BookingApiError(message, res.status);
   }
   return data;
+}
+
+export async function cancelBooking(bookingId: string, reason = 'Customer cancellation') {
+  const { booking } = await postJson<{ booking: BookingListEntry }>(
+    `/bookings/${bookingId}/cancel`,
+    { reason },
+  );
+  return booking;
+}
+
+export async function refundBooking(bookingId: string, reason = 'Customer refund request') {
+  return postJson<{
+    booking: BookingListEntry;
+    refundId: string;
+    refundAmount: number | null;
+    refundStatus: 'processed' | 'pending';
+    reconciliationRequired?: boolean;
+  }>('/payments/refund', { bookingId, reason });
 }
 
 export interface BookingItemInput {
@@ -42,6 +67,7 @@ export interface BookingView {
   totalAmount: number;
   expiresAt: string | null;
   tickets?: TicketView[];
+  payment?: { id: string; status: string; amount: number } | null;
 }
 
 export async function createBooking(input: {

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
+import * as Sentry from '@sentry/nestjs';
 import { StructuredLogger } from '../logging/structured-logger';
 
 // ═══════════════════════════════════════════════════
@@ -57,12 +58,22 @@ export class AllExceptionsFilter implements ExceptionFilter {
         error = b.error as string | undefined;
       }
     } else if (exception instanceof Error) {
-      this.logger.logWithMeta('error', `Unhandled exception on ${request.method} ${request.url}`, {
+      Sentry.captureException(exception);
+      const path = request.path;
+      this.logger.logWithMeta('error', `Unhandled exception on ${request.method} ${path}`, {
         method: request.method,
-        url: request.url,
+        url: path,
         requestId,
-        message: exception.message,
-        stack: exception.stack,
+        exceptionType: exception.name,
+      });
+    } else {
+      Sentry.captureException(exception);
+      const path = request.path;
+      this.logger.logWithMeta('error', `Unhandled non-Error rejection on ${request.method} ${path}`, {
+        method: request.method,
+        url: path,
+        requestId,
+        exceptionType: typeof exception,
       });
     }
 
@@ -71,7 +82,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       statusCode,
       message,
       error,
-      path: request.url,
+      path: request.path,
       timestamp: new Date().toISOString(),
       ...(requestId ? { requestId } : {}),
     };

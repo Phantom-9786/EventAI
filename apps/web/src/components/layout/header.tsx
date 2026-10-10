@@ -67,9 +67,11 @@ export function Header() {
                 My Tickets
               </Link>
               {user.role === 'ORGANIZER' && (
-                <Link href="/dashboard" className={buttonVariants({ variant: 'ghost' })}>
-                  Dashboard
-                </Link>
+                <>
+                  <Link href="/dashboard" className={buttonVariants({ variant: 'ghost' })}>Dashboard</Link>
+                  <Link href="/organizer/events" className={buttonVariants({ variant: 'ghost' })}>My events</Link>
+                  <Link href="/organizer/events/new" className={buttonVariants({ variant: 'ghost' })}>Create event</Link>
+                </>
               )}
               {user.role === 'ADMIN' && (
                 <Link href="/admin" className={buttonVariants({ variant: 'ghost' })}>
@@ -139,6 +141,14 @@ export function Header() {
               {link.label}
             </Link>
           ))}
+          {user?.role === 'ORGANIZER' && (
+            <>
+              <Link href="/dashboard" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent" onClick={() => setMobileOpen(false)}>Organizer dashboard</Link>
+              <Link href="/organizer/events" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent" onClick={() => setMobileOpen(false)}>My events</Link>
+              <Link href="/organizer/events/new" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent" onClick={() => setMobileOpen(false)}>Create event</Link>
+            </>
+          )}
+          {user?.role === 'ADMIN' && <Link href="/admin" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent" onClick={() => setMobileOpen(false)}>Admin</Link>}
           <div className="mt-2 flex gap-2 border-t pt-3">
             {user ? (
               <button

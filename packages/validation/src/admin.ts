@@ -3,6 +3,14 @@ import { paginationSchema } from './common';
 
 const userRoleEnum = z.enum(['CUSTOMER', 'ORGANIZER', 'ADMIN']);
 const eventStatusEnum = z.enum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED', 'SOLDOUT']);
+const bookingStatusEnum = z.enum([
+  'PENDING',
+  'PAYMENT_PENDING',
+  'CONFIRMED',
+  'CANCELLED',
+  'EXPIRED',
+  'REFUNDED',
+]);
 
 // ── Admin: user management ─────────────────────────
 export const adminUserListSchema = paginationSchema.extend({
@@ -49,3 +57,10 @@ export const adminSetOrganizerVerificationSchema = z.object({
 export type AdminSetOrganizerVerificationInput = z.infer<
   typeof adminSetOrganizerVerificationSchema
 >;
+
+// ── Admin: booking and payment oversight ──────────
+export const adminBookingListSchema = paginationSchema.extend({
+  search: z.string().trim().max(200).optional(),
+  status: bookingStatusEnum.optional(),
+});
+export type AdminBookingListInput = z.infer<typeof adminBookingListSchema>;

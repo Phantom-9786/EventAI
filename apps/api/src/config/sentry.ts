@@ -20,11 +20,20 @@ export function isSentryConfigured(dsn: string | undefined): boolean {
 
 type Json = Record<string, unknown>;
 
-const SENSITIVE_KEY = /(authorization|cookie|password|passwd|secret|token|api[-_]?key|card|cvv|cvc|otp|pin)/i;
+const SENSITIVE_KEY = /(authorization|cookie|password|passwd|secret|token|api[-_]?key|razorpay|card|cvv|cvc|otp|pin|signature|ticket[-_]?code|qr[-_]?data|holder[-_]?name|email|phone|mobile|first[-_]?name|last[-_]?name)/i;
+const SECRET_ASSIGNMENT = /\b(authorization|cookie|password|passwd|secret|token|api[-_]?key|razorpay[-_]?\w+|signature|ticket[-_]?code|email|phone|mobile)\s*[:=]\s*([^\s,;]+)/gi;
+
+function redactText(value: string): string {
+  return value
+    .replace(/\bBearer\s+[^\s,;]+/gi, 'Bearer [Filtered]')
+    .replace(SECRET_ASSIGNMENT, '$1=[Filtered]')
+    .replace(/\b(?:sk|gsk|rzp)_(?:live|test)_[A-Za-z0-9_-]+/gi, '[Filtered]');
+}
 
 function redact(value: unknown, depth = 0): unknown {
   if (depth > 6) return '[Truncated]';
   if (Array.isArray(value)) return value.slice(0, 50).map((v) => redact(v, depth + 1));
+  if (typeof value === 'string') return redactText(value);
   if (value && typeof value === 'object') {
     const out: Json = {};
     for (const [k, v] of Object.entries(value as Json)) {
@@ -47,6 +56,16 @@ export function scrubSentryEvent(
 ): Sentry.ErrorEvent | null {
   const request = event.request;
   if (request) {
+    if (request.url) {
+      try {
+        const url = new URL(request.url);
+        url.search = '';
+        url.hash = '';
+        request.url = url.toString();
+      } catch {
+        request.url = request.url.split(/[?#]/, 1)[0];
+      }
+    }
     if (request.query_string !== undefined) delete request.query_string;
     if (request.cookies !== undefined) delete request.cookies;
     if (request.headers) {
@@ -58,7 +77,26 @@ export function scrubSentryEvent(
     }
     if (request.data) request.data = redact(request.data);
   }
+  if (event.message) event.message = redactText(event.message);
+  if (event.exception?.values) {
+    for (const value of event.exception.values) {
+      if (value.value) value.value = redactText(value.value);
+      for (const frame of value.stacktrace?.frames ?? []) {
+        if (frame.vars) frame.vars = redact(frame.vars) as typeof frame.vars;
+      }
+    }
+  }
   if (event.extra) event.extra = redact(event.extra) as Record<string, unknown>;
+  if (event.contexts) event.contexts = redact(event.contexts) as typeof event.contexts;
+  for (const crumb of event.breadcrumbs ?? []) {
+    if (crumb.message) crumb.message = redactText(crumb.message);
+    if (crumb.data) crumb.data = redact(crumb.data) as typeof crumb.data;
+  }
+  if (event.user) {
+    delete event.user.email;
+    delete event.user.ip_address;
+    delete event.user.username;
+  }
   if (event.tags) {
     const tags: Record<string, string> = {};
     for (const [key, value] of Object.entries(event.tags)) {

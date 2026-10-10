@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { CalendarDays, Loader2, MapPin, Ticket } from 'lucide-react';
+import { CalendarDays, CircleCheck, Loader2, MapPin, Ticket } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/auth-provider';
 import {
   getTicketQr,
   listBookings,
+  cancelBooking,
+  refundBooking,
+  BookingApiError,
   type BookingListEntry,
 } from '@/lib/booking';
 import { formatEventDate, formatPrice } from '@/lib/api';
@@ -55,6 +58,8 @@ export default function TicketsPage() {
   const { user, loading } = useAuth();
   const [bookings, setBookings] = useState<BookingListEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -103,6 +108,11 @@ export default function TicketsPage() {
       {error && (
         <p role="alert" className="mt-6 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}
+        </p>
+      )}
+      {actionMessage && (
+        <p role="status" className="mt-4 flex items-center gap-2 rounded-md border border-green-600/30 bg-green-600/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
+          <CircleCheck className="h-4 w-4 shrink-0" />{actionMessage}
         </p>
       )}
 
@@ -156,6 +166,66 @@ export default function TicketsPage() {
                     {booking.status.replace('_', ' ')}
                   </span>
                 </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-b px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-muted-foreground">
+                  Payment status: <span className="font-medium text-foreground">{booking.payment?.status ?? 'Not started'}</span>
+                  {booking.payment?.status === 'REFUNDED' && ' · Refund recorded by the payment API'}
+                </p>
+                {(booking.status === 'PENDING' || booking.status === 'PAYMENT_PENDING') && (
+                  <button
+                    type="button"
+                    disabled={actionId !== null}
+                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'disabled:opacity-60')}
+                    onClick={() => {
+                      if (!window.confirm('Cancel this unpaid booking? Its reserved ticket inventory will be released.')) return;
+                      setActionId(booking.id);
+                      setError(null);
+                      setActionMessage(null);
+                      void cancelBooking(booking.id).then((updated) => {
+                        setBookings((current) => current?.map((item) => item.id === booking.id ? { ...item, ...updated } : item) ?? []);
+                        setActionMessage('Booking cancelled. No refund was requested because this booking was unpaid.');
+                      }).catch((err: unknown) => {
+                        setError(err instanceof Error ? err.message : 'Booking cancellation failed');
+                      }).finally(() => setActionId(null));
+                    }}
+                  >
+                    {actionId === booking.id && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                    Cancel booking
+                  </button>
+                )}
+                {booking.status === 'CONFIRMED' && booking.payment?.status === 'CAPTURED' && (
+                  <button
+                    type="button"
+                    disabled={actionId !== null}
+                    className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'disabled:opacity-60')}
+                    onClick={() => {
+                      if (!window.confirm('Request a full refund and cancel this booking? This action cannot be undone.')) return;
+                      setActionId(booking.id);
+                      setError(null);
+                      setActionMessage(null);
+                      void refundBooking(booking.id).then(({ booking: updated, refundId, refundStatus }) => {
+                        setBookings((current) => current?.map((item) => item.id === booking.id ? { ...item, ...updated } : item) ?? []);
+                        setActionMessage(refundStatus === 'processed'
+                          ? `The API confirmed the refund and cancelled the booking (reference ${refundId}). Bank processing time may vary.`
+                          : `The refund request is still pending provider confirmation (reference ${refundId}). The booking remains active while reconciliation is pending.`);
+                      }).catch((err: unknown) => {
+                        if (err instanceof BookingApiError && err.status === 503 && /pending provider reconciliation/i.test(err.message)) {
+                          setBookings((current) => current?.map((item) => item.id === booking.id
+                            ? { ...item, payment: item.payment ? { ...item.payment, status: 'REFUND_PENDING' } : null }
+                            : item) ?? []);
+                          setActionMessage('The provider response was ambiguous. The refund remains pending reconciliation; the booking and tickets remain active. Do not submit another refund request.');
+                        } else {
+                          setError(err instanceof Error ? err.message : 'Refund request failed');
+                        }
+                      }).finally(() => setActionId(null));
+                    }}
+                  >
+                    {actionId === booking.id && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                    Request refund and cancel
+                  </button>
+                )}
               </div>
 
               {booking.tickets && booking.tickets.length > 0 ? (

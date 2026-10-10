@@ -7,7 +7,7 @@ npm install
 npm run docker:up          # PostgreSQL 16 (:5433) + Redis 7 (:6379), healthchecked
 cp .env.example .env       # set DATABASE_URL (port 5433), JWT_SECRET, REDIS_URL
 npm run db:generate && npm run db:migrate
-npm run db:seed            # categories + demo users (see docs/database.md)
+npm run db:seed            # category and organizer demo data; does not create an ADMIN
 npm run dev                # API :4000 + web :3000
 ```
 
@@ -18,15 +18,16 @@ Health: `GET http://localhost:4000/api/health` → `{ status, dependencies: { da
 | Variable | Required | Notes |
 |----------|----------|-------|
 | `DATABASE_URL` | always | e.g. `postgresql://eventai:eventai_dev@localhost:5433/eventai` |
-| `JWT_SECRET` | always | ≥16 chars, non-placeholder (fail-fast on boot) |
-| `REDIS_URL` | always | cache degrades gracefully if unreachable |
+| `NODE_ENV` | always | exactly `development`, `test`, or `production`; unknown/missing modes fail startup |
+| `JWT_SECRET` | always | ≥16 chars generally and ≥32 in production; non-placeholder |
+| `REDIS_URL` | production | valid `redis://` or `rediss://` URL; cache operations still degrade gracefully if unavailable |
 | `FRONTEND_URL` | production | must be `https://`; used as the single CORS origin |
 | `RAZORPAY_KEY_ID/_SECRET/_WEBHOOK_SECRET` | production | optional in dev (checkout shows an honest "not configured" error) |
 | `GROQ_API_KEY` / `GROQ_MODEL` | optional | AI chat 503s with an actionable message until a real key is set (Groq; default model `openai/gpt-oss-120b`) |
 | `SENTRY_DSN` / `SENTRY_ENVIRONMENT` | optional | API error monitoring; fully disabled without a DSN (see "Sentry" below) |
-| `BREVO_API_KEY` / `EMAIL_FROM` | optional | transactional emails skip with a dev log until set; `EMAIL_FROM` must be a sender verified in Brevo |
+| `BREVO_API_KEY` / `EMAIL_FROM` | required in production | optional in development; verification and password-reset links require a configured Brevo API key and verified sender |
 | `SEAT_HOLD_TTL_SECONDS` | optional | seat-hold window (default 600) |
-| `RATE_LIMIT_TTL` / `RATE_LIMIT_MAX` | optional | global throttle window/limit |
+| `RATE_LIMIT_TTL` / `RATE_LIMIT_MAX` | optional | global throttle window/limit (in-memory per API instance; see security limitations) |
 
 ## Sentry error monitoring (optional, wired 2026-10-10)
 
@@ -51,7 +52,7 @@ Two separate Sentry projects are recommended (separate platforms, SDKs, issue gr
 
 ### Privacy behavior
 
-- A `beforeSend` scrubber runs on **both** apps: it deletes `authorization`/`cookie` headers, strips query strings (reset tokens / OAuth params), and redacts any key matching password/secret/token/api-key/card/cvv/otp patterns in request data and extras (payment bodies and Groq keys never reach Sentry).
+- A `beforeSend` scrubber runs on **both** apps: it deletes credential headers, strips query strings (reset tokens / OAuth params), and redacts payment-provider fields/signatures, ticket codes/QR data, contact fields, and other credential patterns in request data and extras.
 - The SDK's default PII collection is off; no user IPs or cookies are sent.
 - Events carry the API's `X-Request-Id` as a `request_id` tag so Sentry issues line up with the structured JSON logs.
 - No DSN configured → the SDK is never initialized (startup, latency, and behavior are unchanged; both paths are unit-tested).
@@ -64,10 +65,61 @@ Two separate Sentry projects are recommended (separate platforms, SDKs, issue gr
 
 Per-app multi-stage Dockerfiles live in `docker/` (api, web, worker); `docker-compose.yml` provides postgres + redis with healthchecks. Full containerized end-to-end (building app images, compose-up of the whole stack) is pending final deployment wiring.
 
+## Production startup and migrations
+
+Set `NODE_ENV=production` in the deployment environment before starting the API. The API now rejects missing/unknown runtime modes and validates production database/cache URLs, the HTTPS frontend origin, signing-secret length, and payment credential placeholders before listening. Do not place production values in the repository or Docker build arguments; inject them through the deployment platform's secret/environment facility.
+
+For a non-container Node deployment, build once and use the production API launcher with the platform-injected environment:
+
+```bash
+npm run build --workspace=@eventai/api
+npm run start:prod --workspace=@eventai/api
+```
+
+For the web app, use `npm run build --workspace=@eventai/web` followed by `npm run start --workspace=@eventai/web`. Its `NEXT_PUBLIC_*` Sentry settings must be present at build time. The Docker image path is separate and is not a complete application deployment definition.
+
+For development, with the development `DATABASE_URL` selected:
+
+```bash
+npm run db:migrate --workspace=@eventai/database
+```
+
+For production, after taking the provider-recommended backup and selecting the production `DATABASE_URL` in the migration job environment:
+
+```bash
+npm run db:deploy --workspace=@eventai/database
+```
+
+The production command runs the checked-in migration history once in timestamp order. The Phase 4/5 migrations that must be applied before deploying the current API are:
+
+1. `20261010120000_phase4_query_indexes`
+2. `20261010121500_refund_pending_status`
+3. `20261010150000_refund_reconciliation_key`
+
+The earlier `20261008195519_init`, `20261009120000_google_oauth`, and `20261009150000_email_verification` migrations are also part of the ordered history and are applied by the same command if not already recorded. Run this as a release step before deploying API code that uses the new enum or reconciliation field. Never use `db:push`, `migrate dev`, `migrate reset`, or `db seed` against production. This repository does not include a full application Docker Compose deployment; build and run the API/web images using the platform's documented container workflow, inject API secrets at runtime, and supply the frontend's public Sentry settings at web build time if enabled.
+
+The API and web images set production mode, run as a non-root user, and have HTTP healthchecks. The web image accepts `NEXT_PUBLIC_SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_ENVIRONMENT` as build arguments because Next.js bundles public environment variables at build time; provide these non-secret public monitoring settings to the web image build if production frontend monitoring is required. The API readiness check returns 503 if PostgreSQL is unavailable and enables Nest shutdown hooks so Prisma and Redis lifecycle hooks can close on termination. The worker has graceful SIGTERM/SIGINT handling but no healthcheck and registers no job processors; do not deploy it as a required production processing service until queue processors and its operational health behavior are implemented.
+
+## Initial administrator
+
+The seed no longer creates an ADMIN account. Before first-admin provisioning, verify out of band that the intended account already exists, is active, and has verified its email. Check the target database for any existing ADMIN first; if one exists, stop and investigate rather than using the bootstrap command. Then run the one-time local command and follow its prompts:
+
+```bash
+npm run db:provision-admin --workspace=@eventai/database
+```
+
+The command requires the exact confirmation phrase, checks that no ADMIN exists inside a serializable transaction, updates only the named account, and writes an audit record. It does not create an account or expose a public role-promotion endpoint. This task did not connect to a database, so whether any legacy/demo ADMIN remains is unknown.
+
+## Refund reconciliation limitation
+
+If Razorpay's refund response is ambiguous, the API keeps `REFUND_PENDING` and does not issue another refund. Verified `refund.created`, `refund.processed`, and `refund.failed` webhook events are correlated to the stored refund attempt; the API also provides an ADMIN-only reconciliation operation at `POST /api/admin/bookings/:bookingId/refund/reconcile`, which queries Razorpay and never creates a refund. Only authoritative `processed`/`failed` statuses change local terminal state; missing or ambiguous provider data remains pending. Before production, configure and verify the Razorpay webhook URL, secret, and refund events, and ensure an authorized operator can access the reconciliation route. Never manually mark a booking refunded or restore inventory based only on an ambiguous client response.
+
 ## Production checklist
 
-1. Provision Postgres + Redis; set all production env vars (validation enforces the critical ones).
-2. `prisma migrate deploy` (never `db push`).
-3. Build and run `apps/api` behind TLS; keep the web app as the only allowed CORS origin.
-4. Point the Razorpay dashboard webhook at `POST /api/payments/webhook`.
-5. Smoke-test: `/api/health` shows database + redis up; register → book → pay (sandbox) → ticket QR → door validate.
+1. Provision Postgres + Redis; configure validated production variables and `NODE_ENV=production` through a secrets manager.
+2. Inspect the intended database for existing ADMIN users and take a backup. Run `npm run db:deploy --workspace=@eventai/database` against the intended production `DATABASE_URL`; confirm all pending migrations listed above complete before deploying the current API.
+3. If no ADMIN exists, create and verify the intended account, then follow the one-time provisioning procedure above; do not change a role ad hoc.
+4. Build and run the API and web images behind TLS; restrict CORS to the exact HTTPS frontend origin. Keep the API at one replica until rate limiting uses shared storage, or configure and verify a shared throttler store before scaling horizontally.
+5. Configure the Razorpay dashboard webhook at `POST /api/payments/webhook` with the matching webhook secret and at least `payment.captured`, `payment.failed`, `refund.created`, `refund.processed`, and `refund.failed` events. Confirm signatures are not logged.
+6. Smoke-test in staging: `/api/health` dependencies, register/sign in, booking, payment verification, ticket QR, cancellation/refund, organizer/admin authorization, and ADMIN-only pending-refund reconciliation using mocked or Razorpay test-mode outcomes.
+7. Do not rely on `apps/worker` for production jobs: it currently registers no processors and idles. Deploy it only after required processors and health monitoring exist; verify current application behavior does not depend on jobs being consumed.

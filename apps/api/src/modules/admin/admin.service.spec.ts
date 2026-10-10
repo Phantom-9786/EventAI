@@ -15,7 +15,7 @@ describe('AdminService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
-    booking: { groupBy: jest.Mock };
+    booking: { groupBy: jest.Mock; findMany: jest.Mock; count: jest.Mock; findUnique: jest.Mock };
     ticket: { groupBy: jest.Mock };
     session: { deleteMany: jest.Mock };
     $transaction: jest.Mock;
@@ -37,6 +37,9 @@ describe('AdminService', () => {
           { status: 'CONFIRMED', _count: { _all: 10 }, _sum: { totalAmount: 500000 } },
           { status: 'REFUNDED', _count: { _all: 2 }, _sum: { totalAmount: 50000 } },
         ]),
+        findMany: jest.fn(),
+        count: jest.fn(),
+        findUnique: jest.fn(),
       },
       ticket: { groupBy: jest.fn().mockResolvedValue([{ status: 'USED', _count: { _all: 4 } }]) },
       session: { deleteMany: jest.fn().mockResolvedValue({ count: 3 }) },
@@ -48,6 +51,37 @@ describe('AdminService', () => {
     }).compile();
 
     service = moduleRef.get(AdminService);
+  });
+
+  describe('booking oversight', () => {
+    it('searches bookings with customer/event filters and paginates', async () => {
+      prisma.$transaction.mockResolvedValue([[{ id: 'b1', status: 'CONFIRMED' }], 1]);
+      const result = await service.listBookings({ page: 2, limit: 10, search: 'person@example.test', status: 'CONFIRMED' });
+
+      const args = prisma.booking.findMany.mock.calls[0][0];
+      expect(args.where).toEqual({ AND: [
+        { status: 'CONFIRMED' },
+        { OR: [
+          { id: { equals: 'person@example.test' } },
+          { user: { email: { contains: 'person@example.test', mode: 'insensitive' } } },
+          { event: { title: { contains: 'person@example.test', mode: 'insensitive' } } },
+        ] },
+      ] });
+      expect(args.skip).toBe(10);
+      expect(args.take).toBe(10);
+      expect(result).toMatchObject({ bookings: [{ id: 'b1' }], total: 1, page: 2 });
+    });
+
+    it('returns a safe detail projection without payment signatures or ticket codes', async () => {
+      prisma.booking.findUnique.mockResolvedValue({
+        id: 'b1', user: {}, event: {}, items: [], payment: null, tickets: [{ status: 'VALID' }],
+      });
+      const result = await service.getBooking('b1');
+      const select = prisma.booking.findUnique.mock.calls[0][0].select;
+      expect(select.payment.select).not.toHaveProperty('razorpaySignature');
+      expect(select.tickets.select).toEqual({ status: true });
+      expect(result.ticketCounts).toEqual({ VALID: 1 });
+    });
   });
 
   it('aggregates platform statistics', async () => {

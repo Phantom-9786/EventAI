@@ -293,7 +293,7 @@ export class OrganizersService {
       },
     });
 
-    this.logger.log(`Ticket ${ticket.ticketCode} validated for event ${eventId}`);
+    this.logger.log(`Ticket validated for event ${eventId}`);
     return { ticket: updated, holder: ticket.user };
   }
 
