@@ -10,7 +10,6 @@ import {
   listBookings,
   cancelBooking,
   refundBooking,
-  BookingApiError,
   type BookingListEntry,
 } from '@/lib/booking';
 import { formatEventDate, formatPrice } from '@/lib/api';
@@ -171,6 +170,10 @@ export default function TicketsPage() {
               <div className="flex flex-col gap-3 border-b px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-muted-foreground">
                   Payment status: <span className="font-medium text-foreground">{booking.payment?.status ?? 'Not started'}</span>
+                  {booking.payment?.refundRequestStatus === 'PENDING' && ' · Refund request awaiting organizer approval'}
+                  {booking.payment?.refundRequestStatus === 'APPROVED' && ' · Refund approved and processing'}
+                  {booking.payment?.refundRequestStatus === 'REJECTED' && ' · Previous refund request declined'}
+                  {booking.payment?.refundRequestStatus === 'FAILED' && ' · The provider could not process the approved refund'}
                   {booking.payment?.status === 'REFUNDED' && ' · Refund recorded by the payment API'}
                 </p>
                 {(booking.status === 'PENDING' || booking.status === 'PAYMENT_PENDING') && (
@@ -198,32 +201,33 @@ export default function TicketsPage() {
                 {booking.status === 'CONFIRMED' && booking.payment?.status === 'CAPTURED' && (
                   <button
                     type="button"
-                    disabled={actionId !== null}
+                    disabled={actionId !== null || booking.payment.refundRequestStatus === 'PENDING' || booking.payment.refundRequestStatus === 'APPROVED'}
                     className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'disabled:opacity-60')}
                     onClick={() => {
-                      if (!window.confirm('Request a full refund and cancel this booking? This action cannot be undone.')) return;
+                      if (booking.payment?.refundRequestStatus === 'PENDING' || booking.payment?.refundRequestStatus === 'APPROVED') return;
+                      if (!window.confirm('Send a full refund request to the event organizer for approval? No refund will be issued until it is approved.')) return;
                       setActionId(booking.id);
                       setError(null);
                       setActionMessage(null);
-                      void refundBooking(booking.id).then(({ booking: updated, refundId, refundStatus }) => {
-                        setBookings((current) => current?.map((item) => item.id === booking.id ? { ...item, ...updated } : item) ?? []);
-                        setActionMessage(refundStatus === 'processed'
-                          ? `The API confirmed the refund and cancelled the booking (reference ${refundId}). Bank processing time may vary.`
-                          : `The refund request is still pending provider confirmation (reference ${refundId}). The booking remains active while reconciliation is pending.`);
+                      void refundBooking(booking.id).then(({ refundRequest }) => {
+                        setBookings((current) => current?.map((item) => item.id === booking.id
+                          ? {
+                              ...item,
+                              payment: item.payment
+                                ? { ...item.payment, refundRequestStatus: refundRequest.status, refundRequestReason: refundRequest.reason, refundRequestedAt: refundRequest.requestedAt }
+                                : item.payment,
+                            }
+                          : item) ?? []);
+                        setActionMessage('Your refund request was sent to the event organizer. Your booking remains active until they approve it.');
                       }).catch((err: unknown) => {
-                        if (err instanceof BookingApiError && err.status === 503 && /pending provider reconciliation/i.test(err.message)) {
-                          setBookings((current) => current?.map((item) => item.id === booking.id
-                            ? { ...item, payment: item.payment ? { ...item.payment, status: 'REFUND_PENDING' } : null }
-                            : item) ?? []);
-                          setActionMessage('The provider response was ambiguous. The refund remains pending reconciliation; the booking and tickets remain active. Do not submit another refund request.');
-                        } else {
-                          setError(err instanceof Error ? err.message : 'Refund request failed');
-                        }
+                        setError(err instanceof Error ? err.message : 'Refund request failed');
                       }).finally(() => setActionId(null));
                     }}
                   >
                     {actionId === booking.id && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-                    Request refund and cancel
+                    {booking.payment.refundRequestStatus === 'PENDING' || booking.payment.refundRequestStatus === 'APPROVED'
+                      ? 'Refund request submitted'
+                      : 'Request refund'}
                   </button>
                 )}
               </div>

@@ -24,7 +24,7 @@ describe('BookingsService (integration)', () => {
   beforeAll(async () => {
     prisma = await prepareTestDatabase();
     notifications = { sendBookingCancellation: jest.fn(async () => true) };
-    const payments = { refundBooking: jest.fn() } as unknown as PaymentsService;
+    const payments = { requestRefund: jest.fn() } as unknown as PaymentsService;
     bookings = new BookingsService(
       prisma as never,
       payments,

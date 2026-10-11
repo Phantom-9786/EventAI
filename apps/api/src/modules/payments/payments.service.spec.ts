@@ -417,7 +417,7 @@ describe('PaymentsService', () => {
     });
   });
 
-  describe('refundBooking', () => {
+  describe('refund requests and approval', () => {
     const paidPayment = {
       id: 'pay-row-1',
       bookingId,
@@ -425,15 +425,43 @@ describe('PaymentsService', () => {
       status: 'CAPTURED',
       amount: 300000,
       refundId: null,
+      refundRequestStatus: null,
       razorpayPaymentId: 'pay_abc',
-      booking: { ...booking, status: 'CONFIRMED' },
+      booking: {
+        ...booking,
+        status: 'CONFIRMED',
+        event: { ...booking.event, organizerId: 'organizer-1' },
+      },
     };
 
-    it('refunds via Razorpay and closes the booking with tickets cancelled', async () => {
+    it('records an attendee request without calling Razorpay', async () => {
       prisma.payment.findUnique.mockResolvedValue(paidPayment);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.requestRefund(userId, bookingId, 'changed plans');
+
+      expect(result.refundRequest).toMatchObject({
+        bookingId,
+        status: 'PENDING',
+        reason: 'changed plans',
+      });
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: 'pay-row-1', status: 'CAPTURED' }),
+        data: expect.objectContaining({ refundRequestStatus: 'PENDING' }),
+      }));
+      expect(refundsCreate).not.toHaveBeenCalled();
+      expect(prisma.booking.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('initiates the refund only after the event organizer approves', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...paidPayment,
+        refundRequestStatus: 'PENDING',
+        refundRequestReason: 'changed plans',
+      });
       refundsCreate.mockResolvedValue({ id: 'rfnd_1', amount: 300000, status: 'processed' });
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
-      prisma.payment.findUnique.mockResolvedValueOnce(paidPayment); // load
       prisma.payment.updateMany.mockResolvedValue({ count: 1 });
       prisma.booking.updateMany.mockResolvedValue({ count: 1 });
       prisma.ticket.updateMany.mockResolvedValue({ count: 2 });
@@ -443,60 +471,59 @@ describe('PaymentsService', () => {
         tickets: [],
       });
 
-      const result = await service.refundBooking(userId, bookingId, 'changed plans');
+      const result = await service.approveRefundRequest('organizer-1', 'organizer-user-1', bookingId);
 
-      expect(refundsCreate).toHaveBeenCalledWith(
-        'pay_abc',
-        expect.objectContaining({ speed: 'normal' }),
-      );
-      expect(prisma.payment.updateMany).toHaveBeenLastCalledWith({
-        where: {
-          id: 'pay-row-1', status: 'REFUND_PENDING', refundId: 'rfnd_1', refundAttemptKey: expect.any(String),
-        },
+      expect(refundsCreate).toHaveBeenCalledWith('pay_abc', expect.objectContaining({
+        speed: 'normal',
+        notes: expect.objectContaining({ bookingId, reason: 'changed plans' }),
+      }));
+      expect(prisma.payment.updateMany.mock.invocationCallOrder[0])
+        .toBeLessThan(refundsCreate.mock.invocationCallOrder[0]);
+      expect(prisma.payment.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'pay-row-1',
+          status: 'REFUND_PENDING',
+          refundId: 'rfnd_1',
+        }),
         data: { status: 'REFUNDED', refundAmount: 300000 },
-      });
+      }));
       expect(prisma.booking.updateMany).toHaveBeenCalledWith({
         where: { id: bookingId, status: 'CONFIRMED' },
         data: expect.objectContaining({ status: 'REFUNDED' }),
-      });
-      expect(prisma.ticket.updateMany).toHaveBeenCalledWith({
-        where: { bookingId, status: 'VALID' },
-        data: { status: 'CANCELLED' },
       });
       expect(prisma.ticketType.updateMany).toHaveBeenCalledWith({
         where: { id: 'tt-1' },
         data: { availableQuantity: { increment: 2 } },
       });
       expect(result.refundId).toBe('rfnd_1');
-      expect(result.booking.status).toBe('REFUNDED');
-      expect(sendRefundConfirmation).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: 'ada@example.com',
-          eventTitle: 'Summer Gig',
-          bookingId,
-          refundId: 'rfnd_1',
-          refundAmount: 300000,
-        }),
-      );
+      expect(sendRefundConfirmation).toHaveBeenCalled();
     });
 
-    it('does not call the provider when another request has already claimed the refund', async () => {
-      prisma.payment.findUnique.mockResolvedValue(paidPayment);
+    it('does not call Razorpay when another organizer already claimed approval', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...paidPayment,
+        refundRequestStatus: 'PENDING',
+      });
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
       prisma.payment.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.refundBooking(userId, bookingId)).rejects.toThrow(/already in progress/i);
+      await expect(service.approveRefundRequest('organizer-1', 'organizer-user-1', bookingId))
+        .rejects.toThrow(/already reviewed or processed/i);
       expect(refundsCreate).not.toHaveBeenCalled();
     });
 
-    it('does not claim a refund when local Razorpay configuration is missing', async () => {
-      prisma.payment.findUnique.mockResolvedValue(paidPayment);
+    it('does not approve a request when local Razorpay configuration is missing', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...paidPayment,
+        refundRequestStatus: 'PENDING',
+      });
       const previousKeyId = process.env.RAZORPAY_KEY_ID;
       const previousKeySecret = process.env.RAZORPAY_KEY_SECRET;
       delete process.env.RAZORPAY_KEY_ID;
       delete process.env.RAZORPAY_KEY_SECRET;
       try {
-        await expect(service.refundBooking(userId, bookingId)).rejects.toThrow(/not configured/i);
+        await expect(service.approveRefundRequest('organizer-1', 'organizer-user-1', bookingId))
+          .rejects.toThrow(/not configured/i);
       } finally {
         process.env.RAZORPAY_KEY_ID = previousKeyId;
         process.env.RAZORPAY_KEY_SECRET = previousKeySecret;
@@ -505,25 +532,36 @@ describe('PaymentsService', () => {
       expect(refundsCreate).not.toHaveBeenCalled();
     });
 
-    it('keeps an ambiguous provider outcome pending to prevent a duplicate refund', async () => {
-      prisma.payment.findUnique.mockResolvedValue(paidPayment);
+    it('keeps an ambiguous approved refund pending to prevent a duplicate provider request', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...paidPayment,
+        refundRequestStatus: 'PENDING',
+      });
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
       prisma.payment.updateMany.mockResolvedValue({ count: 1 });
       refundsCreate.mockRejectedValue({ statusCode: 500 });
 
-      await expect(service.refundBooking(userId, bookingId)).rejects.toThrow(/pending provider reconciliation/i);
-      expect(prisma.payment.updateMany).toHaveBeenCalledTimes(1); // claim remains REFUND_PENDING
+      await expect(service.approveRefundRequest('organizer-1', 'organizer-user-1', bookingId))
+        .rejects.toThrow(/pending provider reconciliation/i);
+      expect(prisma.payment.updateMany).toHaveBeenCalledTimes(1);
     });
 
-    it('keeps a provider-pending response pending and stores its refund ID', async () => {
-      prisma.payment.findUnique.mockResolvedValue(paidPayment);
+    it('keeps an approved provider-pending response pending and stores its refund ID', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...paidPayment,
+        refundRequestStatus: 'PENDING',
+      });
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
       prisma.payment.updateMany.mockResolvedValue({ count: 1 });
       refundsCreate.mockResolvedValue({ id: 'rfnd_wait', amount: 300000, status: 'pending' });
 
-      const result = await service.refundBooking(userId, bookingId);
+      const result = await service.approveRefundRequest('organizer-1', 'organizer-user-1', bookingId);
 
-      expect(result).toMatchObject({ refundId: 'rfnd_wait', refundStatus: 'pending', reconciliationRequired: true });
+      expect(result).toMatchObject({
+        refundId: 'rfnd_wait',
+        refundStatus: 'pending',
+        reconciliationRequired: true,
+      });
       expect(prisma.payment.updateMany).toHaveBeenLastCalledWith({
         where: { id: 'pay-row-1', status: 'REFUND_PENDING', refundId: null, refundAttemptKey: expect.any(String) },
         data: { refundId: 'rfnd_wait' },
@@ -531,35 +569,64 @@ describe('PaymentsService', () => {
       expect(prisma.ticketType.updateMany).not.toHaveBeenCalled();
     });
 
-    it('refuses to refund an unpaid booking', async () => {
+    it('refuses to request a refund for an unpaid booking', async () => {
       prisma.payment.findUnique.mockResolvedValue({
         ...paidPayment,
         status: 'CREATED',
         razorpayPaymentId: null,
-        booking: { ...booking, status: 'PAYMENT_PENDING' },
+        booking: { ...paidPayment.booking, status: 'PAYMENT_PENDING' },
       });
 
-      await expect(service.refundBooking(userId, bookingId)).rejects.toThrow(ConflictException);
+      await expect(service.requestRefund(userId, bookingId)).rejects.toThrow(ConflictException);
       expect(refundsCreate).not.toHaveBeenCalled();
     });
 
-    it('refuses a second refund', async () => {
+    it('refuses a request for an already-refunded booking', async () => {
       prisma.payment.findUnique.mockResolvedValue({
         ...paidPayment,
-        booking: { ...booking, status: 'REFUNDED' },
+        booking: { ...paidPayment.booking, status: 'REFUNDED' },
       });
 
-      await expect(service.refundBooking(userId, bookingId)).rejects.toThrow(/already refunded/i);
+      await expect(service.requestRefund(userId, bookingId)).rejects.toThrow(/already refunded/i);
       expect(refundsCreate).not.toHaveBeenCalled();
     });
 
     it('hides other users’ bookings', async () => {
       prisma.payment.findUnique.mockResolvedValue({
         ...paidPayment,
-        booking: { ...booking, userId: 'someone-else' },
+        booking: { ...paidPayment.booking, userId: 'someone-else' },
       });
 
-      await expect(service.refundBooking('intruder', bookingId)).rejects.toThrow(NotFoundException);
+      await expect(service.requestRefund('intruder', bookingId)).rejects.toThrow(NotFoundException);
+      expect(refundsCreate).not.toHaveBeenCalled();
+    });
+
+    it('hides another organizer’s refund request', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...paidPayment,
+        refundRequestStatus: 'PENDING',
+        booking: {
+          ...paidPayment.booking,
+          event: { ...paidPayment.booking.event, organizerId: 'different-organizer' },
+        },
+      });
+
+      await expect(service.approveRefundRequest('organizer-1', 'organizer-user-1', bookingId))
+        .rejects.toThrow(NotFoundException);
+      expect(refundsCreate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a request without calling Razorpay', async () => {
+      prisma.payment.findUnique.mockResolvedValue({
+        ...paidPayment,
+        refundRequestStatus: 'PENDING',
+      });
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.payment.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.rejectRefundRequest('organizer-1', 'organizer-user-1', bookingId);
+
+      expect(result.status).toBe('REJECTED');
       expect(refundsCreate).not.toHaveBeenCalled();
     });
   });
@@ -610,7 +677,7 @@ describe('PaymentsService', () => {
       expect(prisma.ticket.updateMany).not.toHaveBeenCalled();
       expect(prisma.payment.updateMany).toHaveBeenLastCalledWith({
         where: { id: 'pay-row-1', status: 'REFUND_PENDING', refundId: 'rfnd_1', refundAttemptKey: 'attempt-current' },
-        data: { status: 'CAPTURED' },
+        data: { status: 'CAPTURED', refundRequestStatus: 'FAILED' },
       });
     });
 

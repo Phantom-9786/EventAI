@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 const links = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/organizer/events', label: 'My events' },
+  { href: '/organizer/refunds', label: 'Refund requests' },
   { href: '/organizer/events/new', label: 'Create event' },
 ];
 
