@@ -22,6 +22,25 @@ describe('validateEnv', () => {
     expect(validateEnv(validDevelopmentEnv).NODE_ENV).toBe('development');
   });
 
+  it('validates AI request bounds and model identifiers', () => {
+    const configured = validateEnv({
+      ...validDevelopmentEnv,
+      AI_RATE_LIMIT_USER_PER_MINUTE: '12',
+      AI_RATE_LIMIT_GLOBAL_PER_MINUTE: '200',
+      AI_MAX_CONCURRENT_REQUESTS: '8',
+      AI_REQUEST_TIMEOUT_MS: '45000',
+      AI_MAX_OUTPUT_TOKENS: '700',
+      GROQ_SIMPLE_MODEL: 'openai/gpt-oss-20b',
+    });
+    expect(configured.AI_RATE_LIMIT_USER_PER_MINUTE).toBe(12);
+    expect(configured.AI_MAX_OUTPUT_TOKENS).toBe(700);
+    expect(configured.GROQ_SIMPLE_MODEL).toBe('openai/gpt-oss-20b');
+    expect(() => validateEnv({
+      ...validDevelopmentEnv,
+      AI_MAX_CONCURRENT_REQUESTS: '0',
+    })).toThrow('AI_MAX_CONCURRENT_REQUESTS must be an integer between 1 and 10000');
+  });
+
   it('rejects insecure production URLs, short signing secrets, and placeholders', () => {
     expect(() => validateEnv({
       ...validDevelopmentEnv,

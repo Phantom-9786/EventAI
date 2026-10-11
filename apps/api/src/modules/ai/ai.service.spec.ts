@@ -1,6 +1,7 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../common/cache/cache.service';
 import { AiService } from './ai.service';
 
 const KEY_A = 'grok-test-key-aaaaaaaaaaaa';
@@ -37,16 +38,32 @@ function makePrismaMock(catalog: unknown[] = [], matched: unknown[] = []) {
 }
 
 async function makeService(
-  env: { key?: string; keys?: string },
+  env: { key?: string; keys?: string; simple?: string; moderate?: string; complex?: string },
   prisma = makePrismaMock(),
 ) {
   delete process.env.GROQ_API_KEY;
   delete process.env.GROQ_API_KEYS;
   delete process.env.GROQ_MODEL;
+  delete process.env.GROQ_SIMPLE_MODEL;
+  delete process.env.GROQ_MODERATE_MODEL;
+  delete process.env.GROQ_COMPLEX_MODEL;
   if (env.key) process.env.GROQ_API_KEY = env.key;
   if (env.keys) process.env.GROQ_API_KEYS = env.keys;
+  if (env.simple) process.env.GROQ_SIMPLE_MODEL = env.simple;
+  if (env.moderate) process.env.GROQ_MODERATE_MODEL = env.moderate;
+  if (env.complex) process.env.GROQ_COMPLEX_MODEL = env.complex;
   const moduleRef = await Test.createTestingModule({
-    providers: [AiService, { provide: PrismaService, useValue: prisma }],
+    providers: [
+      AiService,
+      { provide: PrismaService, useValue: prisma },
+      {
+        provide: CacheService,
+        useValue: {
+          providerCooldownMs: jest.fn().mockResolvedValue(0),
+          setProviderCooldown: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+    ],
   }).compile();
   return moduleRef.get(AiService);
 }
@@ -61,6 +78,11 @@ describe('AiService key management', () => {
     delete process.env.GROQ_API_KEY;
     delete process.env.GROQ_API_KEYS;
     delete process.env.GROQ_MODEL;
+    delete process.env.GROQ_SIMPLE_MODEL;
+    delete process.env.GROQ_MODERATE_MODEL;
+    delete process.env.GROQ_COMPLEX_MODEL;
+    delete process.env.AI_REQUEST_TIMEOUT_MS;
+    delete process.env.AI_MAX_OUTPUT_TOKENS;
     jest.restoreAllMocks();
   });
 
@@ -154,7 +176,7 @@ describe('AiService key management', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('retries transient provider errors (5xx) once on the same key, then 503s', async () => {
+  it('retries a transient provider error once, then escalates once and 503s', async () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValue(groqResponse(503, { error: { message: 'upstream' } }));
@@ -165,7 +187,7 @@ describe('AiService key management', () => {
         'The AI assistant could not process this request. Please try again later.',
       ),
     );
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
   it('recovers when the transient retry succeeds', async () => {
@@ -181,7 +203,35 @@ describe('AiService key management', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
-  it('maps network failures and timeouts to 503 after one bounded retry', async () => {
+  it('escalates a simple request once after bounded transient retries', async () => {
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(groqResponse(503, {}))
+      .mockResolvedValueOnce(groqResponse(503, {}))
+      .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: 'Recovered' } }] }));
+    const service = await makeService({ key: KEY_A });
+    await expect(service.chat([{ role: 'user', content: 'Hello' }])).resolves.toMatchObject({ reply: 'Recovered' });
+    const models = fetchSpy.mock.calls.map((call) =>
+      JSON.parse(String((call[1] as RequestInit).body)).model,
+    );
+    expect(models).toEqual(['openai/gpt-oss-20b', 'openai/gpt-oss-20b', 'openai/gpt-oss-120b']);
+  });
+
+  it('fails closed without querying Groq when shared cooldown storage is unavailable', async () => {
+    process.env.GROQ_API_KEY = KEY_A;
+    const service = await Test.createTestingModule({
+      providers: [
+        AiService,
+        { provide: PrismaService, useValue: makePrismaMock() },
+        { provide: CacheService, useValue: { providerCooldownMs: jest.fn().mockRejectedValue(new Error('redis')) } },
+      ],
+    }).compile().then((moduleRef) => moduleRef.get(AiService));
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    await expect(service.chat([{ role: 'user', content: 'Hello' }])).rejects.toThrow(ServiceUnavailableException);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('maps network failures to 503 after one retry and one model escalation', async () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockRejectedValue(new Error('The operation was aborted due to timeout'));
@@ -190,7 +240,7 @@ describe('AiService key management', () => {
     await expect(service.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(
       new ServiceUnavailableException('The AI assistant is unreachable right now.'),
     );
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 
   it('does not retry permanent 4xx errors (e.g. unknown model)', async () => {
@@ -224,6 +274,11 @@ describe('AiService structured event recommendations', () => {
     delete process.env.GROQ_API_KEY;
     delete process.env.GROQ_API_KEYS;
     delete process.env.GROQ_MODEL;
+    delete process.env.GROQ_SIMPLE_MODEL;
+    delete process.env.GROQ_MODERATE_MODEL;
+    delete process.env.GROQ_COMPLEX_MODEL;
+    delete process.env.AI_REQUEST_TIMEOUT_MS;
+    delete process.env.AI_MAX_OUTPUT_TOKENS;
     jest.restoreAllMocks();
   });
 
@@ -297,5 +352,38 @@ describe('AiService structured event recommendations', () => {
 
     expect(result.reply).toBe('Check out **Fake Fest**!');
     expect(result.events).toEqual([]);
+  });
+});
+
+describe('AiService model routing', () => {
+  afterEach(() => {
+    delete process.env.GROQ_API_KEY;
+    delete process.env.GROQ_API_KEYS;
+    delete process.env.GROQ_MODEL;
+    delete process.env.GROQ_SIMPLE_MODEL;
+    delete process.env.GROQ_MODERATE_MODEL;
+    delete process.env.GROQ_COMPLEX_MODEL;
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    ['Hello!', 'simple-model'],
+    ['Which music events would you recommend?', 'moderate-model'],
+    ['Create a detailed step-by-step plan that compares options and includes contingencies.', 'complex-model'],
+  ])('routes prompt to the %s task profile', async (prompt, expectedModel) => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      groqResponse(200, { choices: [{ message: { content: 'Here are some events.' } }] }),
+    );
+    const service = await makeService({
+      key: KEY_A,
+      simple: 'simple-model',
+      moderate: 'moderate-model',
+      complex: 'complex-model',
+    });
+    await service.chat([{ role: 'user', content: prompt }]);
+    const request = JSON.parse(String((fetchSpy.mock.calls[0]?.[1] as RequestInit).body));
+    expect(request.model).toBe(expectedModel);
+    expect(request.max_tokens).toBe(600);
+    expect(request.messages[0].role).toBe('system');
   });
 });

@@ -5,7 +5,10 @@ import {
 } from '@nestjs/common';
 import type { AiChatInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
-import { GroqKeyPool, parseRetryAfterMs } from './groq-key-pool';
+import { CacheService } from '../../common/cache/cache.service';
+import { GroqKeyPool, parseRateLimitResetMs } from './groq-key-pool';
+import { classifyAiComplexity, nextCapableModel, resolveModelProfiles } from './model-router';
+import { createHash } from 'crypto';
 
 interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -38,7 +41,7 @@ export interface AiEventCard {
 }
 
 const GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_TIMEOUT_MS = 30_000;
+const DEFAULT_GROQ_TIMEOUT_MS = 30_000;
 /** Bounded work per request: at most one attempt per key plus one transient retry. */
 const GROQ_TRANSIENT_RETRIES = 1;
 const GROQ_TRANSIENT_BACKOFF_MS = 500;
@@ -48,18 +51,22 @@ const GROQ_TRANSIENT_BACKOFF_MS = 500;
  * chat-completions API. The live catalog of upcoming events is injected
  * into the system prompt so recommendations are grounded in real data.
  *
- * Multi-key management: keys come from GROQ_API_KEYS (comma-separated,
- * extensible without code changes) or the legacy single GROQ_API_KEY.
- * 401/403 rotates to the next key; 429 never rotates (shared org quota) —
- * it rejects with a Retry-After hint; transient failures retry once.
+ * Multi-key management: GROQ_API_KEYS (or legacy GROQ_API_KEY) is the
+ * credential source. 401/403 rotates after a credential cooldown; 429 cools
+ * the entire configured pool because keys are treated as one shared quota.
+ * Transient failures get one retry and one bounded model escalation.
  * Degrades gracefully: without any usable key the endpoint returns 503.
  */
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly keyPool: GroqKeyPool;
+  private readonly profiles = resolveModelProfiles();
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {
     const raw = process.env.GROQ_API_KEYS ?? process.env.GROQ_API_KEY ?? '';
     this.keyPool = new GroqKeyPool(raw.split(','));
   }
@@ -100,7 +107,10 @@ export class AiService {
   private async callGroq(
     key: string,
     payload: ChatMessage[],
+    model: string,
   ): Promise<Response> {
+    const timeoutMs = this.numberEnv('AI_REQUEST_TIMEOUT_MS', DEFAULT_GROQ_TIMEOUT_MS, 1000, 120_000);
+    const maxTokens = this.numberEnv('AI_MAX_OUTPUT_TOKENS', 600, 64, 4096);
     return fetch(GROQ_CHAT_URL, {
       method: 'POST',
       headers: {
@@ -108,13 +118,18 @@ export class AiService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.GROQ_MODEL ?? 'openai/gpt-oss-120b',
+        model,
         messages: payload,
         temperature: 0.6,
-        max_tokens: 600,
+        max_tokens: maxTokens,
       }),
-      signal: AbortSignal.timeout(GROQ_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
+  }
+
+  private numberEnv(name: string, fallback: number, min: number, max: number): number {
+    const parsed = Number(process.env[name] ?? fallback);
+    return Number.isInteger(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
   }
 
   private unavailable(message: string, retryAfterSeconds?: number): never {
@@ -209,6 +224,25 @@ export class AiService {
       );
     }
 
+    const quotaCooldownKey = `eventai:groq:cooldown:${createHash('sha256').update('configured-key-pool').digest('hex')}`;
+    let sharedCooldownMs = 0;
+    try {
+      sharedCooldownMs = await this.cache.providerCooldownMs(quotaCooldownKey);
+    } catch {
+      this.logger.warn('Groq quota state unavailable; rejecting AI request');
+      this.unavailable('The AI assistant is temporarily unavailable. Please retry shortly.');
+    }
+    if (sharedCooldownMs > 0) {
+      this.unavailable(
+        'The AI assistant is rate limited right now. Please retry shortly.',
+        Math.ceil(sharedCooldownMs / 1000),
+      );
+    }
+
+    const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+    const complexity = classifyAiComplexity(latestUserMessage?.content ?? '');
+    let model = this.profiles[complexity];
+
     const catalog = await this.loadCatalog();
     const catalogText =
       catalog.length > 0
@@ -240,24 +274,53 @@ export class AiService {
       ...messages,
     ];
 
-    // Bounded loop: at most one attempt per key, plus GROQ_TRANSIENT_RETRIES
-    // transient retries — no unbounded retry loops.
-    const maxAttempts = this.keyPool.size + GROQ_TRANSIENT_RETRIES;
+    // Strict budget: one pass over configured keys, one transient retry,
+    // and at most one escalation to a more capable profile.
+    const maxAttempts = this.keyPool.size + GROQ_TRANSIENT_RETRIES + 1;
     let transientRetries = 0;
+    let escalated = false;
+    let attempts = 0;
 
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const key = this.keyPool.pick();
+    while (attempts < maxAttempts) {
+      let key: string | null = null;
+      for (let skipped = 0; skipped < this.keyPool.size; skipped++) {
+        const candidate = this.keyPool.pick();
+        if (!candidate) break;
+        const authCooldownKey = `eventai:groq:auth:${createHash('sha256').update(candidate).digest('hex')}`;
+        let authCooldownMs: number;
+        try {
+          authCooldownMs = await this.cache.providerCooldownMs(authCooldownKey);
+        } catch {
+          this.logger.warn('Groq credential state unavailable; rejecting AI request');
+          this.unavailable('The AI assistant is temporarily unavailable. Please retry shortly.');
+        }
+        if (authCooldownMs > 0) {
+          this.keyPool.markAuthFailed(candidate, authCooldownMs);
+          continue;
+        }
+        key = candidate;
+        break;
+      }
       if (!key) break;
 
       let response: Response;
+      attempts++;
       try {
-        response = await this.callGroq(key, payload);
+        response = await this.callGroq(key, payload, model);
       } catch {
         // Network failure or timeout — transient. One bounded backoff retry
         // on the same key, then give up.
         if (transientRetries < GROQ_TRANSIENT_RETRIES) {
           transientRetries++;
           await new Promise((r) => setTimeout(r, GROQ_TRANSIENT_BACKOFF_MS));
+          continue;
+        }
+        const strongerModel = !escalated
+          ? nextCapableModel(complexity, this.profiles, model)
+          : null;
+        if (strongerModel) {
+          model = strongerModel;
+          escalated = true;
           continue;
         }
         this.logger.warn('Groq request failed after retry');
@@ -268,14 +331,27 @@ export class AiService {
         // Invalid or revoked credential — cool the key down and rotate.
         this.logger.warn(`Groq credential rejected (HTTP ${response.status}); rotating keys.`);
         this.keyPool.markAuthFailed(key);
+        try {
+          await this.cache.setProviderCooldown(
+            `eventai:groq:auth:${createHash('sha256').update(key).digest('hex')}`,
+            30 * 60_000,
+          );
+        } catch {
+          this.logger.warn('Groq credential cooldown could not be shared across API instances');
+        }
         continue;
       }
 
       if (response.status === 429) {
         // Shared org/account quota — respect Retry-After, do NOT rotate keys
         // (that would only shift the same 429 onto the next credential).
-        const cooldownMs = parseRetryAfterMs(response.headers.get('retry-after'));
+        const cooldownMs = parseRateLimitResetMs(response.headers);
         this.keyPool.markRateLimited(key, cooldownMs);
+        try {
+          await this.cache.setProviderCooldown(quotaCooldownKey, cooldownMs);
+        } catch {
+          this.logger.warn('Groq cooldown could not be shared across API instances');
+        }
         this.logger.warn(`Groq rate limited; backing off ${Math.round(cooldownMs / 1000)}s.`);
         this.unavailable(
           'The AI assistant is rate limited right now. Please retry shortly.',
@@ -287,6 +363,14 @@ export class AiService {
         if (transientRetries < GROQ_TRANSIENT_RETRIES) {
           transientRetries++;
           await new Promise((r) => setTimeout(r, GROQ_TRANSIENT_BACKOFF_MS));
+          continue;
+        }
+        const strongerModel = !escalated
+          ? nextCapableModel(complexity, this.profiles, model)
+          : null;
+        if (strongerModel) {
+          model = strongerModel;
+          escalated = true;
           continue;
         }
         this.logger.warn(`Groq request failed (HTTP ${response.status})`);

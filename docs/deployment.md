@@ -20,15 +20,18 @@ Health: `GET http://localhost:4000/api/health` → `{ status, dependencies: { da
 | `DATABASE_URL` | always | e.g. `postgresql://eventai:eventai_dev@localhost:5433/eventai` |
 | `NODE_ENV` | always | exactly `development`, `test`, or `production`; unknown/missing modes fail startup |
 | `JWT_SECRET` | always | ≥16 chars generally and ≥32 in production; non-placeholder |
-| `REDIS_URL` | production | valid `redis://` or `rediss://` URL; cache operations still degrade gracefully if unavailable |
+| `REDIS_URL` | production and AI chat | valid `redis://` or `rediss://` URL; AI protection fails closed if unavailable (ordinary cache reads still degrade gracefully) |
 | `FRONTEND_URL` | production | must be `https://`; used as the single CORS origin |
 | `NEXT_PUBLIC_API_URL` | web build | public HTTPS API base URL ending in `/api`; baked into browser bundles at build time (for example `https://api.staging.example.com/api`) |
 | `RAZORPAY_KEY_ID/_SECRET/_WEBHOOK_SECRET` | production | optional in dev (checkout shows an honest "not configured" error) |
-| `GROQ_API_KEY` / `GROQ_MODEL` | optional | AI chat 503s with an actionable message until a real key is set (Groq; default model `openai/gpt-oss-120b`) |
+| `GROQ_API_KEY` or `GROQ_API_KEYS` | optional | AI chat returns 503 until a valid key is set; 401/403 failover is bounded and 429 cooldown applies to the whole configured pool |
+| `GROQ_MODEL`, `GROQ_SIMPLE_MODEL`, `GROQ_MODERATE_MODEL`, `GROQ_COMPLEX_MODEL` | optional | Groq model IDs; tier-specific values override defaults; model access depends on the Groq project |
+| `AI_RATE_LIMIT_USER_PER_MINUTE`, `AI_RATE_LIMIT_GLOBAL_PER_MINUTE`, `AI_MAX_CONCURRENT_REQUESTS` | optional | Shared Redis AI limits; defaults 10, 120, and 20 |
+| `AI_REQUEST_TIMEOUT_MS`, `AI_MAX_OUTPUT_TOKENS` | optional | AI request bounds; defaults 30000 ms and 600 output tokens |
 | `SENTRY_DSN` / `SENTRY_ENVIRONMENT` | optional | API error monitoring; fully disabled without a DSN (see "Sentry" below) |
 | `BREVO_API_KEY` / `EMAIL_FROM` | required in production | optional in development; verification and password-reset links require a configured Brevo API key and verified sender |
 | `SEAT_HOLD_TTL_SECONDS` | optional | seat-hold window (default 600) |
-| `RATE_LIMIT_TTL` / `RATE_LIMIT_MAX` | optional | global throttle window/limit (in-memory per API instance; see security limitations) |
+| `RATE_LIMIT_TTL` / `RATE_LIMIT_MAX` | optional | non-AI global throttle window/limit (in-memory per API instance; see security limitations) |
 
 ## Sentry error monitoring (optional, wired 2026-10-10)
 
@@ -120,7 +123,7 @@ If Razorpay's refund response is ambiguous, the API keeps `REFUND_PENDING` and d
 1. Provision Postgres + Redis; configure validated production variables and `NODE_ENV=production` through a secrets manager.
 2. Inspect the intended database for existing ADMIN users and take a backup. Run `npm run db:deploy --workspace=@eventai/database` against the intended production `DATABASE_URL`; confirm all pending migrations listed above complete before deploying the current API.
 3. If no ADMIN exists, create and verify the intended account, then follow the one-time provisioning procedure above; do not change a role ad hoc.
-4. Build and run the API and web images behind TLS; restrict CORS to the exact HTTPS frontend origin. Keep the API at one replica until rate limiting uses shared storage, or configure and verify a shared throttler store before scaling horizontally.
+4. Build and run the API and web images behind TLS; restrict CORS to the exact HTTPS frontend origin. AI limits use Redis shared storage; configure and verify a shared throttler store before scaling non-AI endpoints horizontally.
 5. Configure the Razorpay dashboard webhook at `POST /api/payments/webhook` with the matching webhook secret and at least `payment.captured`, `payment.failed`, `refund.created`, `refund.processed`, and `refund.failed` events. Confirm signatures are not logged.
 6. Smoke-test in staging: `/api/health` dependencies, register/sign in, booking, payment verification, ticket QR, cancellation/refund, organizer/admin authorization, and ADMIN-only pending-refund reconciliation using mocked or Razorpay test-mode outcomes.
 7. Do not rely on `apps/worker` for production jobs: it currently registers no processors and idles. Deploy it only after required processors and health monitoring exist; verify current application behavior does not depend on jobs being consumed.

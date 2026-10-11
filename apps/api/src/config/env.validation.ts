@@ -16,6 +16,14 @@ export interface EnvConfig {
   GROQ_API_KEY?: string;
   GROQ_API_KEYS?: string;
   GROQ_MODEL?: string;
+  GROQ_SIMPLE_MODEL?: string;
+  GROQ_MODERATE_MODEL?: string;
+  GROQ_COMPLEX_MODEL?: string;
+  AI_RATE_LIMIT_USER_PER_MINUTE?: number;
+  AI_RATE_LIMIT_GLOBAL_PER_MINUTE?: number;
+  AI_MAX_CONCURRENT_REQUESTS?: number;
+  AI_REQUEST_TIMEOUT_MS?: number;
+  AI_MAX_OUTPUT_TOKENS?: number;
   // Sentry (optional — error monitoring stays disabled without a DSN)
   SENTRY_DSN?: string;
   SENTRY_ENVIRONMENT?: string;
@@ -67,6 +75,34 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
   const port = Number(config.PORT ?? 4000);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     errors.push('PORT must be an integer between 1 and 65535');
+  }
+
+  const numericRanges: Record<string, [number, number]> = {
+    AI_RATE_LIMIT_USER_PER_MINUTE: [1, 1000],
+    AI_RATE_LIMIT_GLOBAL_PER_MINUTE: [1, 100_000],
+    AI_MAX_CONCURRENT_REQUESTS: [1, 10_000],
+    AI_REQUEST_TIMEOUT_MS: [1000, 120_000],
+    AI_MAX_OUTPUT_TOKENS: [64, 4096],
+  };
+  for (const [key, [min, max]] of Object.entries(numericRanges)) {
+    if (config[key] === undefined) continue;
+    const value = Number(config[key]);
+    if (!Number.isInteger(value) || value < min || value > max) {
+      errors.push(`${key} must be an integer between ${min} and ${max}`);
+    } else {
+      config[key] = value;
+    }
+  }
+  for (const key of [
+    'GROQ_MODEL',
+    'GROQ_SIMPLE_MODEL',
+    'GROQ_MODERATE_MODEL',
+    'GROQ_COMPLEX_MODEL',
+  ]) {
+    const model = config[key];
+    if (model !== undefined && (typeof model !== 'string' || !/^[a-z0-9][a-z0-9._/-]{1,127}$/i.test(model.trim()))) {
+      errors.push(`${key} must be a valid Groq model ID`);
+    }
   }
 
   if (config.NODE_ENV === 'production') {

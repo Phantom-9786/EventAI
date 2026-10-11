@@ -30,4 +30,4 @@ The API is bearer-token driven (no ambient cookie auth for API calls). The only 
 
 - Audit logging covers admin provisioning and refund transitions, but it is not a general audit trail for all administrative actions.
 - Sentry is implemented for API and web; dashboard event visibility still requires live verification in each Sentry project.
-- The throttler store is in-memory and per-instance; configure a shared store before horizontally scaling so rate limits apply across API replicas.
+- Non-AI Nest throttling remains in-memory and per-instance; configure a shared throttler store before scaling those endpoints horizontally.

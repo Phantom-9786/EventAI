@@ -2,7 +2,11 @@
 
 ## Assistant
 
-`POST /api/ai/chat` (public, rate-limited to 10 requests/min per IP on top of the global throttle) forwards a validated message history (≤12 turns) to Groq's OpenAI-compatible endpoint (`https://api.groq.com/openai/v1/chat/completions`, model from `GROQ_MODEL`, default `openai/gpt-oss-120b`, 30s timeout).
+The latest user turn is classified locally as simple, moderate, or complex. Simple questions use `GROQ_SIMPLE_MODEL` (default `openai/gpt-oss-20b`); comparisons and recommendations use `GROQ_MODERATE_MODEL`; complex plans use `GROQ_COMPLEX_MODEL`. The latter two default to legacy `GROQ_MODEL` (default `openai/gpt-oss-120b`). Model access depends on the Groq project, so IDs are configurable. Ambiguous prompts route to moderate without a second classifier call. Transient failures get one retry and at most one profile escalation. Existing catalog grounding and the `EVENTS:` trailer remain unchanged; the current provider has no remote tool-call or JSON-schema-output implementation.
+
+AI traffic is protected by shared Redis-backed per-identity and global request windows and a concurrency lease. Verified JWT user IDs identify signed-in callers; anonymous callers use Express's resolved client IP, not the raw forwarded-for header. Defaults: 10 requests per identity/minute, 120 total/minute, 20 concurrent requests, a 30-second provider timeout, and 600 output tokens. The AI endpoint fails closed with 503 if Redis is unavailable.
+
+`POST /api/ai/chat` uses the request bounds and shared Redis protection described above. Its existing catalog context and structured recommendation response remain active.
 
 - **Grounding**: the system prompt injects the next 12 upcoming published events (title, city, category, from-price, link path) and instructs the model to recommend only catalog events — no hallucinated events, no user data leaves the system.
 - **Configuration detection**: `isConfigured()` treats a missing key and the shipped `gsk_xxxx…` placeholder as unconfigured and returns **503** with an operator-actionable message instead of leaking an upstream error.
@@ -14,9 +18,9 @@
 The assistant supports multiple Groq API keys with bounded failover (implemented 2026-10-10):
 
 - **Configuration**: `GROQ_API_KEYS=k1,k2,k3` (comma-separated; takes precedence) or the legacy single `GROQ_API_KEY`. Add future keys to this line — no code changes needed. Keys live only in the git-ignored `.env` files; they are never stored in the database, written to logs, or sent to the client.
-- **Selection & failover**: the key pool picks the first key not on cooldown. On **401/403** (invalid/revoked credential) the key is cooled down for 30 minutes and the next key is tried — different credentials are different quotas, so rotating is legitimate.
-- **429 (rate limit)**: the key is cooled down for the server-advised `Retry-After` (capped at 60s) and the request is rejected with a 503 carrying `retryAfterSeconds` in the body. Keys are **never rotated on 429** — keys of one organization share a quota, so rotation would only shift the same 429 onto the next credential.
-- **Transient failures** (network errors, timeouts, 408/5xx): one bounded backoff retry (500ms) on the same key, then 503. Chat-completion calls are safe to retry (no server-side state changes), and all retries are bounded — at most one attempt per key plus one transient retry per request; no retry loops.
+- **Selection & failover**: on 401/403, that credential is cooled down for 30 minutes and another configured credential may be tried. This is authentication recovery; all credentials remain in one shared quota pool.
+- **429 (rate limit)**: all configured credentials are treated as one shared quota pool. Groq `Retry-After` or reset headers are honored up to a 15-minute cooldown, shared through Redis across API instances; the keys are never rotated on 429.
+- **Transient failures** (network errors, timeouts, 408/5xx): one retry and at most one escalation to a stronger profile; the call budget is strictly bounded.
 - **Other 4xx** (bad request, unknown model): permanent for the request shape — no retry.
 - **All keys exhausted**: 503 with `retryAfterSeconds` (time until the earliest key leaves cooldown).
 - **Missing/placeholder keys**: the endpoint 503s with an operator-actionable message before any network call (unchanged graceful degradation).
