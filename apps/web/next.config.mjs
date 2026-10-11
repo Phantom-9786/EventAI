@@ -4,6 +4,8 @@ import { withSentryConfig } from '@sentry/nextjs/config';
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  // Keep a running dev server's artifacts separate from production builds.
+  distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
   transpilePackages: ['@eventai/types', '@eventai/validation'],
   images: {
     remotePatterns: [
