@@ -22,6 +22,7 @@ Health: `GET http://localhost:4000/api/health` → `{ status, dependencies: { da
 | `JWT_SECRET` | always | ≥16 chars generally and ≥32 in production; non-placeholder |
 | `REDIS_URL` | production | valid `redis://` or `rediss://` URL; cache operations still degrade gracefully if unavailable |
 | `FRONTEND_URL` | production | must be `https://`; used as the single CORS origin |
+| `NEXT_PUBLIC_API_URL` | web build | public HTTPS API base URL ending in `/api`; baked into browser bundles at build time (for example `https://api.staging.example.com/api`) |
 | `RAZORPAY_KEY_ID/_SECRET/_WEBHOOK_SECRET` | production | optional in dev (checkout shows an honest "not configured" error) |
 | `GROQ_API_KEY` / `GROQ_MODEL` | optional | AI chat 503s with an actionable message until a real key is set (Groq; default model `openai/gpt-oss-120b`) |
 | `SENTRY_DSN` / `SENTRY_ENVIRONMENT` | optional | API error monitoring; fully disabled without a DSN (see "Sentry" below) |
@@ -76,7 +77,7 @@ npm run build --workspace=@eventai/api
 npm run start:prod --workspace=@eventai/api
 ```
 
-For the web app, use `npm run build --workspace=@eventai/web` followed by `npm run start --workspace=@eventai/web`. Its `NEXT_PUBLIC_*` Sentry settings must be present at build time. The Docker image path is separate and is not a complete application deployment definition.
+For the web app, set `NEXT_PUBLIC_API_URL` to the public API base URL ending in `/api`, then use `npm run build --workspace=@eventai/web` followed by `npm run start --workspace=@eventai/web`. This public URL is compiled into browser bundles and cannot be changed by runtime environment variables. The `NEXT_PUBLIC_*` Sentry settings must also be present at build time. The Docker image requires `--build-arg NEXT_PUBLIC_API_URL=https://<api-host>/api`; its runtime environment cannot repair an image built without the correct endpoint. The Docker image path is separate and is not a complete application deployment definition.
 
 For development, with the development `DATABASE_URL` selected:
 
