@@ -7,7 +7,7 @@ import { BookingsService } from './bookings.service';
 
 describe('BookingsService', () => {
   let service: BookingsService;
-  let refundBooking: jest.Mock;
+  let requestRefund: jest.Mock;
   let notifications: {
     sendBookingCancellation: jest.Mock;
     sendRefundConfirmation: jest.Mock;
@@ -74,7 +74,7 @@ describe('BookingsService', () => {
       $transaction: jest.fn(),
     };
 
-    const paymentsService = { refundBooking: jest.fn() };
+    const paymentsService = { requestRefund: jest.fn() };
     notifications = {
       sendBookingCancellation: jest.fn().mockResolvedValue(true),
       sendRefundConfirmation: jest.fn().mockResolvedValue(true),
@@ -90,7 +90,7 @@ describe('BookingsService', () => {
     }).compile();
 
     service = moduleRef.get(BookingsService);
-    refundBooking = paymentsService.refundBooking;
+    requestRefund = paymentsService.requestRefund;
   });
 
   const validInput = {
@@ -296,20 +296,18 @@ describe('BookingsService', () => {
       expect(prisma.ticketType.updateMany).not.toHaveBeenCalled();
     });
 
-    it('refunds a confirmed booking through the payments service', async () => {
+    it('requests organizer approval for a confirmed booking through the payments service', async () => {
       prisma.booking.findUnique.mockResolvedValue({ ...booking, status: 'CONFIRMED' });
-      refundBooking.mockResolvedValue({
-        booking: { ...booking, status: 'REFUNDED' },
-        refundId: 'rfnd_1',
-        refundAmount: 300000,
+      requestRefund.mockResolvedValue({
+        refundRequest: { bookingId: 'bk-1', status: 'PENDING' },
       });
 
       const result = (await service.cancelOwn('user-1', 'bk-1', 'changed plans')) as {
-        booking: { status: string };
+        refundRequest: { status: string };
       };
 
-      expect(refundBooking).toHaveBeenCalledWith('user-1', 'bk-1', 'changed plans');
-      expect(result.booking.status).toBe('REFUNDED');
+      expect(requestRefund).toHaveBeenCalledWith('user-1', 'bk-1', 'changed plans');
+      expect(result.refundRequest.status).toBe('PENDING');
       expect(prisma.booking.update).not.toHaveBeenCalled();
     });
   });

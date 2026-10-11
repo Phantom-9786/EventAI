@@ -255,6 +255,58 @@ export interface AttendeeBooking {
   tickets: { id: string; ticketCode: string; status: string; holderName: string; ticketType: { id: string; name: string } }[];
 }
 
+export interface OrganizerRefundRequest {
+  bookingId: string;
+  amount: number;
+  currency: string;
+  refundRequestReason: string | null;
+  refundRequestedAt: string | null;
+  booking: {
+    totalAmount: number;
+    createdAt: string;
+    user: { id: string; firstName: string | null; lastName: string | null; email: string };
+    event: { id: string; title: string; slug: string; startDate: string };
+    items: { quantity: number; ticketType: { name: string } }[];
+  };
+}
+
+export async function getOrganizerRefundRequests(): Promise<OrganizerRefundRequest[]> {
+  const res = await authFetch('/organizers/refund-requests');
+  if (!res.ok) throw new Error(`Failed to load refund requests (${res.status})`);
+  const body = (await res.json()) as { refundRequests: OrganizerRefundRequest[] };
+  return body.refundRequests;
+}
+
+async function decideOrganizerRefund(
+  bookingId: string,
+  decision: 'approve' | 'reject',
+): Promise<{ bookingId?: string; status?: string; refundStatus?: string }> {
+  const res = await authFetch(`/organizers/refund-requests/${bookingId}/${decision}`, {
+    method: 'POST',
+  });
+  const body = (await res.json().catch(() => ({}))) as { message?: string | string[] } & {
+    bookingId?: string;
+    status?: string;
+    refundStatus?: string;
+  };
+  if (!res.ok) {
+    throw new Error(
+      Array.isArray(body.message)
+        ? body.message.join(', ')
+        : (body.message ?? `Failed to ${decision} refund request (${res.status})`),
+    );
+  }
+  return body;
+}
+
+export function approveOrganizerRefund(bookingId: string) {
+  return decideOrganizerRefund(bookingId, 'approve');
+}
+
+export function rejectOrganizerRefund(bookingId: string) {
+  return decideOrganizerRefund(bookingId, 'reject');
+}
+
 export async function getEventTicketStats(eventId: string): Promise<TicketStats> {
   const res = await authFetch(`/organizers/events/${eventId}/tickets/stats`);
   if (!res.ok) throw new Error(`Failed to load ticket stats (${res.status})`);

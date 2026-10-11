@@ -30,11 +30,15 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { validateTicketSchema } from '@eventai/validation';
 import type { ValidateTicketInput } from '@eventai/validation';
 import { OrganizersService } from './organizers.service';
+import { PaymentsService } from '../payments/payments.service';
 
 @ApiTags('organizer')
 @Controller('organizers')
 export class OrganizersController {
-  constructor(private readonly organizersService: OrganizersService) {}
+  constructor(
+    private readonly organizersService: OrganizersService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -174,5 +178,37 @@ export class OrganizersController {
   ) {
     const organizerId = await this.organizersService.requireOrganizerId(userId);
     return this.organizersService.eventAttendees(organizerId, eventId, query.page, query.limit);
+  }
+
+  @Roles('ORGANIZER')
+  @Get('refund-requests')
+  @ApiOperation({ summary: 'List pending refund requests for the organizer’s events' })
+  async refundRequests(@CurrentUser('id') userId: string) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return { refundRequests: await this.paymentsService.listOrganizerRefundRequests(organizerId) };
+  }
+
+  @Roles('ORGANIZER')
+  @Post('refund-requests/:bookingId/approve')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Approve and initiate a requested Razorpay refund' })
+  async approveRefundRequest(
+    @CurrentUser('id') userId: string,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return this.paymentsService.approveRefundRequest(organizerId, userId, bookingId);
+  }
+
+  @Roles('ORGANIZER')
+  @Post('refund-requests/:bookingId/reject')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reject a requested refund without contacting Razorpay' })
+  async rejectRefundRequest(
+    @CurrentUser('id') userId: string,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return this.paymentsService.rejectRefundRequest(organizerId, userId, bookingId);
   }
 }

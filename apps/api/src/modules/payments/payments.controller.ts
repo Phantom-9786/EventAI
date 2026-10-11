@@ -71,12 +71,12 @@ export class PaymentsController {
 
   @Post('refund')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Fully refund a paid booking via Razorpay and release its tickets' })
+  @ApiOperation({ summary: 'Request an organizer-approved refund for a paid booking' })
   async refund(
     @CurrentUser('id') userId: string,
     @Body(new ZodValidationPipe(refundBookingSchema)) body: RefundBookingInput,
   ) {
-    return this.paymentsService.refundBooking(userId, body.bookingId, body.reason);
+    return this.paymentsService.requestRefund(userId, body.bookingId, body.reason);
   }
 
   @Get('tickets/:id/qr')

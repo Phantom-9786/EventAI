@@ -388,6 +388,13 @@ enum PaymentStatus {
   PARTIALLY_REFUNDED
 }
 
+enum RefundRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  FAILED
+}
+
 model Payment {
   id                 String        @id @default(uuid())
   bookingId          String        @unique @map("booking_id")
@@ -404,6 +411,11 @@ model Payment {
   refundId           String?       @map("refund_id")
   refundAmount       Int?          @map("refund_amount")
   refundAttemptKey   String?       @map("refund_attempt_key")
+  refundRequestStatus RefundRequestStatus? @map("refund_request_status")
+  refundRequestReason String?      @map("refund_request_reason")
+  refundRequestedAt  DateTime?     @map("refund_requested_at")
+  refundReviewedAt   DateTime?     @map("refund_reviewed_at")
+  refundReviewedBy   String?       @map("refund_reviewed_by")
   webhookVerified    Boolean       @default(false) @map("webhook_verified")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -413,6 +425,7 @@ model Payment {
 
   @@index([razorpayOrderId])
   @@index([status])
+  @@index([refundRequestStatus])
   @@map("payments")
 }
 

@@ -33,7 +33,16 @@ const BOOKING_DETAIL_INCLUDE = {
       },
     },
   },
-  payment: { select: { id: true, status: true, amount: true } },
+  payment: {
+    select: {
+      id: true,
+      status: true,
+      amount: true,
+      refundRequestStatus: true,
+      refundRequestReason: true,
+      refundRequestedAt: true,
+    },
+  },
   tickets: {
     select: {
       id: true,
@@ -239,8 +248,7 @@ export class BookingsService {
       throw new ConflictException('This booking is already closed');
     }
     if (booking.status === 'CONFIRMED') {
-      // Paid bookings go through the Razorpay refund flow
-      return this.paymentsService.refundBooking(userId, bookingId, reason);
+      return this.paymentsService.requestRefund(userId, bookingId, reason);
     }
     if (booking.status === 'REFUNDED') {
       throw new ConflictException('This booking was already refunded');

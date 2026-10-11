@@ -41,11 +41,12 @@ export async function cancelBooking(bookingId: string, reason = 'Customer cancel
 
 export async function refundBooking(bookingId: string, reason = 'Customer refund request') {
   return postJson<{
-    booking: BookingListEntry;
-    refundId: string;
-    refundAmount: number | null;
-    refundStatus: 'processed' | 'pending';
-    reconciliationRequired?: boolean;
+    refundRequest: {
+      bookingId: string;
+      status: 'PENDING';
+      reason: string | null;
+      requestedAt: string;
+    };
   }>('/payments/refund', { bookingId, reason });
 }
 
@@ -67,7 +68,14 @@ export interface BookingView {
   totalAmount: number;
   expiresAt: string | null;
   tickets?: TicketView[];
-  payment?: { id: string; status: string; amount: number } | null;
+  payment?: {
+    id: string;
+    status: string;
+    amount: number;
+    refundRequestStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'FAILED' | null;
+    refundRequestReason?: string | null;
+    refundRequestedAt?: string | null;
+  } | null;
 }
 
 export async function createBooking(input: {
