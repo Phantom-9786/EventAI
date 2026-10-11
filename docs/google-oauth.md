@@ -136,3 +136,6 @@ Frontend error redirects land on `/signin?error=google_*`:
 - `apps/api/src/modules/auth/google-oauth.service.spec.ts` — feature gating,
   state signing/tampering/expiry/CSRF, authorization URL shape, code exchange,
   ID-token payload normalization, failure mapping.
+- Production refresh cookies use `SameSite=None; Secure` so the frontend and
+  API can exchange the httpOnly refresh cookie across their Vercel/Render
+  origins. The authenticated `/auth/me` response is `Cache-Control: no-store`.

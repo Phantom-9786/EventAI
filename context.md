@@ -75,7 +75,7 @@ Phase 1 (Foundation) — COMPLETE:
 
 Phase 2 — Authentication & RBAC (COMPLETE):
 - Register (email/password, Zod-validated, Argon2id hashing, role CUSTOMER), login, logout (revokes session, clears cookie)
-- JWT access tokens (Authorization bearer) + opaque rotating refresh tokens stored only as SHA-256 hashes in the `sessions` table; refresh token delivered in an httpOnly, sameSite=lax, path-scoped cookie (`eventai_refresh_token`)
+- JWT access tokens (Authorization bearer) + opaque rotating refresh tokens stored only as SHA-256 hashes in the `sessions` table; refresh token delivered in an httpOnly, path-scoped cookie (`SameSite=None; Secure` in production for cross-site Vercel/Render requests, `SameSite=Lax` locally)
 - `POST /api/auth/refresh` rotates the refresh token and issues a new access token; password change and reset revoke all sessions
 - Password reset flow (`forgot-password` / `reset-password`) backed by the `password_resets` table with hashed, single-use, 1h-expiring tokens; email delivery deferred to the Phase 4 email worker (token logged in dev)
 - `GET /api/auth/me`, `POST /api/auth/change-password`
@@ -88,6 +88,7 @@ Phase 2 — Google OAuth 2.0 (code COMPLETE; live-verified up to Google's consen
 - CSRF: HMAC-SHA256-signed state (10-min expiry) mirrored via an httpOnly cookie; post-login redirect restricted to same-site relative paths; access token returned in the URL fragment (never sent to servers)
 - Frontend: "Continue with Google" on `/signin` + `/signup`, `/auth/callback` consumer, `/signin?error=google_*` error mapping; Google-only accounts get clean errors on password login/change-password
 - Full flow + setup steps documented in `docs/google-oauth.md`
+- Staging login diagnosis/fix (2026-10-12): production `SameSite=Lax` prevented the cross-site refresh request from sending its cookie; `/auth/me` was cacheable and could return 304; callback verified the profile but did not update `AuthProvider` state, while its mount-time refresh could race it. Fixed in code and covered by API + Playwright tests; no deployment/live account verification performed for this fix yet.
 - 14 unit tests (auth service google cases + google-oauth service: state CSRF/tamper/expiry, feature gating, code exchange, payload normalization)
 - Live verification (2026-10-09, credentials configured from the downloaded Cloud Console client — values never exposed, `.env` git-ignored, JSON kept out of the repo): `/api/auth/google` 302s to Google with the registered `redirect_uri`/client_id/scope + valid signed state cookie; callback failure paths all exercised (`google_state_mismatch`, `google_cancelled`, `google_failed` on missing code with valid state, `google_failed` after a REAL token-exchange attempt with a fake code — the API reaches Google's token endpoint with the configured credentials and handles rejection safely); `users.google_id` column present; frontend button renders and endpoint wiring confirmed. Fixed en route: empty `GOOGLE_CALLBACK_URL=` now falls back to the local default (86481ed). STILL UNVERIFIED: an actual consent→code→`loginWithGoogle` create/link→session round-trip (requires the user's Google account).
 

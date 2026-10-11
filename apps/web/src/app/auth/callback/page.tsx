@@ -16,9 +16,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { fetchCurrentUser, setAccessToken } from '@/lib/auth';
+import { useAuth } from '@/components/auth/auth-provider';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
+  const { completeSignIn } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const handled = useRef(false);
 
@@ -48,6 +50,7 @@ export default function AuthCallbackPage() {
           setError('Signed in with Google, but the session could not be verified.');
           return;
         }
+        completeSignIn(user);
         router.replace(target);
         router.refresh();
       })
@@ -55,7 +58,7 @@ export default function AuthCallbackPage() {
         setAccessToken(null);
         setError('Something went wrong while completing Google sign-in.');
       });
-  }, [router]);
+  }, [completeSignIn, router]);
 
   return (
     <div className="container flex max-w-md flex-col items-center py-24 text-center">

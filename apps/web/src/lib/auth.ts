@@ -172,12 +172,16 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
   if (!token) return null;
 
   const res = await fetch(`${API_URL}/auth/me`, {
+    cache: 'no-store',
+    credentials: 'include',
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) {
     const refreshed = await refreshAccessToken();
     if (!refreshed) return null;
     const retry = await fetch(`${API_URL}/auth/me`, {
+      cache: 'no-store',
+      credentials: 'include',
       headers: { Authorization: `Bearer ${refreshed}` },
     });
     if (!retry.ok) return null;

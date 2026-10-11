@@ -5,7 +5,7 @@
 | Control | Implementation |
 |---------|----------------|
 | Password hashing | argon2id (`argon2.hash` with default memory/time params) |
-| Sessions | opaque rotating refresh tokens stored **only** as SHA-256 hashes; httpOnly, sameSite=lax, path-scoped cookie; access JWT (`{ sub, email, role }`) via bearer header |
+| Sessions | opaque rotating refresh tokens stored **only** as SHA-256 hashes; httpOnly, path-scoped cookie (`SameSite=None; Secure` in production for the cross-site web/API deployment, `SameSite=Lax` locally); access JWT (`{ sub, email, role }`) via bearer header |
 | RBAC | global `JwtAuthGuard` (all routes JWT unless `@Public()`) + `RolesGuard` (`@Roles()`), organizer ownership checks on every organizer resource |
 | Input validation | Zod schemas on every write endpoint (`ZodValidationPipe`, whitelist + reject unknown fields) |
 | Rate limiting | global `ThrottlerGuard` (`RATE_LIMIT_TTL`/`RATE_LIMIT_MAX`); auth endpoints stricter (10 req/min/IP) |
@@ -24,7 +24,7 @@
 
 ## CSRF posture
 
-The API is bearer-token driven (no ambient cookie auth for API calls). The only cookie (`eventai_refresh_token`) is httpOnly, `SameSite=Lax`, and path-scoped to `/api/auth/refresh`, so cross-site POSTs cannot reach state-changing endpoints with it. A formal CSRF-token layer is therefore not required today; revisit if cookie-based session auth is ever added for the API.
+The API uses bearer tokens for protected endpoints. The refresh cookie is the sole ambient credential and is path-scoped to `/api/auth`; production uses `SameSite=None; Secure` because the Vercel frontend and Render API are cross-site, while local development uses `SameSite=Lax`. CORS restricts credentialed browser access to the configured `FRONTEND_URL`. The refresh endpoint only rotates the caller's own session tokens; review this CSRF posture if cookie-authenticated state-changing endpoints are introduced.
 
 ## Operational limitations
 

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Logger,
@@ -51,10 +52,14 @@ export class AuthController {
   ) {}
 
   private setRefreshCookie(response: Response, refreshToken: string): void {
+    const isProduction = process.env.NODE_ENV === 'production';
     response.cookie(REFRESH_TOKEN_COOKIE, refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: isProduction,
+      // The web app and API use different registrable domains in production
+      // (vercel.app and onrender.com), so the refresh cookie must be sent on
+      // credentialed cross-site API requests.
+      sameSite: isProduction ? 'none' : 'lax',
       path: '/api/auth',
       maxAge: this.authService.refreshCookieMaxAge,
     });
@@ -196,6 +201,7 @@ export class AuthController {
   }
 
   @Get('me')
+  @Header('Cache-Control', 'no-store')
   @ApiOperation({ summary: 'Get the authenticated user profile' })
   async me(@CurrentUser('id') userId: string) {
     return { user: await this.authService.getProfile(userId) };
