@@ -39,6 +39,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 RUN addgroup -S eventai && adduser -S eventai -G eventai
+RUN mkdir -p /app/uploads \
+  && chown eventai:eventai /app/uploads \
+  && chmod 0750 /app/uploads
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages ./packages
