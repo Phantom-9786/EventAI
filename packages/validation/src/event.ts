@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+const eventImageUrlSchema = z
+  .string()
+  .url('Image must be a valid URL')
+  .max(2048)
+  .refine((value) => /^https?:\/\//i.test(value), 'Image URL must use HTTP or HTTPS');
+
 export const createEventSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters').max(200).trim(),
   description: z.string().min(20, 'Description must be at least 20 characters').max(10000).trim(),
@@ -9,6 +15,8 @@ export const createEventSchema = z.object({
   startDate: z.string().datetime('Invalid start date'),
   endDate: z.string().datetime('Invalid end date'),
   tags: z.array(z.string().max(50)).max(10).optional(),
+  coverImage: eventImageUrlSchema.optional(),
+  images: z.array(eventImageUrlSchema).max(10).optional(),
   policies: z.string().max(5000).optional(),
   cancellationPolicy: z.string().max(2000).optional(),
 }).refine(
@@ -25,6 +33,8 @@ export const updateEventSchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
   tags: z.array(z.string().max(50)).max(10).optional(),
+  coverImage: eventImageUrlSchema.nullable().optional(),
+  images: z.array(eventImageUrlSchema).max(10).optional(),
   policies: z.string().max(5000).optional(),
   cancellationPolicy: z.string().max(2000).optional(),
   status: z.enum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED']).optional(),

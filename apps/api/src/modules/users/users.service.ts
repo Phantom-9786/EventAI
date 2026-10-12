@@ -195,13 +195,40 @@ export class UsersService {
   async deactivateAccount(userId: string): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { isActive: true },
+      select: { isActive: true, role: true },
     });
     if (!user) {
       throw new NotFoundException('User not found');
     }
     if (!user.isActive) {
       return { message: 'Account is already deactivated' };
+    }
+    if (user.role === 'ORGANIZER') {
+      const organizer = await this.prisma.organizer.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+      if (organizer) {
+        const [activeEvents, pendingRefunds] = await Promise.all([
+          this.prisma.event.count({
+            where: { organizerId: organizer.id, status: { in: ['DRAFT', 'PUBLISHED'] } },
+          }),
+          this.prisma.payment.count({
+            where: {
+              OR: [
+                { refundRequestStatus: 'PENDING' },
+                { status: 'REFUND_PENDING' },
+              ],
+              booking: { event: { organizerId: organizer.id } },
+            },
+          }),
+        ]);
+        if (activeEvents > 0 || pendingRefunds > 0) {
+          throw new ConflictException(
+            'Cancel all draft or published events and resolve pending or processing refunds before deactivating this organizer account',
+          );
+        }
+      }
     }
 
     // Deactivate and revoke all sessions in one transaction

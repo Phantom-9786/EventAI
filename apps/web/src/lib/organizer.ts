@@ -31,6 +31,8 @@ export interface OrganizerEventDetail extends OrganizerEventRow {
   tags: string[];
   policies: string | null;
   cancellationPolicy: string | null;
+  coverImage: string | null;
+  images: string[];
   category: { id: string; name: string; slug: string; icon?: string | null; color?: string | null };
   venue: { id: string; name: string; address: string; city: string; state: string };
   ticketTypes: OrganizerTicketType[];
@@ -63,6 +65,8 @@ export interface OrganizerVenue {
   address: string;
   city: string;
   state: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface OrganizerVenueInput {
@@ -72,6 +76,8 @@ export interface OrganizerVenueInput {
   city: string;
   state: string;
   capacity: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface OrganizerEventInput {
@@ -85,6 +91,14 @@ export interface OrganizerEventInput {
   tags?: string[];
   policies?: string;
   cancellationPolicy?: string;
+  coverImage?: string | null;
+  images?: string[];
+}
+
+export interface CancelledOrganizerEvent {
+  event: OrganizerEventDetail;
+  refundRequestsQueued: number;
+  bookingsCancelled: number;
 }
 
 export interface OrganizerTicketTypeInput {
@@ -183,11 +197,10 @@ export async function publishOrganizerEvent(idOrSlug: string): Promise<Organizer
   return body.event;
 }
 
-export async function cancelOrganizerEvent(idOrSlug: string): Promise<OrganizerEventDetail> {
+export async function cancelOrganizerEvent(idOrSlug: string): Promise<CancelledOrganizerEvent> {
   const res = await authFetch(`/events/${encodeURIComponent(idOrSlug)}/cancel`, { method: 'POST' });
   if (!res.ok) throw await readApiError(res, 'Failed to cancel event');
-  const body = (await res.json()) as { event: OrganizerEventDetail };
-  return body.event;
+  return res.json();
 }
 
 export async function createOrganizerTicketType(
@@ -223,6 +236,7 @@ export async function deleteOrganizerTicketType(id: string): Promise<void> {
 
 export async function becomeOrganizer(input: {
   organizationName: string;
+  phone?: string;
 }): Promise<void> {
   const res = await authFetch('/organizers', {
     method: 'POST',
@@ -351,18 +365,30 @@ export async function validateTicketCode(eventId: string, ticketCode: string): P
 }
 
 /** Returns the organizer profile or null when the user has none yet. */
-export async function getOrganizerProfile(): Promise<{ id: string; organizationName: string } | null> {
+export interface OrganizerProfile {
+  id: string;
+  organizationName: string;
+  phone: string | null;
+  _count: { events: number; venues: number };
+}
+
+export async function getOrganizerProfile(): Promise<OrganizerProfile | null> {
   const res = await authFetch('/organizers/me');
   if (res.status === 403 || res.status === 404) return null;
   if (!res.ok) throw new Error(`Failed to load profile (${res.status})`);
-  const body = (await res.json()) as { organizer: { id: string; organizationName: string } };
+  const body = (await res.json()) as { organizer: OrganizerProfile };
   return body.organizer;
+}
+
+export async function leaveOrganizerProfile(): Promise<void> {
+  const res = await authFetch('/organizers/me', { method: 'DELETE' });
+  if (!res.ok) throw await readApiError(res, 'Failed to remove organizer profile');
 }
 
 export function useOrganizerDashboard(enabled: boolean) {
   const [stats, setStats] = useState<OrganizerStats | null>(null);
   const [events, setEvents] = useState<OrganizerEventRow[] | null>(null);
-  const [profile, setProfile] = useState<{ id: string; organizationName: string } | null>(null);
+  const [profile, setProfile] = useState<OrganizerProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
 

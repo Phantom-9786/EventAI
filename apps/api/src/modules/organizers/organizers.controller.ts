@@ -57,6 +57,14 @@ export class OrganizersController {
     return { organizer: await this.organizersService.getOwnOrganizerProfile(userId) };
   }
 
+  @Roles('ORGANIZER')
+  @Delete('me')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove an empty organizer profile and return to customer role' })
+  async leaveOrganizer(@CurrentUser('id') userId: string) {
+    return this.organizersService.leaveOrganizer(userId);
+  }
+
   @Get('me/events')
   @ApiOperation({ summary: 'List the authenticated organizer events (all statuses)' })
   async listOwnEvents(

@@ -67,6 +67,30 @@ export class OrganizersService {
     return organizer;
   }
 
+  async leaveOrganizer(userId: string): Promise<{ message: string }> {
+    const organizer = await this.prisma.organizer.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        _count: { select: { events: true, venues: true } },
+      },
+    });
+    if (!organizer) {
+      throw new NotFoundException('Organizer profile not found');
+    }
+    if (organizer._count.events > 0 || organizer._count.venues > 0) {
+      throw new ConflictException(
+        'Organizer profiles with events or venues cannot be removed; deactivate your account after resolving active events instead',
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.organizer.delete({ where: { id: organizer.id } }),
+      this.prisma.user.update({ where: { id: userId }, data: { role: 'CUSTOMER' } }),
+    ]);
+    return { message: 'Organizer profile removed' };
+  }
+
   async getOwnOrganizerProfile(userId: string) {
     const organizer = await this.prisma.organizer.findUnique({
       where: { userId },

@@ -7,11 +7,13 @@ import { Test } from '@nestjs/testing';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { EventsService } from './events.service';
 
 describe('EventsService', () => {
   let service: EventsService;
   let cacheMock: { get: jest.Mock; set: jest.Mock; invalidatePrefix: jest.Mock };
+  let notificationsMock: { sendEventCancellationNotice: jest.Mock };
   let prisma: {
     event: {
       create: jest.Mock;
@@ -20,8 +22,12 @@ describe('EventsService', () => {
       findUnique: jest.Mock;
       findMany: jest.Mock;
       update: jest.Mock;
+      updateMany: jest.Mock;
       delete: jest.Mock;
     };
+    payment: { updateMany: jest.Mock };
+    booking: { findMany: jest.Mock; updateMany: jest.Mock };
+    ticket: { updateMany: jest.Mock };
     category: { findFirst: jest.Mock };
     venue: { findFirst: jest.Mock };
     $transaction: jest.Mock;
@@ -46,8 +52,12 @@ describe('EventsService', () => {
         findUnique: jest.fn(),
         findMany: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
         delete: jest.fn(),
       },
+      payment: { updateMany: jest.fn() },
+      booking: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+      ticket: { updateMany: jest.fn() },
       category: { findFirst: jest.fn() },
       venue: { findFirst: jest.fn() },
       $transaction: jest.fn(async (ops: unknown) => {
@@ -63,12 +73,16 @@ describe('EventsService', () => {
       set: jest.fn().mockResolvedValue(undefined),
       invalidatePrefix: jest.fn().mockResolvedValue(undefined),
     };
+    notificationsMock = {
+      sendEventCancellationNotice: jest.fn().mockResolvedValue(true),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         EventsService,
         { provide: PrismaService, useValue: prisma },
         { provide: CacheService, useValue: cacheMock },
+        { provide: NotificationsService, useValue: notificationsMock },
       ],
     }).compile();
 
@@ -187,11 +201,34 @@ describe('EventsService', () => {
   });
 
   describe('cancelEvent and deleteEvent', () => {
-    it('cancels a published event', async () => {
+    it('cancels bookings and tickets and queues captured payments for approval', async () => {
       prisma.event.findFirst.mockResolvedValue({ ...ownedDraft, status: 'PUBLISHED' });
-      prisma.event.update.mockResolvedValue({ id: 'event-1', status: 'CANCELLED' });
+      prisma.event.updateMany.mockResolvedValue({ count: 1 });
+      prisma.payment.updateMany.mockResolvedValue({ count: 2 });
+      prisma.booking.updateMany.mockResolvedValue({ count: 3 });
+      prisma.ticket.updateMany.mockResolvedValue({ count: 4 });
+      prisma.event.findUniqueOrThrow.mockResolvedValue({ id: 'event-1', status: 'CANCELLED' });
+      prisma.booking.findMany.mockResolvedValue([{
+        id: 'booking-1',
+        user: { email: 'attendee@example.test', firstName: 'Attendee', lastName: 'One' },
+        payment: { status: 'CAPTURED', refundRequestStatus: null },
+      }]);
       const result = await service.cancelEvent('org-1', 'event-1');
-      expect(result.status).toBe('CANCELLED');
+      expect(result.event.status).toBe('CANCELLED');
+      expect(result.refundRequestsQueued).toBe(2);
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ status: 'CAPTURED', booking: { eventId: 'event-1', status: 'CONFIRMED' } }),
+        data: expect.objectContaining({ refundRequestStatus: 'PENDING' }),
+      }));
+      expect(prisma.ticket.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { eventId: 'event-1', status: 'VALID' },
+        data: { status: 'CANCELLED' },
+      }));
+      expect(notificationsMock.sendEventCancellationNotice).toHaveBeenCalledWith(expect.objectContaining({
+        to: 'attendee@example.test',
+        bookingId: 'booking-1',
+        paymentStatus: 'CAPTURED',
+      }));
     });
 
     it('refuses to cancel a completed event', async () => {

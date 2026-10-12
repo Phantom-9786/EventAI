@@ -36,16 +36,19 @@ export function OrganizerEventEditor({ id }: { id: string }) {
 
   async function changeStatus(action: 'publish' | 'cancel') {
     if (!event) return;
-    if (action === 'cancel' && !window.confirm('Cancel this event? Customers will no longer be able to book it.')) return;
+    if (action === 'cancel' && !window.confirm('Cancel this event? All active tickets will be cancelled. Captured payments will become refund requests that still require organizer approval before any Razorpay refund is initiated.')) return;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      const updated = action === 'publish'
-        ? await publishOrganizerEvent(event.id)
-        : await cancelOrganizerEvent(event.id);
-      setEvent(updated);
-      setNotice(action === 'publish' ? 'Event published.' : 'Event cancelled.');
+      if (action === 'publish') {
+        setEvent(await publishOrganizerEvent(event.id));
+        setNotice('Event published.');
+      } else {
+        const result = await cancelOrganizerEvent(event.id);
+        setEvent(result.event);
+        setNotice(`Event cancelled. ${result.refundRequestsQueued} captured payment${result.refundRequestsQueued === 1 ? '' : 's'} queued for organizer refund approval; no provider refunds were initiated.`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : `Could not ${action} this event.`);
     } finally {

@@ -12,6 +12,7 @@ export class VenuesService {
 
   async search(input: { city?: string; query?: string; page: number; limit: number }) {
     const where = {
+      events: { some: { status: 'PUBLISHED' as const } },
       ...(input.city && { city: { contains: input.city, mode: 'insensitive' as const } }),
       ...(input.query && {
         OR: [
@@ -54,8 +55,8 @@ export class VenuesService {
   }
 
   async getVenue(id: string) {
-    const venue = await this.prisma.venue.findUnique({
-      where: { id },
+    const venue = await this.prisma.venue.findFirst({
+      where: { id, events: { some: { status: 'PUBLISHED' } } },
       include: {
         organizer: { select: { id: true, organizationName: true, isVerified: true } },
         seatSections: {

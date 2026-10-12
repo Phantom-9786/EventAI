@@ -190,6 +190,24 @@ describe('NotificationsService (Brevo)', () => {
       expect(lastBody().htmlContent).not.toContain('<strong>Reason:</strong>');
     });
 
+    it('event cancellation explains approval-gated refunds and escapes attendee data', async () => {
+      const service = new NotificationsService();
+      await service.sendEventCancellationNotice({
+        to: 'buyer@example.com',
+        holderName: '<Asha>',
+        eventTitle: 'Indie <Night>',
+        bookingId: 'bk-123',
+        paymentStatus: 'CAPTURED',
+        refundRequestStatus: 'PENDING',
+      });
+
+      const body = lastBody();
+      expect(body.htmlContent).toContain('Hi &lt;Asha&gt;');
+      expect(body.htmlContent).toContain('Indie &lt;Night&gt;');
+      expect(body.htmlContent).toContain('awaiting organizer refund approval');
+      expect(body.htmlContent).toContain('No Razorpay refund has been initiated yet');
+    });
+
     it('refund confirmation carries the refund amount and reference', async () => {
       const service = new NotificationsService();
       await service.sendRefundConfirmation({
