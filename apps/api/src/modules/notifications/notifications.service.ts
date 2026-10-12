@@ -16,6 +16,19 @@ interface BrevoSender {
   email: string;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    return entities[character]!;
+  });
+}
+
 /**
  * Parse an RFC-style sender value ("Name <addr@host>" or "addr@host")
  * into Brevo's { name, email } sender object.
@@ -169,6 +182,38 @@ export class NotificationsService {
           ${input.reason ? `<li><strong>Reason:</strong> ${input.reason}</li>` : ''}
         </ul>
         <p>No payment was taken for this booking. — EventAI</p>
+      `,
+    });
+  }
+
+  async sendEventCancellationNotice(input: {
+    to: string;
+    holderName: string;
+    eventTitle: string;
+    bookingId: string;
+    paymentStatus: string | null;
+    refundRequestStatus: string | null;
+  }): Promise<boolean> {
+    const holderName = escapeHtml(input.holderName);
+    const eventTitle = escapeHtml(input.eventTitle);
+    const bookingId = escapeHtml(input.bookingId);
+    const paymentMessage =
+      input.refundRequestStatus === 'APPROVED' || input.paymentStatus === 'REFUND_PENDING'
+        ? '<p>Your refund has been approved and is awaiting payment-provider confirmation.</p>'
+        : input.paymentStatus === 'REFUNDED'
+          ? '<p>Your payment has already been refunded.</p>'
+          : input.paymentStatus === 'CAPTURED'
+            ? '<p>Your captured payment is awaiting organizer refund approval. No Razorpay refund has been initiated yet; you can follow its status under My Tickets.</p>'
+            : '<p>No captured payment was found for this booking.</p>';
+    return this.sendEmail({
+      to: input.to,
+      subject: `Event cancelled — ${input.eventTitle}`,
+      html: `
+        <p>Hi ${holderName},</p>
+        <p>The organizer has cancelled <strong>${eventTitle}</strong>. Your booking and tickets are no longer valid.</p>
+        <p><strong>Booking:</strong> ${bookingId}</p>
+        ${paymentMessage}
+        <p>— EventAI</p>
       `,
     });
   }

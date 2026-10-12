@@ -8,7 +8,7 @@ describe('VenuesService public discovery', () => {
     venue: {
       findMany: jest.Mock;
       count: jest.Mock;
-      findUnique: jest.Mock;
+      findFirst: jest.Mock;
     };
     $transaction: jest.Mock;
   };
@@ -18,7 +18,7 @@ describe('VenuesService public discovery', () => {
       venue: {
         findMany: jest.fn(),
         count: jest.fn(),
-        findUnique: jest.fn(),
+        findFirst: jest.fn(),
       },
       $transaction: jest.fn(),
     };
@@ -63,6 +63,7 @@ describe('VenuesService public discovery', () => {
 
       const where = prisma.venue.findMany.mock.calls[0][0].where;
       expect(where).toEqual({
+        events: { some: { status: 'PUBLISHED' } },
         city: { contains: 'Mumbai', mode: 'insensitive' },
         OR: [
           { name: { contains: 'grand', mode: 'insensitive' } },
@@ -76,12 +77,14 @@ describe('VenuesService public discovery', () => {
   describe('getVenue', () => {
     it('returns a venue with organizer, seat sections and event count', async () => {
       const venue = { id: 'venue-1', name: 'Hall A', seatSections: [] };
-      prisma.venue.findUnique.mockResolvedValue(venue);
+      prisma.venue.findFirst.mockResolvedValue(venue);
 
       const result = await service.getVenue('venue-1');
 
       expect(result).toEqual(venue);
-      const include = prisma.venue.findUnique.mock.calls[0][0].include;
+      const args = prisma.venue.findFirst.mock.calls[0][0];
+      expect(args.where).toEqual({ id: 'venue-1', events: { some: { status: 'PUBLISHED' } } });
+      const include = args.include;
       expect(include.organizer.select).toMatchObject({
         organizationName: true,
         isVerified: true,
@@ -92,7 +95,7 @@ describe('VenuesService public discovery', () => {
     });
 
     it('throws NotFound for an unknown venue', async () => {
-      prisma.venue.findUnique.mockResolvedValue(null);
+      prisma.venue.findFirst.mockResolvedValue(null);
       await expect(service.getVenue('nope')).rejects.toThrow('Venue not found');
     });
   });

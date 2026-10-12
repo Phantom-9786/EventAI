@@ -113,6 +113,61 @@ describe('OrganizersService venue operations', () => {
   });
 });
 
+describe('OrganizersService exit', () => {
+  let service: OrganizersService;
+  let prisma: {
+    organizer: { findUnique: jest.Mock; delete: jest.Mock };
+    user: { update: jest.Mock };
+    $transaction: jest.Mock;
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      organizer: { findUnique: jest.fn(), delete: jest.fn() },
+      user: { update: jest.fn() },
+      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [OrganizersService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+    service = moduleRef.get(OrganizersService);
+  });
+
+  it('removes an empty profile and returns the user to customer role', async () => {
+    prisma.organizer.findUnique.mockResolvedValue({
+      id: 'org-1',
+      _count: { events: 0, venues: 0 },
+    });
+    prisma.organizer.delete.mockResolvedValue({});
+    prisma.user.update.mockResolvedValue({});
+
+    await expect(service.leaveOrganizer('user-1')).resolves.toEqual({
+      message: 'Organizer profile removed',
+    });
+    expect(prisma.organizer.delete).toHaveBeenCalledWith({ where: { id: 'org-1' } });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'user-1' },
+      data: { role: 'CUSTOMER' },
+    });
+  });
+
+  it('preserves profiles that own events or venues', async () => {
+    prisma.organizer.findUnique.mockResolvedValue({
+      id: 'org-1',
+      _count: { events: 1, venues: 0 },
+    });
+
+    await expect(service.leaveOrganizer('user-1')).rejects.toThrow(ConflictException);
+    expect(prisma.organizer.delete).not.toHaveBeenCalled();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('returns not found when no profile exists', async () => {
+    prisma.organizer.findUnique.mockResolvedValue(null);
+    await expect(service.leaveOrganizer('user-1')).rejects.toThrow(NotFoundException);
+  });
+});
+
 describe('OrganizersService ticket validation', () => {
   let service: OrganizersService;
   let prisma: {

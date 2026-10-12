@@ -7,6 +7,7 @@ import { CalendarDays, LogOut, Menu, Ticket, X } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner';
 import { buttonVariants } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { cn } from '@/lib/utils';
 
 const navLinks = [
@@ -66,6 +67,9 @@ export function Header() {
                 <Ticket className="mr-1 h-4 w-4" />
                 My Tickets
               </Link>
+              <Link href="/account" className={buttonVariants({ variant: 'ghost' })}>
+                My Account
+              </Link>
               {user.role === 'ORGANIZER' && (
                 <>
                   <Link href="/dashboard" className={buttonVariants({ variant: 'ghost' })}>Dashboard</Link>
@@ -105,6 +109,7 @@ export function Header() {
               </Link>
             </>
           )}
+          <ThemeToggle />
         </div>
 
         {/* Mobile menu toggle */}
@@ -141,6 +146,7 @@ export function Header() {
               {link.label}
             </Link>
           ))}
+          {user && <Link href="/account" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent" onClick={() => setMobileOpen(false)}>My Account</Link>}
           {user?.role === 'ORGANIZER' && (
             <>
               <Link href="/dashboard" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent" onClick={() => setMobileOpen(false)}>Organizer dashboard</Link>
@@ -150,6 +156,7 @@ export function Header() {
           )}
           {user?.role === 'ADMIN' && <Link href="/admin" className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent" onClick={() => setMobileOpen(false)}>Admin</Link>}
           <div className="mt-2 flex gap-2 border-t pt-3">
+            <ThemeToggle />
             {user ? (
               <button
                 type="button"

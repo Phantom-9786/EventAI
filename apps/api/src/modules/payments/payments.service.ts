@@ -22,7 +22,7 @@ type RefundablePayment = Prisma.PaymentGetPayload<{
       include: {
         items: true;
         user: { select: { email: true; firstName: true; lastName: true } };
-        event: { select: { title: true; organizerId: true } };
+        event: { select: { title: true; organizerId: true; status: true } };
       };
     };
   };
@@ -157,10 +157,6 @@ export class PaymentsService {
     }
 
     const booking = payment.booking;
-    if (booking.status === 'CANCELLED' || booking.status === 'EXPIRED') {
-      throw new ConflictException('This booking is closed — please create a new one');
-    }
-
     const expected = createHmac('sha256', this.requireSecret())
       .update(`${input.razorpayOrderId}|${input.razorpayPaymentId}`)
       .digest('hex');
@@ -178,8 +174,12 @@ export class PaymentsService {
       }),
     );
 
-    this.logger.log(`Booking ${booking.id} confirmed via checkout verification`);
-    this.notifyConfirmation(booking, confirmed);
+    if (confirmed.status === 'CONFIRMED') {
+      this.logger.log(`Booking ${booking.id} confirmed via checkout verification`);
+      this.notifyConfirmation(booking, confirmed);
+    } else {
+      this.logger.warn(`Late capture for closed booking ${booking.id}; organizer approval is required for a refund`);
+    }
     return { booking: confirmed };
   }
 
@@ -268,8 +268,12 @@ export class PaymentsService {
           method: entity.method ?? null,
         }),
       );
-      this.logger.log(`Booking ${payment.bookingId} confirmed via webhook capture`);
-      this.notifyConfirmation(payment.booking, webhookConfirmed);
+      if (webhookConfirmed.status === 'CONFIRMED') {
+        this.logger.log(`Booking ${payment.bookingId} confirmed via webhook capture`);
+        this.notifyConfirmation(payment.booking, webhookConfirmed);
+      } else {
+        this.logger.warn(`Late capture for closed booking ${payment.bookingId}; organizer approval is required for a refund`);
+      }
       return { received: true, handled: true };
     }
 
@@ -413,7 +417,9 @@ export class PaymentsService {
     }
     if (
       payment.status !== 'CAPTURED' ||
-      payment.booking.status !== 'CONFIRMED' ||
+      (payment.booking.status !== 'CONFIRMED' &&
+        payment.booking.status !== 'CANCELLED' &&
+        payment.booking.status !== 'EXPIRED') ||
       !payment.razorpayPaymentId
     ) {
       throw new ConflictException('This payment is no longer eligible for a refund');
@@ -512,7 +518,7 @@ export class PaymentsService {
           include: {
             items: true,
             user: { select: { email: true, firstName: true, lastName: true } },
-            event: { select: { title: true, organizerId: true } },
+            event: { select: { title: true, organizerId: true, status: true } },
           },
         },
       },
@@ -678,6 +684,7 @@ export class PaymentsService {
       refundAttemptKey: string | null;
       booking: {
         id: string;
+        status: string;
         items: { ticketTypeId: string; quantity: number }[];
         user: { email: string; firstName: string; lastName: string };
         event: { title: string };
@@ -765,7 +772,7 @@ export class PaymentsService {
       });
       if (paymentUpdated.count !== 1) return null;
       const bookingUpdated = await tx.booking.updateMany({
-        where: { id: payment.bookingId, status: 'CONFIRMED' },
+        where: { id: payment.bookingId, status: { in: ['CONFIRMED', 'CANCELLED', 'EXPIRED'] } },
         data: {
           status: 'REFUNDED',
           cancelledAt: new Date(),
@@ -788,11 +795,13 @@ export class PaymentsService {
         where: { bookingId: payment.bookingId, status: 'VALID' },
         data: { status: 'CANCELLED' },
       });
-      for (const item of payment.booking.items) {
-        await tx.ticketType.updateMany({
-          where: { id: item.ticketTypeId },
-          data: { availableQuantity: { increment: item.quantity } },
-        });
+      if (payment.booking.status === 'CONFIRMED') {
+        for (const item of payment.booking.items) {
+          await tx.ticketType.updateMany({
+            where: { id: item.ticketTypeId },
+            data: { availableQuantity: { increment: item.quantity } },
+          });
+        }
       }
       return tx.booking.findUniqueOrThrow({
         where: { id: payment.bookingId },
@@ -874,6 +883,20 @@ export class PaymentsService {
       method: string | null;
     },
   ) {
+    const bookingState = await tx.booking.findUnique({
+      where: { id: input.bookingId },
+      select: {
+        status: true,
+        userId: true,
+        expiresAt: true,
+        items: { select: { ticketTypeId: true, quantity: true } },
+        event: { select: { status: true } },
+      },
+    });
+    if (!bookingState) {
+      throw new NotFoundException('Booking not found');
+    }
+
     // Compare-and-set the payment before minting tickets. Browser verification
     // and the Razorpay webhook may race; only one transaction may win capture.
     const captured = await tx.payment.updateMany({
@@ -890,19 +913,59 @@ export class PaymentsService {
       throw new ConflictException('Payment was already processed; retry to load its current status');
     }
 
-    await tx.booking.update({
-      where: { id: input.bookingId },
-      data: { status: 'CONFIRMED', confirmedAt: new Date() },
-    });
+    const now = new Date();
+    const bookingOpen = ['PENDING', 'PAYMENT_PENDING'].includes(bookingState.status);
+    const bookingExpired =
+      bookingOpen && bookingState.expiresAt !== null && bookingState.expiresAt <= now;
+    if (bookingExpired) {
+      const expired = await tx.booking.updateMany({
+        where: {
+          id: input.bookingId,
+          status: { in: ['PENDING', 'PAYMENT_PENDING'] },
+          expiresAt: { lte: now },
+        },
+        data: { status: 'EXPIRED' },
+      });
+      if (expired.count === 1) {
+        for (const item of bookingState.items) {
+          await tx.ticketType.updateMany({
+            where: { id: item.ticketTypeId },
+            data: { availableQuantity: { increment: item.quantity } },
+          });
+        }
+      }
+    }
+    const canIssueTickets =
+      bookingOpen &&
+      !bookingExpired &&
+      bookingState.event.status === 'PUBLISHED';
+    if (canIssueTickets) {
+      const bookingConfirmed = await tx.booking.updateMany({
+        where: {
+          id: input.bookingId,
+          status: { in: ['PENDING', 'PAYMENT_PENDING'] },
+          event: { status: 'PUBLISHED' },
+        },
+        data: { status: 'CONFIRMED', confirmedAt: now },
+      });
+      if (bookingConfirmed.count !== 1) {
+        await this.queueLateCaptureRefund(tx, input.paymentId, input.bookingId, bookingState.userId, now);
+      }
+    } else {
+      await this.queueLateCaptureRefund(tx, input.paymentId, input.bookingId, bookingState.userId, now);
+    }
 
     const booking = await tx.booking.findUniqueOrThrow({
       where: { id: input.bookingId },
       include: { items: true, user: true },
     });
 
-    // Mint one digital ticket per unit (idempotent: skip if already minted)
-    const existingCount = await tx.ticket.count({ where: { bookingId: booking.id } });
-    if (existingCount === 0) {
+    // A capture arriving after cancellation/expiry must not mint a usable ticket.
+    const confirmedBooking = booking.status === 'CONFIRMED';
+    const existingCount = confirmedBooking
+      ? await tx.ticket.count({ where: { bookingId: booking.id } })
+      : 0;
+    if (confirmedBooking && existingCount === 0) {
       const holderName =
         [booking.user.firstName, booking.user.lastName].filter(Boolean).join(' ') || 'Guest';
       for (const item of booking.items) {
@@ -944,6 +1007,44 @@ export class PaymentsService {
         },
       },
     });
+  }
+
+  private async queueLateCaptureRefund(
+    tx: Tx,
+    paymentId: string,
+    bookingId: string,
+    userId: string,
+    requestedAt: Date,
+  ) {
+    const request = await tx.payment.updateMany({
+      where: {
+        id: paymentId,
+        status: 'CAPTURED',
+        OR: [
+          { refundRequestStatus: null },
+          { refundRequestStatus: 'REJECTED' },
+          { refundRequestStatus: 'FAILED' },
+        ],
+      },
+      data: {
+        refundRequestStatus: 'PENDING',
+        refundRequestReason: 'Payment captured after booking or event closed; organizer review required',
+        refundRequestedAt: requestedAt,
+        refundReviewedAt: null,
+        refundReviewedBy: null,
+      },
+    });
+    if (request.count === 1) {
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: 'REFUND_REQUESTED',
+          entity: 'PAYMENT',
+          entityId: paymentId,
+          details: { bookingId, outcome: 'late_capture_awaiting_approval' },
+        },
+      });
+    }
   }
 
   /** Fire-and-forget ticket email after a successful confirmation. */

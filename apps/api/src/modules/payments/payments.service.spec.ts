@@ -87,6 +87,12 @@ describe('PaymentsService', () => {
       auditLog: { create: jest.fn() },
       $transaction: jest.fn(),
     };
+    prisma.booking.findUnique.mockResolvedValue({
+      status: 'PENDING',
+      userId,
+      event: { status: 'PUBLISHED' },
+    });
+    prisma.booking.updateMany.mockResolvedValue({ count: 1 });
     ordersCreate = jest.fn();
     refundsCreate = jest.fn();
     refundsFetch = jest.fn();
@@ -184,7 +190,7 @@ describe('PaymentsService', () => {
       prisma.payment.findUnique.mockResolvedValue(payment);
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
       prisma.payment.updateMany.mockResolvedValue({ count: 1 });
-      prisma.booking.update.mockResolvedValue({ ...booking, status: 'CONFIRMED' });
+      prisma.booking.updateMany.mockResolvedValue({ count: 1 });
       prisma.booking.findUniqueOrThrow
         .mockResolvedValueOnce({ ...booking, status: 'CONFIRMED' }) // load for minting
         .mockResolvedValueOnce({ ...booking, status: 'CONFIRMED', tickets: [] }); // final return
@@ -200,10 +206,14 @@ describe('PaymentsService', () => {
         where: { id: 'pay-row-1', status: { in: ['CREATED', 'PENDING'] } },
         data: expect.objectContaining({ status: 'CAPTURED' }),
       });
-      expect(prisma.booking.update).toHaveBeenCalledWith({
-        where: { id: bookingId },
+      expect(prisma.booking.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          id: bookingId,
+          status: { in: ['PENDING', 'PAYMENT_PENDING'] },
+          event: { status: 'PUBLISHED' },
+        }),
         data: expect.objectContaining({ status: 'CONFIRMED' }),
-      });
+      }));
       // quantity 2 → two tickets with holder "Ada Lovelace"
       expect(prisma.ticket.create).toHaveBeenCalledTimes(2);
       expect(prisma.ticket.create.mock.calls[0][0].data.holderName).toBe('Ada Lovelace');
@@ -222,6 +232,42 @@ describe('PaymentsService', () => {
         razorpaySignature: sign('order_123|pay_abc'),
       })).rejects.toThrow(/already processed/i);
       expect(prisma.ticket.create).not.toHaveBeenCalled();
+    });
+
+    it('records a late capture for organizer refund approval without confirming or issuing tickets', async () => {
+      prisma.payment.findUnique.mockResolvedValue(payment);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.booking.findUnique.mockResolvedValue({
+        status: 'CANCELLED',
+        userId,
+        event: { status: 'PUBLISHED' },
+      });
+      prisma.payment.updateMany
+        .mockResolvedValueOnce({ count: 1 })
+        .mockResolvedValueOnce({ count: 1 });
+      prisma.booking.updateMany.mockResolvedValue({ count: 0 });
+      prisma.booking.findUniqueOrThrow.mockResolvedValue({
+        ...booking,
+        status: 'CANCELLED',
+        tickets: [],
+      });
+
+      const { booking: captured } = await service.verifyPayment(userId, {
+        bookingId,
+        razorpayOrderId: 'order_123',
+        razorpayPaymentId: 'pay_late',
+        razorpaySignature: sign('order_123|pay_late'),
+      });
+
+      expect(captured.status).toBe('CANCELLED');
+      expect(prisma.payment.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({
+        data: expect.objectContaining({
+          refundRequestStatus: 'PENDING',
+          refundRequestReason: expect.stringContaining('captured after'),
+        }),
+      }));
+      expect(prisma.ticket.create).not.toHaveBeenCalled();
+      expect(sendRefundConfirmation).not.toHaveBeenCalled();
     });
 
     it('rejects a tampered signature', async () => {
@@ -320,10 +366,10 @@ describe('PaymentsService', () => {
       const result = await service.handleWebhook(b, signBody(b));
 
       expect(result).toEqual({ received: true, handled: true });
-      expect(prisma.booking.update).toHaveBeenCalledWith({
-        where: { id: bookingId },
+      expect(prisma.booking.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ id: bookingId, event: { status: 'PUBLISHED' } }),
         data: expect.objectContaining({ status: 'CONFIRMED' }),
-      });
+      }));
       expect(prisma.payment.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ method: 'upi' }) }),
       );
@@ -488,7 +534,7 @@ describe('PaymentsService', () => {
         data: { status: 'REFUNDED', refundAmount: 300000 },
       }));
       expect(prisma.booking.updateMany).toHaveBeenCalledWith({
-        where: { id: bookingId, status: 'CONFIRMED' },
+        where: { id: bookingId, status: { in: ['CONFIRMED', 'CANCELLED', 'EXPIRED'] } },
         data: expect.objectContaining({ status: 'REFUNDED' }),
       });
       expect(prisma.ticketType.updateMany).toHaveBeenCalledWith({

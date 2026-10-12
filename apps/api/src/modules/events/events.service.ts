@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 import type { CreateEventInput, EventSearchInput, UpdateEventInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const EVENT_SUMMARY_INCLUDE = {
   category: { select: { id: true, name: true, slug: true } },
@@ -100,6 +101,7 @@ export class EventsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Bumps the public event cache after any write that can affect it. */
@@ -128,6 +130,8 @@ export class EventsService {
         venueId: input.venueId,
         startDate,
         endDate: new Date(input.endDate),
+        coverImage: input.coverImage,
+        images: input.images ?? [],
         tags: input.tags ?? [],
         policies: input.policies,
         cancellationPolicy: input.cancellationPolicy,
@@ -255,6 +259,8 @@ export class EventsService {
         ...(input.venueId !== undefined && { venueId: input.venueId }),
         ...(startDate !== undefined && { startDate }),
         ...(endDate !== undefined && { endDate }),
+        ...(input.coverImage !== undefined && { coverImage: input.coverImage }),
+        ...(input.images !== undefined && { images: input.images }),
         ...(input.tags !== undefined && { tags: input.tags }),
         ...(input.policies !== undefined && { policies: input.policies }),
         ...(input.cancellationPolicy !== undefined && { cancellationPolicy: input.cancellationPolicy }),
@@ -291,13 +297,88 @@ export class EventsService {
       throw new ConflictException(`Cannot cancel a ${owned.status.toLowerCase()} event`);
     }
 
-    const cancelled = await this.prisma.event.update({
-      where: { id: owned.id },
-      data: { status: 'CANCELLED' },
-      include: EVENT_DETAIL_MANAGE_INCLUDE,
+    const result = await this.prisma.$transaction(async (tx) => {
+      const changed = await tx.event.updateMany({
+        where: { id: owned.id, status: owned.status },
+        data: { status: 'CANCELLED' },
+      });
+      if (changed.count !== 1) {
+        throw new ConflictException('Event status changed; refresh and try again');
+      }
+
+      const attendees = await tx.booking.findMany({
+        where: { eventId: owned.id, status: { in: ['PENDING', 'PAYMENT_PENDING', 'CONFIRMED'] } },
+        select: {
+          id: true,
+          user: { select: { email: true, firstName: true, lastName: true } },
+          payment: { select: { status: true, refundRequestStatus: true } },
+        },
+      });
+      const now = new Date();
+      const cancellationReason = 'Event cancelled by organizer';
+      const refundRequests = await tx.payment.updateMany({
+        where: {
+          status: 'CAPTURED',
+          OR: [
+            { refundRequestStatus: null },
+            { refundRequestStatus: 'REJECTED' },
+            { refundRequestStatus: 'FAILED' },
+          ],
+          booking: { eventId: owned.id, status: 'CONFIRMED' },
+        },
+        data: {
+          refundRequestStatus: 'PENDING',
+          refundRequestReason: cancellationReason,
+          refundRequestedAt: now,
+          refundReviewedAt: null,
+          refundReviewedBy: null,
+        },
+      });
+      const cancelledBookings = await tx.booking.updateMany({
+        where: { eventId: owned.id, status: { in: ['PENDING', 'PAYMENT_PENDING', 'CONFIRMED'] } },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: now,
+          cancellationReason,
+        },
+      });
+      await tx.ticket.updateMany({
+        where: { eventId: owned.id, status: 'VALID' },
+        data: { status: 'CANCELLED' },
+      });
+      const event = await tx.event.findUniqueOrThrow({
+        where: { id: owned.id },
+        include: EVENT_DETAIL_MANAGE_INCLUDE,
+      });
+      return {
+        event,
+        refundRequestsQueued: refundRequests.count,
+        bookingsCancelled: cancelledBookings.count,
+        attendees,
+      };
     });
     await this.invalidateEventCache();
-    return cancelled;
+    for (const attendee of result.attendees) {
+      void this.notifications
+        .sendEventCancellationNotice({
+          to: attendee.user.email,
+          holderName: `${attendee.user.firstName} ${attendee.user.lastName}`.trim() || 'Attendee',
+          eventTitle: result.event.title,
+          bookingId: attendee.id,
+          paymentStatus: attendee.payment?.status ?? null,
+          refundRequestStatus: attendee.payment?.refundRequestStatus ?? null,
+        })
+        .catch((error: unknown) => {
+          this.logger.warn(
+            `Cancellation notice failed for booking ${attendee.id}: ${error instanceof Error ? error.message : 'unknown error'}`,
+          );
+        });
+    }
+    return {
+      event: result.event,
+      refundRequestsQueued: result.refundRequestsQueued,
+      bookingsCancelled: result.bookingsCancelled,
+    };
   }
 
   async deleteEvent(organizerId: string, idOrSlug: string) {

@@ -79,6 +79,8 @@ export class EventsController {
       startDate: string;
       endDate: string;
       tags?: string[];
+      coverImage?: string;
+      images?: string[];
       policies?: string;
       cancellationPolicy?: string;
     },
@@ -129,7 +131,7 @@ export class EventsController {
   @ApiOperation({ summary: 'Cancel a draft or published event (organizer only)' })
   async cancel(@CurrentUser('id') userId: string, @Param('idOrSlug') idOrSlug: string) {
     const organizerId = await this.organizersService.requireOrganizerId(userId);
-    return { event: await this.eventsService.cancelEvent(organizerId, idOrSlug) };
+    return this.eventsService.cancelEvent(organizerId, idOrSlug);
   }
 
   @Roles('ORGANIZER')

@@ -17,6 +17,9 @@ describe('UsersService', () => {
       update: jest.Mock;
     };
     session: { deleteMany: jest.Mock };
+    organizer: { findUnique: jest.Mock };
+    event: { count: jest.Mock };
+    payment: { count: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -24,6 +27,9 @@ describe('UsersService', () => {
     prisma = {
       user: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
       session: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      organizer: { findUnique: jest.fn() },
+      event: { count: jest.fn().mockResolvedValue(0) },
+      payment: { count: jest.fn().mockResolvedValue(0) },
       $transaction: jest.fn().mockResolvedValue([]),
     };
 
@@ -162,6 +168,31 @@ describe('UsersService', () => {
     it('throws NotFoundException for a missing user', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       await expect(service.deactivateAccount('missing')).rejects.toThrow(NotFoundException);
+    });
+
+    it('blocks organizer deactivation while active events or pending refunds remain', async () => {
+      prisma.user.findUnique.mockResolvedValue({ isActive: true, role: 'ORGANIZER' });
+      prisma.organizer.findUnique.mockResolvedValue({ id: 'org-1' });
+      prisma.event.count.mockResolvedValue(1);
+
+      await expect(service.deactivateAccount('user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('blocks organizer deactivation while an approved refund is processing', async () => {
+      prisma.user.findUnique.mockResolvedValue({ isActive: true, role: 'ORGANIZER' });
+      prisma.organizer.findUnique.mockResolvedValue({ id: 'org-1' });
+      prisma.event.count.mockResolvedValue(0);
+      prisma.payment.count.mockResolvedValue(1);
+
+      await expect(service.deactivateAccount('user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.payment.count).toHaveBeenCalledWith({
+        where: {
+          OR: [{ refundRequestStatus: 'PENDING' }, { status: 'REFUND_PENDING' }],
+          booking: { event: { organizerId: 'org-1' } },
+        },
+      });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
 });

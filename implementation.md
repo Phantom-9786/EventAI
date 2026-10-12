@@ -79,13 +79,17 @@
 - [x] Profile image upload (`POST /api/users/me/avatar` — Multer, 5 MB limit, JPEG/PNG/WebP/GIF, stored in `UPLOAD_DIR`, served at `/uploads/*`, previous local avatar replaced)
 - [x] Preferences (`PATCH /api/users/me/preferences` — JSON key merge into `users.preferences`)
 - [x] Account settings (`DELETE /api/users/me` — deactivates account and revokes all sessions; login blocked for deactivated users)
+- [x] Account page (`/account`) for profile edits and theme settings; organizer deactivation is guarded while draft/published events or pending/in-flight refunds remain
 
 ### Event System
 - [x] Event model (title, slug, description, category, images, dates, venue, policies, FAQs, status)
 - [x] Organizer onboarding (`POST /api/organizers` creates profile + upgrades role to ORGANIZER; `GET /api/organizers/me`, `GET /api/organizers/me/events`)
+- [x] Empty organizer-profile exit (`DELETE /api/organizers/me` reverts role only when no events or venues exist)
 - [x] Organizer venue creation (`POST/GET /api/organizers/venues` — prerequisite for event creation; full Venue Management stays its own roadmap item)
 - [x] Event CRUD (organizer: create draft with unique slug, update with ownership checks, delete drafts only; by id or slug)
 - [x] Event publishing/unpublishing (`POST /api/events/:idOrSlug/publish` DRAFT→PUBLISHED with future-date guard; `POST /api/events/:idOrSlug/cancel` DRAFT/PUBLISHED→CANCELLED)
+- [x] Organizer event form (step-based create/edit flow, retryable category loading, image URLs, optional venue map coordinates)
+- [x] Public venue eligibility (only venues with at least one published event appear on public list/detail routes)
 - [x] Category management (8 categories seeded via `prisma/seed.ts`; public `GET /api/categories` with published-event counts; admin-only create/update/soft-deactivate)
 
 ### Event Discovery (backend)
@@ -172,7 +176,7 @@
 ### Cancellation / Refund
 - [x] Cancellation eligibility checks (closed bookings 409; state re-checked inside the transaction)
 - [x] Booking cancellation flow (`POST /api/bookings/:id/cancel` with optional reason; unpaid → CANCELLED + stock released)
-- [x] Organizer-approved refund requests (`POST /api/payments/refund` records an attendee request only; organizer-scoped list/approve/reject endpoints; organizer Refund Requests UI; approval durably claims `REFUND_PENDING` before `Razorpay payments.refund`; rejection does not contact Razorpay; duplicate requests and ownership are guarded; existing provider reconciliation and webhook/idempotency handling are retained). Unit coverage verifies request persistence, approval-before-provider ordering, rejection, organizer ownership, duplicate protection, and provider-pending/failure states. Migration `20261012100000_refund_approval_workflow` is additive and schema-validated. Staging migration status and authenticated end-to-end workflow verification remain pending.
+- [x] Organizer-approved refund requests (`POST /api/payments/refund` records an attendee request only; organizer-scoped list/approve/reject endpoints; organizer Refund Requests UI; approval durably claims `REFUND_PENDING` before `Razorpay payments.refund`; rejection does not contact Razorpay; duplicate requests and ownership are guarded; existing provider reconciliation and webhook/idempotency handling are retained). Event cancellation queues captured payments for approval without contacting Razorpay; late captures on closed bookings/events do not issue tickets and enter organizer review. Unit coverage verifies request persistence, approval-before-provider ordering, rejection, organizer ownership, duplicate protection, late capture, and provider-pending/failure states. Migration `20261012100000_refund_approval_workflow` is additive and schema-validated. Staging migration status and authenticated end-to-end workflow verification remain pending.
 - [x] User notification (confirmation email fired on payment capture; refund status visible in My Tickets)
 
 ---
@@ -199,8 +203,9 @@
 
 ### Notifications
 - [x] Booking confirmation notifications (email with event details, amounts, ticket codes)
+- [x] Event cancellation notifications (booking/ticket invalidation and approval-gated refund status)
 - [ ] Notification model (in-app inbox) — deferred
-- [ ] Payment / cancellation notifications — email service ready, not yet hooked
+- [ ] Payment notifications beyond confirmation/refund — deferred
 
 ### Organizer Dashboard
 - [x] Stats endpoint (`GET /api/organizers/me/stats` — events by status, confirmed revenue (paise), confirmed/refunded bookings, tickets issued, checked-in)
@@ -257,10 +262,10 @@
 ---
 
 ## Phase 6 — Production Polish
-**Status: PARTIAL — 180 unit tests + 26 DB-backed integration tests, structured logging, Playwright smoke suite (7/7), CI workflow verified green on GitHub (Phantom-9786/EventAI), and the full docs/ set shipped; error tracking and live third-party verification pending**
+**Status: PARTIAL — 265 unit tests + 26 DB-backed integration tests, structured logging, Playwright smoke suite (7/7), CI workflow verified green on GitHub (Phantom-9786/EventAI), and the full docs/ set shipped; error tracking and live third-party verification pending**
 
 ### Testing
-- [x] Unit tests (180 passing across 14 suites: auth incl. Google + password-reset + email-verification cases, google-oauth service, structured logger, notifications (Brevo email integration — sender parsing, success/provider-error/unreachable paths, all five email flows), users, events incl. FTS, ticket types, venues, organizers incl. check-in, bookings incl. concurrency/rollback/cancellation-email, payments incl. signature/webhook/refund/refund-email, AI service, admin stats + user/event/organizer management, health)
+- [x] Unit tests (265 passing across 21 suites; includes account deactivation guards, organizer profile exit, event cancellation/late-capture handling, public venue eligibility, refund approval flow, and event-cancellation email coverage)
 - [x] Integration tests (26 passing across 3 suites in `apps/api/test/*.int-spec.ts`, run against a real PostgreSQL provisioned by `prisma migrate deploy` in a dedicated `*test*` database — hard guard refuses non-test DB names; all externals (Brevo/Razorpay/Google/Groq) stubbed so CI needs no credentials; wired into CI after unit tests with a `postgres:16` service container, ADR-016): auth round-trip (argon2id verify, hashed session rows, duplicate-email rejection), full password-reset lifecycle (hashed single-use tokens, prior-token invalidation, reuse + expiry rejection, session sign-out, new-password login), event FTS (trigger-populated search_vector, relevance ordering, city filter, pagination), booking engine (stock decrement, idempotency, concurrency oversell prevention via real parallel transactions, maxPerBooking, started-event rejection, unpaid cancel stock restore, expiry release, cross-user isolation). Caught + fixed a real bug: same-second logins produced byte-identical JWTs violating the unique session hash — fixed with a random `jti` claim
 - [x] Concurrency logic covered at unit level (conditional-decrement rollback prevents double booking) **and at integration level** (real parallel transactions: exactly one of two competing bookings wins, stock never oversold)
 - [x] E2E tests (Playwright smoke suite `e2e/smoke.spec.ts` — 7/7: landing, discovery, search, event detail + tickets, categories/venues, seeded sign-in, auth gate; booking/pay e2e still pending real Razorpay keys)

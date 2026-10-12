@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { CalendarDays, CheckCircle2, IndianRupee, Loader2, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/auth-provider';
-import { becomeOrganizer, useOrganizerDashboard } from '@/lib/organizer';
+import { becomeOrganizer, leaveOrganizerProfile, useOrganizerDashboard } from '@/lib/organizer';
 import { formatEventDate, formatPrice } from '@/lib/api';
 
 const STATUS_STYLES: Record<string, string> = {
@@ -32,8 +32,10 @@ export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const { stats, events, profile, error, loading } = useOrganizerDashboard(!!user);
   const [orgName, setOrgName] = useState('');
+  const [orgPhone, setOrgPhone] = useState('');
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
 
   if (authLoading || (loading && !stats)) {
     return (
@@ -69,7 +71,7 @@ export default function DashboardPage() {
             setJoinError(null);
             setJoining(true);
             try {
-              await becomeOrganizer({ organizationName: orgName });
+              await becomeOrganizer({ organizationName: orgName, phone: orgPhone || undefined });
               window.location.reload();
             } catch (err) {
               setJoinError(err instanceof Error ? err.message : 'Failed to create profile');
@@ -95,6 +97,18 @@ export default function DashboardPage() {
               className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="orgPhone" className="text-sm font-medium">Organizer contact phone (optional)</label>
+            <input
+              id="orgPhone"
+              type="tel"
+              maxLength={20}
+              value={orgPhone}
+              onChange={(e) => setOrgPhone(e.target.value)}
+              placeholder="+91 98765 43210"
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
           <Button type="submit" disabled={joining}>
             {joining && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
             Create organizer profile
@@ -108,6 +122,7 @@ export default function DashboardPage() {
     <div className="container py-10">
       <h1 className="text-3xl font-bold tracking-tight">{profile.organizationName}</h1>
       <p className="mt-1 text-sm text-muted-foreground">Organizer dashboard</p>
+      {profile.phone && <p className="mt-1 text-sm text-muted-foreground">Organizer contact: {profile.phone}</p>}
       <div className="mt-4 flex flex-wrap gap-2">
         <Link href="/organizer/events" className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm font-medium hover:bg-accent">Manage events</Link>
         <Link href="/organizer/events/new" className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90">Create event</Link>
@@ -118,6 +133,36 @@ export default function DashboardPage() {
           {error}
         </p>
       )}
+      <section className="mt-10 rounded-lg border p-5">
+        <h2 className="font-semibold">Organizer profile</h2>
+        {profile._count.events === 0 && profile._count.venues === 0 ? (
+          <>
+            <p className="mt-1 text-sm text-muted-foreground">This profile has no events or venues and can be removed without affecting event records.</p>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-3"
+              disabled={leaving}
+              onClick={async () => {
+                if (!window.confirm('Remove this empty organizer profile and return to a customer account?')) return;
+                setLeaving(true);
+                try {
+                  await leaveOrganizerProfile();
+                  window.location.reload();
+                } catch (err) {
+                  setJoinError(err instanceof Error ? err.message : 'Could not remove organizer profile.');
+                  setLeaving(false);
+                }
+              }}
+            >
+              {leaving ? 'Removing…' : 'Leave organizer account'}
+            </Button>
+          </>
+        ) : (
+          <p className="mt-1 text-sm text-muted-foreground">This profile has {profile._count.events} event(s) and {profile._count.venues} venue(s). Organizer access cannot be removed while those records exist.</p>
+        )}
+        {joinError && <p role="alert" className="mt-3 text-sm text-destructive">{joinError}</p>}
+      </section>
 
       {stats && (
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
