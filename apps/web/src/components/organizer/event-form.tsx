@@ -354,7 +354,16 @@ export function EventForm({
       <div className="flex flex-wrap justify-between gap-2 border-t pt-4">
         <Button type="button" variant="outline" onClick={backToPreviousStep} disabled={step === 0 || submitting}>Back</Button>
         {step < steps.length - 1 ? (
-          <Button type="button" onClick={continueToNextStep} disabled={step === 1 && categories.length === 0}>Continue</Button>
+          <Button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              continueToNextStep();
+            }}
+            disabled={step === 1 && categories.length === 0}
+          >
+            Continue
+          </Button>
         ) : (
           <Button type="submit" disabled={submitting || venues.length === 0 || categories.length === 0}>
             {submitting ? 'Saving…' : event ? 'Save draft changes' : 'Create draft event'}
