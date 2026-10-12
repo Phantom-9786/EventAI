@@ -65,6 +65,7 @@ export interface OrganizerVenue {
   address: string;
   city: string;
   state: string;
+  capacity?: number;
   latitude?: number | null;
   longitude?: number | null;
 }
@@ -270,25 +271,38 @@ export interface AttendeeBooking {
 }
 
 export interface OrganizerRefundRequest {
+  id?: string;
   bookingId: string;
   amount: number;
   currency: string;
+  status?: string;
+  refundRequestStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'FAILED' | null;
   refundRequestReason: string | null;
   refundRequestedAt: string | null;
+  refundReviewedAt?: string | null;
+  refundReviewedBy?: string | null;
   booking: {
+    id?: string;
     totalAmount: number;
+    status?: string;
     createdAt: string;
     user: { id: string; firstName: string | null; lastName: string | null; email: string };
-    event: { id: string; title: string; slug: string; startDate: string };
+    event: { id: string; title: string; slug: string; startDate: string; status?: string };
     items: { quantity: number; ticketType: { name: string } }[];
   };
 }
 
-export async function getOrganizerRefundRequests(): Promise<OrganizerRefundRequest[]> {
+export async function getOrganizerRefundRequests(status?: string): Promise<OrganizerRefundRequest[]> {
   const res = await authFetch('/organizers/refund-requests');
   if (!res.ok) throw new Error(`Failed to load refund requests (${res.status})`);
   const body = (await res.json()) as { refundRequests: OrganizerRefundRequest[] };
-  return body.refundRequests;
+  if (!status || status === 'ALL') {
+    return body.refundRequests;
+  }
+  return body.refundRequests.filter((r) => {
+    const itemStatus = r.refundRequestStatus ?? 'PENDING';
+    return itemStatus === status;
+  });
 }
 
 async function decideOrganizerRefund(
@@ -415,4 +429,19 @@ export function useOrganizerDashboard(enabled: boolean) {
   }, [load]);
 
   return { stats, events, profile, error, loading, reload: load };
+}
+
+export async function uploadOrganizerMedia(file: File, eventId?: string): Promise<string> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const endpoint = eventId ? `/events/${eventId}/images` : '/events/upload-image';
+  const res = await authFetch(endpoint, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    throw await readApiError(res, 'Failed to upload image');
+  }
+  const body = (await res.json()) as { url: string };
+  return body.url;
 }

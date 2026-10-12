@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   NotFoundException,
   PayloadTooLargeException,
@@ -17,6 +18,7 @@ describe('UsersService', () => {
       update: jest.Mock;
     };
     session: { deleteMany: jest.Mock };
+    emailVerificationToken: { deleteMany: jest.Mock };
     organizer: { findUnique: jest.Mock };
     event: { count: jest.Mock };
     payment: { count: jest.Mock };
@@ -27,6 +29,7 @@ describe('UsersService', () => {
     prisma = {
       user: { findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
       session: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      emailVerificationToken: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       organizer: { findUnique: jest.fn() },
       event: { count: jest.fn().mockResolvedValue(0) },
       payment: { count: jest.fn().mockResolvedValue(0) },
@@ -193,6 +196,64 @@ describe('UsersService', () => {
         },
       });
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteAccount', () => {
+    it('throws BadRequestException if confirmation is not DELETE', async () => {
+      await expect(service.deleteAccount('user-1', 'NO')).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(prisma.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('throws NotFoundException if user is missing', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      await expect(service.deleteAccount('user-1', 'DELETE')).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('blocks organizer deletion if active events remain', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'ORGANIZER' });
+      prisma.organizer.findUnique.mockResolvedValue({ id: 'org-1' });
+      prisma.event.count.mockResolvedValue(1);
+
+      await expect(service.deleteAccount('user-1', 'DELETE')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('blocks deletion if user has pending refunds', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'CUSTOMER' });
+      prisma.payment.count.mockResolvedValue(1);
+
+      await expect(service.deleteAccount('user-1', 'DELETE')).rejects.toThrow(
+        ConflictException,
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('anonymizes personal data and revokes sessions on valid confirmation', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'CUSTOMER', email: 'me@example.com' });
+      prisma.payment.count.mockResolvedValue(0);
+
+      const result = await service.deleteAccount('user-1', 'DELETE');
+      expect(result.message).toContain('permanently deleted and personal data anonymized');
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user-1' },
+          data: expect.objectContaining({
+            firstName: 'Deleted',
+            lastName: 'User',
+            isActive: false,
+          }),
+        }),
+      );
+      expect(prisma.session.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
+      expect(prisma.emailVerificationToken.deleteMany).toHaveBeenCalledWith({ where: { userId: 'user-1' } });
     });
   });
 });

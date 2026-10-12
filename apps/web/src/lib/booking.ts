@@ -116,8 +116,16 @@ export async function getTicketQr(ticketId: string): Promise<string> {
 }
 
 export interface BookingListEntry extends BookingView {
-  event: { id: string; title: string; slug: string; startDate: string; venue: { name: string; city: string } };
-  items: { id: string; quantity: number; ticketType: { name: string } }[];
+  event: {
+    id: string;
+    title: string;
+    slug: string;
+    startDate: string;
+    endDate?: string;
+    status?: string;
+    venue: { id?: string; name: string; city: string; address?: string | null };
+  };
+  items: { id: string; quantity: number; ticketType: { name: string; price?: number } }[];
   totalAmount: number;
 }
 

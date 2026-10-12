@@ -26,12 +26,20 @@ const webServer = process.env.E2E_REUSE
           env: { ...process.env, NEXT_PUBLIC_API_URL: 'http://localhost:4100/api' },
         },
       ]
-    : {
-        command: 'npm run dev --filter=@eventai/web',
-        url: 'http://localhost:3000',
-        reuseExistingServer: true,
-        timeout: 120_000,
-      };
+    : [
+        {
+          command: 'npm run dev --filter=@eventai/api',
+          url: 'http://localhost:4000/api/health',
+          reuseExistingServer: true,
+          timeout: 120_000,
+        },
+        {
+          command: 'npm run dev --filter=@eventai/web',
+          url: 'http://localhost:3000',
+          reuseExistingServer: true,
+          timeout: 120_000,
+        },
+      ];
 
 export default defineConfig({
   testDir: './e2e',

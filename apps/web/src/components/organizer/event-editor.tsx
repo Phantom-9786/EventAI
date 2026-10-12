@@ -65,7 +65,7 @@ export function OrganizerEventEditor({ id }: { id: string }) {
         <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{event.status}</p><h1 className="mt-1 text-3xl font-bold tracking-tight">Manage event</h1><p className="mt-1 text-sm text-muted-foreground">{event.title}</p></div>
         <div className="flex flex-wrap gap-2">
           {event.status === 'DRAFT' && <Button type="button" disabled={busy} onClick={() => void changeStatus('publish')}>{busy ? 'Working…' : 'Publish event'}</Button>}
-          {(event.status === 'DRAFT' || event.status === 'PUBLISHED') && <Button type="button" variant="destructive" disabled={busy} onClick={() => void changeStatus('cancel')}>Cancel event</Button>}
+          {(event.status === 'DRAFT' || event.status === 'PUBLISHED' || event.status === 'SOLDOUT') && <Button type="button" variant="destructive" disabled={busy} onClick={() => void changeStatus('cancel')}>Cancel event</Button>}
           {event.status === 'PUBLISHED' && <Link href={`/events/${encodeURIComponent(event.slug)}`} className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm font-medium hover:bg-accent">View public page</Link>}
         </div>
       </div>

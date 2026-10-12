@@ -14,7 +14,11 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { updatePreferencesSchema, updateProfileSchema } from '@eventai/validation';
+import {
+  deleteAccountSchema,
+  updatePreferencesSchema,
+  updateProfileSchema,
+} from '@eventai/validation';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -82,6 +86,16 @@ export class UsersController {
   @ApiOperation({ summary: 'Deactivate the authenticated account and revoke all sessions' })
   async deactivateAccount(@CurrentUser('id') userId: string) {
     return this.usersService.deactivateAccount(userId);
+  }
+
+  @Post('me/delete')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Permanently delete and anonymize account with explicit confirmation' })
+  async deleteAccount(
+    @CurrentUser('id') userId: string,
+    @Body(new ZodValidationPipe(deleteAccountSchema)) body: { confirmation: string },
+  ) {
+    return this.usersService.deleteAccount(userId, body.confirmation);
   }
 
   @Public()

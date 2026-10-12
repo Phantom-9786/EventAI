@@ -293,7 +293,7 @@ export class EventsService {
   async cancelEvent(organizerId: string, idOrSlug: string) {
     const owned = await this.findOwned(organizerId, idOrSlug);
 
-    if (owned.status !== 'DRAFT' && owned.status !== 'PUBLISHED') {
+    if (owned.status !== 'DRAFT' && owned.status !== 'PUBLISHED' && owned.status !== 'SOLDOUT') {
       throw new ConflictException(`Cannot cancel a ${owned.status.toLowerCase()} event`);
     }
 
@@ -306,14 +306,6 @@ export class EventsService {
         throw new ConflictException('Event status changed; refresh and try again');
       }
 
-      const attendees = await tx.booking.findMany({
-        where: { eventId: owned.id, status: { in: ['PENDING', 'PAYMENT_PENDING', 'CONFIRMED'] } },
-        select: {
-          id: true,
-          user: { select: { email: true, firstName: true, lastName: true } },
-          payment: { select: { status: true, refundRequestStatus: true } },
-        },
-      });
       const now = new Date();
       const cancellationReason = 'Event cancelled by organizer';
       const refundRequests = await tx.payment.updateMany({
@@ -346,6 +338,16 @@ export class EventsService {
         where: { eventId: owned.id, status: 'VALID' },
         data: { status: 'CANCELLED' },
       });
+
+      const attendees = await tx.booking.findMany({
+        where: { eventId: owned.id, status: 'CANCELLED' },
+        select: {
+          id: true,
+          user: { select: { email: true, firstName: true, lastName: true } },
+          payment: { select: { status: true, refundRequestStatus: true } },
+        },
+      });
+
       const event = await tx.event.findUniqueOrThrow({
         where: { id: owned.id },
         include: EVENT_DETAIL_MANAGE_INCLUDE,

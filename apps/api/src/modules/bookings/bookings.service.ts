@@ -23,7 +23,8 @@ const BOOKING_DETAIL_INCLUDE = {
       slug: true,
       startDate: true,
       endDate: true,
-      venue: { select: { id: true, name: true, city: true } },
+      status: true,
+      venue: { select: { id: true, name: true, city: true, address: true } },
     },
   },
   items: {
