@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   Clock,
   MapPin,
+  Navigation,
   ShieldCheck,
   Ticket,
 } from 'lucide-react';
@@ -19,6 +20,7 @@ import {
   getSimilarEvents,
   type TicketTypeView,
 } from '@/lib/api';
+import { getDirectionsUrl } from '@/lib/maps';
 import { cn } from '@/lib/utils';
 
 interface EventDetailPageProps {
@@ -140,6 +142,15 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
                 <p className="mt-0.5 text-sm text-muted-foreground">
                   {event.venue.address}, {event.venue.city}, {event.venue.state}
                 </p>
+                <a
+                  href={getDirectionsUrl(event.venue)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                >
+                  <Navigation className="h-4 w-4" />
+                  Get directions
+                </a>
               </div>
             </div>
           </div>

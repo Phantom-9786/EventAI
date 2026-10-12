@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import { ArrowRight, BadgeCheck, MapPin, Users } from 'lucide-react';
+import { ArrowRight, BadgeCheck, MapPin, Navigation, Users } from 'lucide-react';
 import { getVenue } from '@/lib/api';
+import { getDirectionsUrl } from '@/lib/maps';
 import { VenueMap } from '@/components/venues/venue-map';
 
 interface VenueDetailPageProps {
@@ -49,6 +50,15 @@ export default async function VenueDetailPage({ params }: VenueDetailPageProps) 
             <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
             {venue.address}, {venue.city}, {venue.state} {venue.zipCode}, {venue.country}
           </p>
+          <a
+            href={getDirectionsUrl(venue)}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+          >
+            <Navigation className="h-4 w-4" />
+            Get directions
+          </a>
           {venue.description && (
             <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
               {venue.description}
