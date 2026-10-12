@@ -2,8 +2,8 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Minus, Plus, ShieldCheck, Ticket } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ArrowRight, CheckCircle2, Loader2, Minus, Plus, ShieldCheck, Ticket } from 'lucide-react';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/auth-provider';
 import {
   createBooking,
@@ -14,6 +14,7 @@ import {
   type TicketView,
 } from '@/lib/booking';
 import { formatPrice, type TicketTypeView } from '@/lib/api';
+import { cn } from '@/lib/utils';
 
 type Phase = 'idle' | 'creating' | 'paying' | 'verifying' | 'done';
 
@@ -26,14 +27,6 @@ interface RazorpayCheckoutOptions {
   description?: string;
   prefill?: { email?: string };
   theme?: { color?: string };
-  /**
-   * Redirect-based checkout (documented Razorpay option for environments
-   * where the checkout popup does not appear): the whole flow runs on a
-   * Razorpay page and the customer returns to callback_url with
-   * razorpay_order_id / razorpay_payment_id / razorpay_signature as GET
-   * params. Signature verification stays server-side (/payments/verify).
-   */
-  redirect?: boolean;
   callback_url?: string;
   handler: (response: {
     razorpay_order_id: string;
@@ -117,7 +110,7 @@ export function BookingWidget({
         const dataUrl = await getTicketQr(ticket.id);
         setQrUrls((prev) => ({ ...prev, [ticket.id]: dataUrl }));
       } catch {
-        // QR is decorative in the success panel; ignore failures
+        // QR rendering failure degrades gracefully
       }
     }
   }
@@ -125,7 +118,7 @@ export function BookingWidget({
   async function onBook() {
     if (submitLock.current) return;
     setError(null);
-    if (!user) return; // button renders a sign-in link when logged out
+    if (!user) return;
     const items = purchasable
       .map((t) => ({ ticketTypeId: t.id, quantity: quantities[t.id] ?? 0 }))
       .filter((i) => i.quantity > 0);
@@ -145,8 +138,7 @@ export function BookingWidget({
         idempotencyKey: attemptRef.current.idempotencyKey,
       });
 
-      // Recover when an earlier create/verify response timed out after the API
-      // committed it; the stable key returns the original booking on retry.
+      // If the booking is already confirmed (e.g. idempotency replay or free)
       if (booking.status === 'CONFIRMED') {
         setConfirmed(booking);
         attemptRef.current = null;
@@ -157,6 +149,16 @@ export function BookingWidget({
 
       setPhase('paying');
       const order = await createPaymentOrder(booking.id);
+
+      // Free bookings confirmed by the server
+      if (order.amount === 0 || (order as { free?: boolean }).free) {
+        setConfirmed(booking);
+        attemptRef.current = null;
+        setPhase('done');
+        if (booking.tickets) void loadQrUrls(booking.tickets);
+        return;
+      }
+
       if (!order.keyId) {
         throw new Error(
           'Payments are not configured yet — your booking is held and will expire safely.',
@@ -175,8 +177,7 @@ export function BookingWidget({
         name: 'EventAI',
         description: eventTitle,
         prefill: { email: user.email },
-        theme: { color: '#6d28d9' },
-        redirect: true,
+        theme: { color: '#4f46e5' },
         callback_url: `${window.location.origin}/bookings/payment-callback/handler?bookingId=${booking.id}`,
         handler: (response) => {
           void (async () => {
@@ -203,9 +204,10 @@ export function BookingWidget({
         modal: {
           ondismiss: () => {
             setError(
-              'Checkout was closed before payment. Your seats are held for a short while — you can retry.',
+              'Checkout was closed before payment completed. Your tickets are held for 10 minutes — you can retry.',
             );
             setPhase('idle');
+            submitLock.current = false;
           },
         },
       });
@@ -213,7 +215,6 @@ export function BookingWidget({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       setPhase('idle');
-    } finally {
       submitLock.current = false;
     }
   }
@@ -221,143 +222,176 @@ export function BookingWidget({
   // ── Success panel ──────────────────────────────────
   if (phase === 'done' && confirmed) {
     return (
-      <div className="rounded-lg border bg-card p-6 shadow-sm">
-        <p className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
-          <Ticket className="h-4 w-4" />
-          Booking confirmed!
+      <div className="mt-4 rounded-xl border border-green-500/20 bg-green-500/5 p-5">
+        <div className="flex items-center gap-2 font-semibold text-green-700 dark:text-green-400">
+          <CheckCircle2 className="h-5 w-5" />
+          <span>Booking confirmed!</span>
+        </div>
+        <p className="mt-2 text-2xl font-bold tracking-tight">
+          {formatPrice(confirmed.totalAmount)} paid
         </p>
-        <p className="mt-1 text-2xl font-bold">{formatPrice(confirmed.totalAmount)} paid</p>
+        <p className="mt-1 text-xs text-muted-foreground font-mono">
+          Booking #{confirmed.id}
+        </p>
+
         {confirmed.tickets && confirmed.tickets.length > 0 ? (
-          <div className="mt-4 flex flex-col gap-3">
+          <div className="mt-4 space-y-3">
             {confirmed.tickets.map((t) => (
-              <div key={t.id} className="flex items-center gap-3 rounded-md border p-3">
+              <div key={t.id} className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-sm">
                 {qrUrls[t.id] ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qrUrls[t.id]} alt={`QR for ${t.ticketCode}`} className="h-16 w-16" />
+                  <img src={qrUrls[t.id]} alt={`QR code for ${t.ticketCode}`} className="h-16 w-16 rounded border bg-white p-0.5" />
                 ) : (
-                  <div className="h-16 w-16 animate-pulse rounded bg-muted" aria-hidden />
+                  <div className="flex h-16 w-16 items-center justify-center rounded border bg-muted" aria-hidden>
+                    <Ticket className="h-6 w-6 text-muted-foreground/40" />
+                  </div>
                 )}
                 <div className="min-w-0">
-                  <p className="truncate font-mono text-sm font-medium">{t.ticketCode}</p>
+                  <p className="font-mono text-sm font-semibold tracking-wide">{t.ticketCode}</p>
                   <p className="text-xs text-muted-foreground">{t.holderName}</p>
+                  <span className="mt-1 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                    Valid Entry
+                  </span>
                 </div>
               </div>
             ))}
           </div>
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">
-            Your tickets are being issued…
+            Your digital tickets are being issued and will appear in My Tickets.
           </p>
         )}
-        <p className="mt-4 text-xs text-muted-foreground">
-          Keep your ticket codes safe — they are scanned at the venue entry.
-        </p>
+
+        <div className="mt-5 flex flex-col gap-2">
+          <Link
+            href="/tickets"
+            className={cn(buttonVariants({ size: 'sm' }), 'w-full')}
+          >
+            Go to My Tickets <ArrowRight className="ml-1.5 h-4 w-4" />
+          </Link>
+          <p className="text-center text-[11px] text-muted-foreground">
+            Save or screenshot your ticket QR code for venue entrance.
+          </p>
+        </div>
       </div>
     );
   }
 
   // ── Booking panel ──────────────────────────────────
   return (
-    <div className="rounded-lg border bg-card p-6 shadow-sm">
+    <div className="mt-4 space-y-4">
       {purchasable.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Tickets are sold out or not on sale right now.
-        </p>
+        <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+          Tickets are currently sold out or sales are closed.
+        </div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {purchasable.map((t) => (
-            <div
-              key={t.id}
-              className="flex items-center justify-between gap-3 rounded-md border p-3"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{t.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatPrice(t.price)} · max {t.maxPerBooking} per booking
-                </p>
+        <div className="space-y-3">
+          {purchasable.map((t) => {
+            const currentQty = quantities[t.id] ?? 0;
+            const maxAllowed = Math.min(t.maxPerBooking, t.availableQuantity);
+            return (
+              <div
+                key={t.id}
+                className="flex items-center justify-between gap-3 rounded-lg border bg-card/60 p-3.5 transition-colors hover:border-primary/40"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{t.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">{formatPrice(t.price)}</span>
+                    {' · '}
+                    {t.availableQuantity <= 10 ? (
+                      <span className="font-medium text-amber-600 dark:text-amber-400">
+                        Only {t.availableQuantity} left
+                      </span>
+                    ) : (
+                      <span>Max {t.maxPerBooking}</span>
+                    )}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    aria-label={`Remove one ${t.name} ticket`}
+                    disabled={busy || currentQty === 0}
+                    onClick={() => setQty(t, currentQty - 1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md border bg-background text-foreground transition-colors hover:bg-muted disabled:opacity-40"
+                  >
+                    <Minus className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="w-7 text-center font-mono text-sm font-semibold" aria-live="polite">
+                    {currentQty}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`Add one ${t.name} ticket`}
+                    disabled={busy || currentQty >= maxAllowed}
+                    onClick={() => setQty(t, currentQty + 1)}
+                    className="flex h-8 w-8 items-center justify-center rounded-md border bg-background text-foreground transition-colors hover:bg-muted disabled:opacity-40"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  aria-label={`Remove one ${t.name} ticket`}
-                  disabled={busy || !user || (quantities[t.id] ?? 0) === 0}
-                  onClick={() => setQty(t, (quantities[t.id] ?? 0) - 1)}
-                  className="flex h-7 w-7 items-center justify-center rounded-md border disabled:opacity-40"
-                >
-                  <Minus className="h-3 w-3" />
-                </button>
-                <span className="w-6 text-center text-sm font-semibold" aria-live="polite">
-                  {quantities[t.id] ?? 0}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`Add one ${t.name} ticket`}
-                  disabled={
-                    busy ||
-                    !user ||
-                    (quantities[t.id] ?? 0) >= Math.min(t.maxPerBooking, t.availableQuantity)
-                  }
-                  onClick={() => setQty(t, (quantities[t.id] ?? 0) + 1)}
-                  className="flex h-7 w-7 items-center justify-center rounded-md border disabled:opacity-40"
-                >
-                  <Plus className="h-3 w-3" />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {selectedCount > 0 && (
-        <p className="mt-4 flex items-center justify-between text-sm">
-          <span className="text-muted-foreground">
-            {selectedCount} ticket{selectedCount === 1 ? '' : 's'}
-          </span>
-          <span className="text-lg font-bold">{formatPrice(total)}</span>
-        </p>
+        <div className="rounded-lg bg-muted/50 p-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">
+              {selectedCount} ticket{selectedCount === 1 ? '' : 's'} selected
+            </span>
+            <span className="text-xl font-bold tracking-tight">{formatPrice(total)}</span>
+          </div>
+        </div>
       )}
 
       {error && (
-        <p
+        <div
           role="alert"
-          className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive"
         >
           {error}
-        </p>
+        </div>
       )}
 
       {loading ? (
-        <Button className="mt-4 w-full" size="lg" disabled>
-          <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+        <Button className="w-full" size="lg" disabled>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          Loading…
         </Button>
       ) : user ? (
         <Button
-          className="mt-4 w-full"
+          className="w-full text-base font-semibold shadow-md"
           size="lg"
           disabled={busy || phase === 'paying' || selectedCount === 0}
           onClick={() => void onBook()}
         >
-          {busy && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+          {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {phase === 'creating'
-            ? 'Reserving seats…'
+            ? 'Reserving tickets…'
             : phase === 'paying'
-              ? 'Waiting for checkout…'
+              ? 'Opening payment gateway…'
               : phase === 'verifying'
-                ? 'Verifying payment…'
-                : 'Book Tickets'}
+                ? 'Confirming payment…'
+                : selectedCount > 0
+                  ? `Book Tickets · ${formatPrice(total)}`
+                  : 'Select Tickets'}
         </Button>
       ) : (
         <Link
-          href="/signin"
-          className="mt-4 flex h-10 w-full items-center justify-center rounded-md bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          href={`/signin?returnUrl=/events/${encodeURIComponent(eventId)}`}
+          className={cn(buttonVariants({ size: 'lg' }), 'w-full text-base font-semibold')}
         >
-          Sign in to book
+          Sign in to complete booking
         </Link>
       )}
 
-      <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5" />
-        Secure payments by Razorpay
+      <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
+        <ShieldCheck className="h-3.5 w-3.5 text-primary" />
+        Instant digital tickets & verified checkout
       </p>
     </div>
   );

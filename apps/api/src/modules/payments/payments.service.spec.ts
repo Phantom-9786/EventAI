@@ -135,6 +135,7 @@ describe('PaymentsService', () => {
         amount: 300000,
         currency: 'INR',
         keyId,
+        mode: 'test',
       });
       expect(ordersCreate).not.toHaveBeenCalled();
     });

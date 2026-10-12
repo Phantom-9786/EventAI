@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -242,5 +243,96 @@ export class UsersService {
 
     this.logger.log(`Account deactivated: ${userId}`);
     return { message: 'Your account has been deactivated' };
+  }
+
+  async deleteAccount(
+    userId: string,
+    confirmation: string,
+  ): Promise<{ message: string }> {
+    if (confirmation !== 'DELETE') {
+      throw new BadRequestException('You must type DELETE to confirm permanent account deletion.');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true, role: true, email: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Safeguards for organizers:
+    if (user.role === 'ORGANIZER') {
+      const organizer = await this.prisma.organizer.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+      if (organizer) {
+        const [activeEvents, pendingRefunds] = await Promise.all([
+          this.prisma.event.count({
+            where: {
+              organizerId: organizer.id,
+              status: { in: ['DRAFT', 'PUBLISHED', 'SOLDOUT'] },
+            },
+          }),
+          this.prisma.payment.count({
+            where: {
+              OR: [
+                { refundRequestStatus: 'PENDING' },
+                { status: 'REFUND_PENDING' },
+              ],
+              booking: { event: { organizerId: organizer.id } },
+            },
+          }),
+        ]);
+        if (activeEvents > 0 || pendingRefunds > 0) {
+          throw new ConflictException(
+            'Cannot delete account: cancel all draft, published or sold-out events and resolve all pending refunds before deleting this organizer account.',
+          );
+        }
+      }
+    }
+
+    // Safeguards for attendees: check pending refunds
+    const pendingAttendeeRefunds = await this.prisma.payment.count({
+      where: {
+        booking: { userId },
+        OR: [
+          { refundRequestStatus: 'PENDING' },
+          { status: 'REFUND_PENDING' },
+        ],
+      },
+    });
+    if (pendingAttendeeRefunds > 0) {
+      throw new ConflictException(
+        'Cannot delete account while you have pending refund requests. Please wait for refunds to be resolved.',
+      );
+    }
+
+    // Anonymize personal info without cascade-deleting financial history (bookings, tickets, payments, events, audit logs)
+    const anonymizedEmail = `deleted-${user.id}@anonymized.eventai.local`;
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          email: anonymizedEmail,
+          firstName: 'Deleted',
+          lastName: 'User',
+          username: null,
+          bio: null,
+          profileImage: null,
+          location: null,
+          passwordHash: null,
+          googleId: null,
+          preferences: Prisma.DbNull,
+          isActive: false,
+          isEmailVerified: false,
+        },
+      }),
+      this.prisma.session.deleteMany({ where: { userId } }),
+      this.prisma.emailVerificationToken.deleteMany({ where: { userId } }),
+    ]);
+
+    this.logger.log(`Account deleted and anonymized: ${userId}`);
+    return { message: 'Your account has been permanently deleted and personal data anonymized.' };
   }
 }

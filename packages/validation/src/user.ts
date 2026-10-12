@@ -49,6 +49,13 @@ export const becomeOrganizerSchema = z.object({
   phone: z.string().max(20).optional(),
 });
 
+export const deleteAccountSchema = z.object({
+  confirmation: z.literal('DELETE', {
+    errorMap: () => ({ message: 'You must type DELETE to confirm account deletion' }),
+  }),
+});
+
 export type Username = z.infer<typeof usernameSchema>;
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type UpdatePreferencesInput = z.infer<typeof updatePreferencesSchema>;
+export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;

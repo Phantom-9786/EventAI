@@ -190,10 +190,13 @@ export class OrganizersController {
 
   @Roles('ORGANIZER')
   @Get('refund-requests')
-  @ApiOperation({ summary: 'List pending refund requests for the organizer’s events' })
-  async refundRequests(@CurrentUser('id') userId: string) {
+  @ApiOperation({ summary: 'List refund requests for the organizer’s events' })
+  async refundRequests(
+    @CurrentUser('id') userId: string,
+    @Query('status') status?: string,
+  ) {
     const organizerId = await this.organizersService.requireOrganizerId(userId);
-    return { refundRequests: await this.paymentsService.listOrganizerRefundRequests(organizerId) };
+    return { refundRequests: await this.paymentsService.listOrganizerRefundRequests(organizerId, status) };
   }
 
   @Roles('ORGANIZER')

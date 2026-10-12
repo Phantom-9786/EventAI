@@ -4,7 +4,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { CalendarDays, Loader2, Ticket } from 'lucide-react';
-import { verifyPayment, type BookingView } from '@/lib/booking';
+import { BookingApiError, verifyPayment, type BookingView } from '@/lib/booking';
 import { ApiError } from '@/lib/auth';
 import { formatPrice } from '@/lib/api';
 
@@ -77,9 +77,12 @@ function PaymentCallbackPanel() {
       })
       .catch((err: unknown) => {
         setState('error');
+        const isAuth401 =
+          (err instanceof BookingApiError && err.status === 401) ||
+          (err instanceof ApiError && err.statusCode === 401);
         setMessage(
-          err instanceof ApiError && err.statusCode === 401
-            ? 'Please sign in to finish verifying this payment, then reopen the link from your confirmation email or My Tickets.'
+          isAuth401
+            ? 'Please sign in to finish verifying this payment, then reopen this page or check My Tickets.'
             : err instanceof Error
               ? err.message
               : 'Payment verification failed',

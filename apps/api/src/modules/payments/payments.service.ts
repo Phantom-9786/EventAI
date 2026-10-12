@@ -382,25 +382,45 @@ export class PaymentsService {
     };
   }
 
-  async listOrganizerRefundRequests(organizerId: string) {
+  async listOrganizerRefundRequests(organizerId: string, statusFilter?: string) {
+    const where: Prisma.PaymentWhereInput = {
+      booking: { event: { organizerId } },
+    };
+
+    if (statusFilter && statusFilter.toUpperCase() !== 'ALL') {
+      const upper = statusFilter.toUpperCase();
+      if (upper === 'PENDING' || upper === 'APPROVED' || upper === 'REJECTED' || upper === 'FAILED') {
+        where.refundRequestStatus = upper as any;
+      }
+    } else if (!statusFilter) {
+      where.refundRequestStatus = 'PENDING';
+    } else {
+      where.refundRequestStatus = { not: null };
+    }
+
     return this.prisma.payment.findMany({
-      where: {
-        refundRequestStatus: 'PENDING',
-        booking: { event: { organizerId } },
-      },
-      orderBy: { refundRequestedAt: 'asc' },
+      where,
+      orderBy: { refundRequestedAt: 'desc' },
       select: {
+        id: true,
         bookingId: true,
         amount: true,
         currency: true,
+        status: true,
+        refundRequestStatus: true,
         refundRequestReason: true,
         refundRequestedAt: true,
+        refundReviewedAt: true,
+        refundReviewedBy: true,
+        refundId: true,
         booking: {
           select: {
+            id: true,
             totalAmount: true,
+            status: true,
             createdAt: true,
             user: { select: { id: true, firstName: true, lastName: true, email: true } },
-            event: { select: { id: true, title: true, slug: true, startDate: true } },
+            event: { select: { id: true, title: true, slug: true, startDate: true, status: true } },
             items: {
               select: { quantity: true, ticketType: { select: { name: true } } },
             },
@@ -1070,7 +1090,49 @@ export class PaymentsService {
   }
 
   private async loadOwnBooking(userId: string, bookingId: string) {
-    const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: {
+        event: {
+          select: {
+            id: true,
+            title: true,
+            slug: true,
+            startDate: true,
+            endDate: true,
+            status: true,
+            venue: { select: { id: true, name: true, city: true, address: true } },
+          },
+        },
+        items: {
+          include: {
+            ticketType: {
+              select: { id: true, name: true, price: true, currency: true },
+            },
+          },
+        },
+        payment: {
+          select: {
+            id: true,
+            status: true,
+            amount: true,
+            refundRequestStatus: true,
+            refundRequestReason: true,
+            refundRequestedAt: true,
+          },
+        },
+        tickets: {
+          select: {
+            id: true,
+            ticketCode: true,
+            holderName: true,
+            status: true,
+            ticketTypeId: true,
+            validatedAt: true,
+          },
+        },
+      },
+    });
     if (!booking || booking.userId !== userId) {
       throw new NotFoundException('Booking not found');
     }
@@ -1078,11 +1140,13 @@ export class PaymentsService {
   }
 
   private orderResponse(orderId: string, amount: number, currency: string) {
+    const keyId = process.env.RAZORPAY_KEY_ID?.trim() ?? null;
     return {
       orderId,
       amount,
       currency,
-      keyId: process.env.RAZORPAY_KEY_ID?.trim() ?? null,
+      keyId,
+      mode: keyId?.startsWith('rzp_test_') ? 'test' : 'live',
     };
   }
 

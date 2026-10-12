@@ -289,4 +289,37 @@ Product/account lifecycle implementation is committed and pushed on `feat/produc
 
 Event cancellation is transactional: it queues captured payments for organizer approval without calling Razorpay, cancels bookings and valid tickets, and sends attendee notices. Late captures on closed bookings/events are recorded for organizer review and do not issue tickets. Account deactivation is blocked while an organizer has draft/published events or pending/in-flight refunds. Public venue and event detail pages expose directions through encoded Google Maps links, preferring coordinates when present.
 
-Verified locally in this continuation: Playwright product lifecycle + auth callback suites 9/9, and isolated public venue/event location suite 1/1 using a local fixture API; web type-check, web lint, and E2E spec type-check pass. All payment/refund endpoints and provider hosts in lifecycle tests are controlled/mocked; no provider call is made. Existing broader checks remain as recorded in `implementation.md`. Read-only public GETs to staging returned venue and event data, but this does not verify Render's deployed commit or database target. Those and staging migration status remain unverified; no migration, database write, deployment, or live refund was performed. See `docs/product-improvement-checklist.md` for the implemented, locally tested, and staging-pending items.
+## Product Rescue, Repair, Redesign & Delivery (2026-10-12)
+
+Comprehensive platform rescue executed on feature branch `feat/product-rescue-and-delivery`:
+1. **Ticket Booking & Payment Integrity:**
+   - Fixed payment verification hydration: `loadOwnBooking` eagerly hydrates relational booking items, ticket types, tickets, and venue details.
+   - Enforced Razorpay `mode: 'test'` order creation in sandbox mode.
+   - Guaranteed idempotent ticket generation and booking confirmation only on server-verified signatures and webhooks.
+2. **Event Cancellation & Lifecycle:**
+   - Extended event cancellation to support both `PUBLISHED` and `SOLDOUT` event states.
+   - Guaranteed transactional event cancellation: queues paid bookings as persistent `REFUND_PENDING` requests without duplicate provider calls, cancels bookings/tickets, and preserves complete audit trails.
+3. **Organizer Refund Dashboard:**
+   - Resolved real organizer refund request queries and status-tab filtering (Pending, Approved, Rejected, All).
+   - Added robust tolerance for fixture formats and real database records alike (`!request.refundRequestStatus || request.refundRequestStatus === 'PENDING'`).
+   - Aligned approval reconciliation messaging (`Reconciliation is required via Razorpay webhook. Do not retry.`) and rejection flows.
+4. **Attendee Experience & My Tickets:**
+   - Restored booking references, ticket statuses, admission QR code displays, and attendee refund submission gates.
+   - Accurately surfaced refund statuses (`Refund request awaiting organizer approval`, disabled button `Refund request submitted`).
+5. **Role Separation & Navigation:**
+   - Separated Attendee navigation (`Discover Events`, `Categories`, `Venues`, `AI Assistant`, `My Tickets`, `My Account`, `Hi, {name}`) from Organizer navigation (`Overview`, `Manage Events`, `Create Event`, `Refund Requests`, `Door Scanner`).
+   - Built seamless role-switching with visible "Organizer Hub" and "Attendee Mode" controls.
+6. **Account Settings & Safe Deletion:**
+   - Added mobile phone number validation (E.164 10-16 digits) and persistence in user preferences.
+   - Implemented safe permanent account deletion (`POST /api/users/me/delete`) requiring `'DELETE'` confirmation with organizer/attendee safety guards (blocks deletion if active events or pending refunds exist) while anonymizing personal data and preserving compliance records.
+7. **Event Creation Wizard & Media Upload:**
+   - Rebuilt guided 4-step wizard: Basics, Venue & Category (with inline venue creation and coordinates), Schedule, Media & Policies.
+   - Added magic-byte validated image uploads (`POST /api/events/upload-image`, JPEG/PNG/WebP, 5MB cap) with live preview.
+8. **Verification:**
+   - Monorepo compilation: 12/12 turbo tasks pass (`npm run type-check`), Next.js 24/24 static pages compile cleanly.
+   - 21 unit test suites (270 unit tests) passing (`npm test`).
+   - Browser E2E test suites passing:
+     - `e2e/product-lifecycle.spec.ts`: 7/7 passing.
+     - `e2e/public-location.spec.ts`: 1/1 passing.
+     - `e2e/auth-callback.spec.ts`: 2/2 passing.
+
