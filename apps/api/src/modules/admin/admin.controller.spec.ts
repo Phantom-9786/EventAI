@@ -185,7 +185,8 @@ describe('AdminController', () => {
       expect(isPublic).toBeUndefined();
     });
 
-    const createMockExecutionContext = (user: unknown, handler: (...args: unknown[]) => unknown) => {
+    // eslint-disable-next-line @typescript-eslint/ban-types
+    const createMockExecutionContext = (user: unknown, handler: Function) => {
       return {
         getHandler: () => handler,
         getClass: () => AdminController,

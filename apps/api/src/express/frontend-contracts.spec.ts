@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { createExpressApp } from './app';
 import { UserRole } from '@eventai/types';
 import { StructuredLogger } from '../common/logging/structured-logger';
+import type { CacheService } from '../common/cache/cache.service';
 
 describe('Frontend-to-Express API Contract Verification', () => {
   let server: Server;
