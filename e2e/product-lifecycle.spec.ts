@@ -203,9 +203,9 @@ test('organizer event wizard retries categories and submits event media', async 
   await page.goto('/organizer/events/new');
   await page.getByLabel('Event title').fill('Mumbai Music Night');
   await page
-    .getByLabel('Description', { exact: true })
+    .locator('#event-description')
     .fill('A live music evening featuring independent artists in Mumbai.');
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Next step' }).click();
   await expect(
     page.getByText(/Could not load event categories: Categories temporarily unavailable/),
   ).toBeVisible();
@@ -215,37 +215,50 @@ test('organizer event wizard retries categories and submits event media', async 
 
   await categorySelect.selectOption('category-music');
   await page.getByRole('combobox', { name: /Venue/ }).selectOption('venue-demo');
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Next step' }).click();
   expect(submittedEvents).toHaveLength(0);
   await expect(page.getByRole('region', { name: 'Event schedule' })).toBeVisible();
-  await page.getByLabel('Starts').fill(localDateTime(start));
+  await page.getByLabel('Event starts').fill(start.toISOString().slice(0, 10));
   expect(submittedEvents).toHaveLength(0);
-  await page.getByLabel('Ends').fill(localDateTime(end));
+  const nextDay = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  await page.getByLabel('Event ends').fill(nextDay.toISOString().slice(0, 10));
+  await page.locator('input[type="time"]').nth(1).fill('22:00');
   expect(submittedEvents).toHaveLength(0);
-  await expect(page.getByRole('button', { name: 'Continue' })).toHaveAttribute(
-    'type',
-    'button',
-  );
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Next step' }).click();
   expect(submittedEvents).toHaveLength(0);
-  await page
-    .getByLabel('Cover image URL (optional)')
-    .fill('https://images.example.test/cover.jpg');
-  await page
-    .getByLabel('Additional image URLs (one per line, up to 10 total)')
-    .fill('https://images.example.test/gallery.jpg');
-  expect(submittedEvents).toHaveLength(0);
-  await page.getByRole('button', { name: 'Create draft event' }).click();
+  await page.route('**/api/events/upload-image', async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: { url: '/uploads/event-test-cover.png' },
+    });
+  });
+
+  const validPngBuffer = Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    0x08, 0x06, 0x00, 0x00, 0x00,
+  ]);
+
+  await page.locator('input[type="file"]').first().setInputFiles({
+    name: 'cover.png',
+    mimeType: 'image/png',
+    buffer: validPngBuffer,
+  });
+
+  await expect(page.getByText('Replace image')).toBeVisible();
+
+  // Transitioning from step 3 to step 4 saves the draft event
+  await page.getByRole('button', { name: 'Next step' }).click();
 
   await expect.poll(() => submittedEvents.length).toBe(1);
   const submittedEvent = submittedEvents[0];
   expect(submittedEvent.title).toBe('Mumbai Music Night');
-  expect(submittedEvent.coverImage).toBe('https://images.example.test/cover.jpg');
-  expect(submittedEvent.images).toEqual([
-    'https://images.example.test/cover.jpg',
-    'https://images.example.test/gallery.jpg',
-  ]);
-  await expect(page).toHaveURL(/\/organizer\/events\/event-created\?created=1$/);
+  expect(submittedEvent.coverImage).toBe('/uploads/event-test-cover.png');
+  await expect(page.getByRole('region', { name: 'Tickets and inventory' })).toBeVisible();
+  await page.getByRole('button', { name: 'Next step' }).click();
+  await expect(page.getByRole('region', { name: 'Review and publish' })).toBeVisible();
+  await expect(page.getByText('Mumbai Music Night')).toBeVisible();
 });
 
 test('login opens My Account and theme choice persists across reloads', async ({ page }) => {
@@ -424,12 +437,14 @@ test('organizer can edit, publish, and cancel an event without calling payment p
   await page.goto('/organizer/events/event-1');
   await expect(page.getByRole('heading', { name: 'Manage event' })).toBeVisible();
   await page.getByLabel('Event title').fill('Edited Mumbai Music Night');
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByRole('button', { name: 'Continue' }).click();
-  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Next step' }).click();
+  await page.getByRole('button', { name: 'Next step' }).click();
+  await page.getByRole('button', { name: 'Next step' }).click();
+  await page.getByRole('button', { name: 'Next step' }).click();
+  await page.getByRole('button', { name: 'Next step' }).click();
   await page.getByRole('button', { name: 'Save draft changes' }).click();
-  await expect(page.getByRole('status')).toContainText('Event details saved.');
-  await page.getByRole('button', { name: 'Publish event' }).click();
+  await expect(page.getByRole('status')).toContainText('Draft saved.');
+  await page.getByRole('button', { name: 'Publish event', exact: true }).click();
   await expect(page.getByText('Event published.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Cancel event' }).click();
   await expect(page.getByText(/queued for organizer refund approval/)).toBeVisible();
@@ -448,8 +463,21 @@ test('organizer refund approvals and rejections use only the mocked application 
   ];
   const decisions: string[] = [];
   let providerRequests = 0;
-  await page.route('**/api/organizers/refund-requests', (route) =>
-    route.fulfill({ status: 200, json: { refundRequests: requests } }),
+  await page.route('**/api/organizers/refund-requests*', (route) =>
+    route.fulfill({
+      status: 200,
+      json: {
+        refundRequests: requests,
+        counts: {
+          PENDING: requests.length,
+          APPROVED: 0,
+          REFUNDED: 0,
+          REJECTED: 0,
+          FAILED: 0,
+          ALL: requests.length,
+        },
+      },
+    }),
   );
   await page.route('**/api/organizers/refund-requests/*/*', async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -475,9 +503,9 @@ test('organizer refund approvals and rejections use only the mocked application 
   await page.goto('/organizer/refunds');
   await expect(page.getByRole('heading', { name: 'Refund requests' })).toBeVisible();
   await page.getByRole('button', { name: 'Approve and issue refund' }).first().click();
-  await expect(page.getByText(/Reconciliation is required/)).toBeVisible();
+  await expect(page.getByText(/Provider settlement is pending reconciliation/)).toBeVisible();
   await page.getByRole('button', { name: 'Reject request' }).click();
-  await expect(page.getByText(/request rejected/)).toBeVisible();
+  await expect(page.getByText(/Refund request declined/)).toBeVisible();
   expect(decisions).toEqual(['booking-approved:approve', 'booking-rejected:reject']);
   expect(providerRequests).toBe(0);
 });

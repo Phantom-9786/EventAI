@@ -86,10 +86,11 @@ export function BookingWidget({
 
   const total = useMemo(
     () =>
-      purchasable.reduce(
-        (sum, t) => sum + t.price * (quantities[t.id] ?? 0),
-        0,
-      ),
+      purchasable.reduce((sum, t) => {
+        const price = typeof t.price === 'number' && Number.isFinite(t.price) ? Math.round(t.price) : 0;
+        const qty = quantities[t.id] ?? 0;
+        return sum + price * qty;
+      }, 0),
     [purchasable, quantities],
   );
 

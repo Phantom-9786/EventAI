@@ -141,9 +141,10 @@ export class BookingsService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
-        // Conditional decrement: the row must still have enough stock at
-        // update time — concurrent bookings can never oversell.
-        for (const [ticketTypeId, quantity] of quantities) {
+        // Deterministic sorting of ticket types avoids lock-ordering deadlocks
+        // across concurrent multi-ticket bookings.
+        const sortedQuantities = [...quantities.entries()].sort(([a], [b]) => a.localeCompare(b));
+        for (const [ticketTypeId, quantity] of sortedQuantities) {
           const result = await tx.ticketType.updateMany({
             where: {
               id: ticketTypeId,
@@ -169,13 +170,13 @@ export class BookingsService {
             idempotencyKey: input.idempotencyKey,
             expiresAt,
             items: {
-              create: input.items.map((item) => {
-                const type = ticketTypes.find((t) => t.id === item.ticketTypeId);
+              create: [...quantities.entries()].map(([ticketTypeId, quantity]) => {
+                const type = ticketTypes.find((t) => t.id === ticketTypeId);
                 return {
-                  ticketTypeId: item.ticketTypeId,
-                  quantity: item.quantity,
+                  ticketTypeId,
+                  quantity,
                   unitPrice: type!.price,
-                  totalPrice: type!.price * item.quantity,
+                  totalPrice: type!.price * quantity,
                 };
               }),
             },
@@ -238,8 +239,8 @@ export class BookingsService {
       where: { id: bookingId },
       include: {
         items: true,
-        user: { select: { email: true, firstName: true, lastName: true } },
-        event: { select: { title: true } },
+        user: { select: { id: true, email: true, firstName: true, lastName: true } },
+        event: { select: { title: true, organizer: { select: { userId: true } } } },
       },
     });
     if (!booking || booking.userId !== userId) {
@@ -287,12 +288,13 @@ export class BookingsService {
     return result;
   }
 
-  /** Fire-and-forget cancellation email for an unpaid booking. */
+  /** Fire-and-forget cancellation email and in-app notifications for an unpaid booking. */
   private notifyCancellation(
     booking: {
       id: string;
-      user: { email: string; firstName: string; lastName: string };
-      event: { title: string };
+      userId?: string;
+      user: { id?: string; email: string; firstName: string; lastName: string };
+      event: { title: string; organizer?: { userId: string } };
     },
     reason?: string,
   ): void {
@@ -305,26 +307,70 @@ export class BookingsService {
         reason,
       })
       .catch(() => undefined);
+
+    const attendeeId = booking.userId ?? booking.user.id;
+    if (attendeeId) {
+      void this.notifications.createInAppNotification({
+        userId: attendeeId,
+        type: 'BOOKING_CANCELLED',
+        title: 'Reservation cancelled',
+        message: `Your reservation for "${booking.event.title}" has been cancelled.`,
+        data: { bookingId: booking.id, link: '/tickets' },
+      });
+    }
+
+    if (booking.event.organizer?.userId) {
+      void this.notifications.createInAppNotification({
+        userId: booking.event.organizer.userId,
+        type: 'BOOKING_CANCELLED',
+        title: 'Reservation cancelled by attendee',
+        message: `A reservation for "${booking.event.title}" was cancelled by the attendee.`,
+        data: { bookingId: booking.id, link: '/organizer/events' },
+      });
+    }
   }
+
+  private isSweepRunning = false;
 
   /** Minute cron: expires stale bookings across all users and releases stock. */
   @Cron(CronExpression.EVERY_MINUTE)
-  async handleStaleBookingsCron() {
-    const stale = await this.prisma.booking.findMany({
-      where: {
-        status: { in: ['PENDING', 'PAYMENT_PENDING'] },
-        expiresAt: { lt: new Date() },
-      },
-      select: { id: true },
-      take: 200,
-    });
-    for (const { id } of stale) {
-      await this.expireBookingIfStale(id);
+  async handleStaleBookingsCron(): Promise<{ expiredCount: number }> {
+    if (this.isSweepRunning) {
+      this.logger.debug('Stale bookings sweep already in progress; skipping overlapping tick');
+      return { expiredCount: 0 };
+    }
+    this.isSweepRunning = true;
+    let expiredCount = 0;
+    try {
+      const stale = await this.prisma.booking.findMany({
+        where: {
+          status: { in: ['PENDING', 'PAYMENT_PENDING'] },
+          expiresAt: { lt: new Date() },
+        },
+        select: { id: true },
+        take: 200,
+      });
+      for (const { id } of stale) {
+        try {
+          const expired = await this.expireBookingIfStale(id);
+          if (expired) expiredCount++;
+        } catch (err) {
+          this.logger.warn(
+            `Failed to expire booking ${id}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      if (expiredCount > 0) {
+        this.logger.log(`Stale bookings sweep expired ${expiredCount} booking(s) and released inventory`);
+      }
+      return { expiredCount };
+    } finally {
+      this.isSweepRunning = false;
     }
   }
 
   /** Expires all stale PENDING bookings of a user (lazy sweep on list). */
-  private async expireStaleBookings(userId: string) {
+  private async expireStaleBookings(userId: string): Promise<number> {
     const stale = await this.prisma.booking.findMany({
       where: {
         userId,
@@ -334,13 +380,22 @@ export class BookingsService {
       select: { id: true },
       take: 200,
     });
+    let count = 0;
     for (const { id } of stale) {
-      await this.expireBookingIfStale(id);
+      try {
+        const expired = await this.expireBookingIfStale(id);
+        if (expired) count++;
+      } catch (err) {
+        this.logger.warn(
+          `Failed to lazily expire booking ${id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
+    return count;
   }
 
-  /** Expires one stale booking past its TTL and releases its stock. */
-  private async expireBookingIfStale(bookingId: string) {
+  /** Expires one stale booking past its TTL and releases its stock and seat holds. */
+  private async expireBookingIfStale(bookingId: string): Promise<boolean> {
     const booking = await this.prisma.booking.findFirst({
       where: {
         id: bookingId,
@@ -349,9 +404,9 @@ export class BookingsService {
       },
       include: { items: true },
     });
-    if (!booking) return;
+    if (!booking) return false;
 
-    await this.prisma.$transaction(async (tx) => {
+    return await this.prisma.$transaction(async (tx) => {
       // Compare-and-set makes inventory release happen only for the request
       // that actually transitions this still-expired booking.
       const transitioned = await tx.booking.updateMany({
@@ -362,14 +417,23 @@ export class BookingsService {
         },
         data: { status: 'EXPIRED' },
       });
-      if (transitioned.count !== 1) return;
+      if (transitioned.count !== 1) return false;
+
       for (const item of booking.items) {
+        // Release held seat back to AVAILABLE if an assigned seat hold exists
+        if (item.seatId) {
+          await tx.seat.updateMany({
+            where: { id: item.seatId, status: 'HELD' },
+            data: { status: 'AVAILABLE' },
+          });
+        }
         await tx.ticketType.updateMany({
           where: { id: item.ticketTypeId },
           data: { availableQuantity: { increment: item.quantity } },
         });
       }
       this.logger.log(`Booking ${booking.id} expired and stock released`);
+      return true;
     });
   }
 }

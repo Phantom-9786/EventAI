@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   Briefcase,
   CheckCircle2,
+  ExternalLink,
   Loader2,
   Phone,
   Save,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { formatPrice } from '@/lib/api';
 import { authFetch } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 
@@ -45,6 +47,18 @@ type ProfileForm = {
   phoneNumber: string;
 };
 
+interface DeletionBlockers {
+  events?: Array<{ id: string; title: string; status: string; link: string }>;
+  refunds?: Array<{
+    bookingId: string;
+    amount: number;
+    status: string;
+    refundRequestStatus?: string;
+    eventTitle: string;
+    link: string;
+  }>;
+}
+
 export default function AccountPage() {
   const { user, loading: authLoading, signOut } = useAuth();
   const router = useRouter();
@@ -63,6 +77,7 @@ export default function AccountPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [blockers, setBlockers] = useState<DeletionBlockers | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -201,6 +216,27 @@ export default function AccountPage() {
     }
   }
 
+  const [loadingBlockers, setLoadingBlockers] = useState(false);
+
+  const openDeleteDialog = async () => {
+    setShowDeleteDialog(true);
+    setError(null);
+    setLoadingBlockers(true);
+    try {
+      const res = await authFetch('/users/me/deletion-blockers');
+      if (res.ok) {
+        const body = (await res.json()) as { blockers?: DeletionBlockers };
+        if (body.blockers) {
+          setBlockers(body.blockers);
+        }
+      }
+    } catch {
+      // Best-effort check; submission will enforce
+    } finally {
+      setLoadingBlockers(false);
+    }
+  };
+
   async function permanentDeleteAccount() {
     if (deleteConfirmation !== 'DELETE') {
       setError('You must type DELETE to confirm permanent account deletion.');
@@ -208,13 +244,20 @@ export default function AccountPage() {
     }
     setDeleting(true);
     setError(null);
+    setBlockers(null);
     try {
       const response = await authFetch('/users/me/delete', {
         method: 'POST',
         body: JSON.stringify({ confirmation: 'DELETE' }),
       });
       if (!response.ok) {
-        const body = (await response.json().catch(() => ({}))) as { message?: string };
+        const body = (await response.json().catch(() => ({}))) as {
+          message?: string;
+          blockers?: DeletionBlockers;
+        };
+        if (body.blockers) {
+          setBlockers(body.blockers);
+        }
         throw new Error(body.message ?? `Account deletion failed (${response.status})`);
       }
       await signOut();
@@ -481,7 +524,7 @@ export default function AccountPage() {
               type="button"
               variant="destructive"
               size="sm"
-              onClick={() => setShowDeleteDialog(true)}
+              onClick={() => void openDeleteDialog()}
             >
               <Trash2 className="mr-1.5 h-3.5 w-3.5" />
               Delete account
@@ -502,6 +545,68 @@ export default function AccountPage() {
                 </p>
               </div>
             </div>
+
+            {loadingBlockers ? (
+              <div className="flex items-center gap-2 rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Checking account status and active records…</span>
+              </div>
+            ) : blockers && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-sm text-foreground space-y-3">
+                <div className="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-300">
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                  <span>Blocking records prevent account deletion</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Cancel all draft, published, or sold-out events and resolve all pending refunds before this account can be deleted.
+                </p>
+                {blockers.events && blockers.events.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase">
+                      Active or draft events ({blockers.events.length}):
+                    </p>
+                    <ul className="mt-1.5 space-y-1.5">
+                      {blockers.events.map((ev) => (
+                        <li key={ev.id} className="flex items-center justify-between rounded bg-background/60 px-2 py-1 text-xs">
+                          <span className="font-medium truncate max-w-[220px]">
+                            {ev.title} <span className="text-muted-foreground font-mono">({ev.status})</span>
+                          </span>
+                          <Link
+                            href={ev.link}
+                            className="inline-flex items-center gap-1 font-semibold text-primary hover:underline ml-2 shrink-0"
+                          >
+                            Manage event <ExternalLink className="h-3 w-3" />
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {blockers.refunds && blockers.refunds.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase">
+                      Pending refunds ({blockers.refunds.length}):
+                    </p>
+                    <ul className="mt-1.5 space-y-1.5">
+                      {blockers.refunds.map((ref) => (
+                        <li key={ref.bookingId} className="flex items-center justify-between rounded bg-background/60 px-2 py-1 text-xs">
+                          <span className="font-medium truncate max-w-[220px]">
+                            {ref.eventTitle} · {formatPrice(ref.amount)} <span className="text-muted-foreground font-mono">({ref.status})</span>
+                          </span>
+                          <Link
+                            href={ref.link}
+                            className="inline-flex items-center gap-1 font-semibold text-primary hover:underline ml-2 shrink-0"
+                          >
+                            View refunds <ExternalLink className="h-3 w-3" />
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
             <input
               type="text"
               placeholder="Type DELETE"

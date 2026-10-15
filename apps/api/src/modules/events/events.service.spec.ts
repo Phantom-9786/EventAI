@@ -8,12 +8,20 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EventMediaService } from './event-media.service';
 import { EventsService } from './events.service';
 
 describe('EventsService', () => {
   let service: EventsService;
   let cacheMock: { get: jest.Mock; set: jest.Mock; invalidatePrefix: jest.Mock };
-  let notificationsMock: { sendEventCancellationNotice: jest.Mock };
+  let notificationsMock: {
+    sendEventCancellationNotice: jest.Mock;
+    createInAppNotification: jest.Mock;
+  };
+  let mediaMock: {
+    attachUrlsToEvent: jest.Mock;
+    cleanupUnsharedEventAssets: jest.Mock;
+  };
   let prisma: {
     event: {
       create: jest.Mock;
@@ -25,9 +33,14 @@ describe('EventsService', () => {
       updateMany: jest.Mock;
       delete: jest.Mock;
     };
+    eventMediaAsset?: {
+      findMany: jest.Mock;
+      count: jest.Mock;
+    };
     payment: { updateMany: jest.Mock };
     booking: { findMany: jest.Mock; updateMany: jest.Mock };
     ticket: { updateMany: jest.Mock };
+    ticketType: { count: jest.Mock };
     category: { findFirst: jest.Mock };
     venue: { findFirst: jest.Mock };
     $transaction: jest.Mock;
@@ -58,6 +71,7 @@ describe('EventsService', () => {
       payment: { updateMany: jest.fn() },
       booking: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
       ticket: { updateMany: jest.fn() },
+      ticketType: { count: jest.fn().mockResolvedValue(1) },
       category: { findFirst: jest.fn() },
       venue: { findFirst: jest.fn() },
       $transaction: jest.fn(async (ops: unknown) => {
@@ -75,6 +89,11 @@ describe('EventsService', () => {
     };
     notificationsMock = {
       sendEventCancellationNotice: jest.fn().mockResolvedValue(true),
+      createInAppNotification: jest.fn().mockResolvedValue({ id: 'notif-1' }),
+    };
+    mediaMock = {
+      attachUrlsToEvent: jest.fn().mockResolvedValue(undefined),
+      cleanupUnsharedEventAssets: jest.fn().mockResolvedValue(undefined),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -83,6 +102,7 @@ describe('EventsService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: CacheService, useValue: cacheMock },
         { provide: NotificationsService, useValue: notificationsMock },
+        { provide: EventMediaService, useValue: mediaMock },
       ],
     }).compile();
 
@@ -155,6 +175,15 @@ describe('EventsService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
+    it('rejects updating start date to a past date', async () => {
+      prisma.event.findFirst.mockResolvedValue(ownedDraft);
+      await expect(
+        service.updateEvent('org-1', 'event-1', {
+          startDate: new Date(Date.now() - 86400000).toISOString(),
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
     it('updates only provided fields', async () => {
       prisma.event.findFirst.mockResolvedValue(ownedDraft);
       prisma.event.update.mockResolvedValue({ id: 'event-1', title: 'Renamed Event Title' });
@@ -196,6 +225,12 @@ describe('EventsService', () => {
         ...ownedDraft,
         startDate: new Date(Date.now() - 86400000),
       });
+      await expect(service.publishEvent('org-1', 'event-1')).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects publishing when event has no active ticket types', async () => {
+      prisma.event.findFirst.mockResolvedValue(ownedDraft);
+      prisma.ticketType.count.mockResolvedValue(0);
       await expect(service.publishEvent('org-1', 'event-1')).rejects.toThrow(ConflictException);
     });
   });
@@ -303,6 +338,26 @@ describe('EventsService', () => {
       const result = await service.searchEvents({ page: 1, limit: 20 });
       expect(result.total).toBe(0);
     });
+
+    it('ignores whitespace search query and does not include websearch_to_tsquery', async () => {
+      prisma.$queryRaw
+        .mockResolvedValueOnce([{ id: 'event-a' }])
+        .mockResolvedValueOnce([{ total: 1 }]);
+      prisma.event.findMany.mockResolvedValue([
+        {
+          id: 'event-a',
+          ticketTypes: [{ price: 500 }],
+          category: { id: 'cat-1', name: 'Music', slug: 'music' },
+          venue: { id: 'venue-1', name: 'V', city: 'Bengaluru' },
+          organizer: { id: 'org-1', organizationName: 'Org' },
+        },
+      ]);
+
+      const result = await service.searchEvents({ query: '    ', page: 1, limit: 20 });
+      expect(result.total).toBe(1);
+      const sql = prisma.$queryRaw.mock.calls[0][0] as Prisma.Sql;
+      expect(sql.text).not.toContain('websearch_to_tsquery');
+    });
   });
 
   describe('getPublishedEvent', () => {
@@ -314,23 +369,61 @@ describe('EventsService', () => {
     });
 
     it('caches the detail and serves a repeat read from the cache', async () => {
-      const detail = { id: 'event-1', slug: 'some-slug-or-id' };
+      const detail = {
+        id: 'event-1',
+        slug: 'some-slug-or-id',
+        ticketTypes: [{ price: 50000 }, { price: 90000 }],
+      };
       prisma.event.findFirst.mockResolvedValue(detail);
 
       const first = await service.getPublishedEvent('some-slug-or-id');
-      expect(first).toEqual(detail);
+      expect(first).toEqual({
+        ...detail,
+        minPrice: 50000,
+        maxPrice: 90000,
+      });
       expect(cacheMock.set).toHaveBeenCalledWith(
         'event:detail:some-slug-or-id',
-        detail,
+        expect.objectContaining({ minPrice: 50000, maxPrice: 90000 }),
         60,
       );
 
-      cacheMock.get.mockResolvedValueOnce(detail);
+      cacheMock.get.mockResolvedValueOnce({
+        ...detail,
+        minPrice: 50000,
+        maxPrice: 90000,
+      });
       prisma.event.findFirst.mockClear();
 
       const second = await service.getPublishedEvent('some-slug-or-id');
-      expect(second).toEqual(detail);
+      expect(second.minPrice).toBe(50000);
       expect(prisma.event.findFirst).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteEvent', () => {
+    it('rejects deletion of non-draft events with 409 Conflict', async () => {
+      prisma.event.findFirst.mockResolvedValue({
+        id: 'event-1',
+        status: 'PUBLISHED',
+      });
+
+      await expect(service.deleteEvent('org-1', 'event-1')).rejects.toThrow(ConflictException);
+      expect(prisma.event.delete).not.toHaveBeenCalled();
+    });
+
+    it('successfully deletes a draft event and invokes safe media cleanup', async () => {
+      prisma.event.findFirst.mockResolvedValue({
+        id: 'event-draft-1',
+        status: 'DRAFT',
+      });
+      prisma.event.delete.mockResolvedValue({ id: 'event-draft-1' });
+
+      const result = await service.deleteEvent('org-1', 'event-draft-1');
+      expect(result).toEqual({ message: 'Event deleted' });
+      expect(prisma.event.delete).toHaveBeenCalledWith({ where: { id: 'event-draft-1' } });
+      expect(cacheMock.invalidatePrefix).toHaveBeenCalledWith('event:detail:');
+      expect(cacheMock.invalidatePrefix).toHaveBeenCalledWith('events:similar:');
     });
   });
 });

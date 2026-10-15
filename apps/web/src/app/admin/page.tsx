@@ -20,12 +20,16 @@ import {
   getAdminBooking,
   listAdminBookings,
   reconcileAdminRefund,
+  recoverAdminRefund,
+  listAdminAuditLogs,
   listAdminOrganizers,
   listAdminUsers,
   moderateAdminEvent,
+  reviewAdminEvent,
   setAdminOrganizerVerification,
   setAdminUserStatus,
   useAdminData,
+  type AdminAuditLogRow,
   type AdminEventRow,
   type AdminBookingDetail,
   type AdminBookingRow,
@@ -34,7 +38,7 @@ import {
 } from '@/lib/admin';
 import { formatPrice } from '@/lib/api';
 
-type Tab = 'overview' | 'users' | 'events' | 'organizers' | 'bookings';
+type Tab = 'overview' | 'users' | 'events' | 'organizers' | 'bookings' | 'audit-logs';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -42,6 +46,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'events', label: 'Events' },
   { id: 'organizers', label: 'Organizers' },
   { id: 'bookings', label: 'Bookings & payments' },
+  { id: 'audit-logs', label: 'Audit logs' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -252,6 +257,7 @@ export default function AdminPage() {
       {tab === 'events' && <EventsTab busy={busy} onAction={runAction} />}
       {tab === 'organizers' && <OrganizersTab busy={busy} onAction={runAction} />}
       {tab === 'bookings' && <BookingsTab />}
+      {tab === 'audit-logs' && <AuditLogsTab />}
     </div>
   );
 }
@@ -267,6 +273,7 @@ function BookingsTab() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [reconciling, setReconciling] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -340,6 +347,50 @@ function BookingsTab() {
     }
   };
 
+  const recover = async () => {
+    if (!detail) return;
+    if (
+      !window.confirm(
+        'Attempt safe recovery for this approved refund? The system will verify provider state and acquire an atomic claim before processing.',
+      )
+    ) {
+      return;
+    }
+    setRecovering(true);
+    setError(null);
+    setActionMessage(null);
+    try {
+      const result = await recoverAdminRefund(detail.id);
+      const freshDetail = await getAdminBooking(detail.id);
+      setDetail(freshDetail);
+      setBookings((current) =>
+        current.map((item) =>
+          item.id !== result.bookingId
+            ? item
+            : {
+                ...item,
+                status: result.status === 'REFUNDED' ? 'REFUNDED' : item.status,
+                payment: item.payment
+                  ? {
+                      ...item.payment,
+                      status: result.status === 'REFUNDED' ? 'REFUNDED' : item.payment.status,
+                    }
+                  : null,
+              },
+        ),
+      );
+      setActionMessage(
+        result.status === 'REFUNDED'
+          ? 'Refund was safely recovered and processed. Booking and tickets were updated.'
+          : result.message ?? `Recovery status: ${result.status}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Refund recovery failed');
+    } finally {
+      setRecovering(false);
+    }
+  };
+
   return (
     <div className="mt-8">
       <div className="flex flex-wrap items-center gap-2">
@@ -388,13 +439,42 @@ function BookingsTab() {
         <ul className="mt-2 space-y-1 text-sm">{detail.items.map((item, index) => <li key={`${item.ticketType.name}-${index}`}>{item.ticketType.name} · {item.quantity} × {formatPrice(item.unitPrice)} = {formatPrice(item.totalPrice)}</li>)}</ul>
         <p className="mt-3 text-xs text-muted-foreground">Ticket states: {Object.entries(detail.ticketCounts).map(([state, count]) => `${state}: ${count}`).join(' · ') || 'No tickets issued'}</p>
         {detail.cancellationReason && <p className="mt-3 text-sm text-muted-foreground">Cancellation reason: {detail.cancellationReason}</p>}
-        {detail.payment?.status === 'REFUND_PENDING' && <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md bg-muted p-3">
-          <p className="flex-1 text-xs text-muted-foreground">The refund outcome is unresolved. This action checks Razorpay and never issues another refund.</p>
-          <Button size="sm" variant="outline" disabled={reconciling} onClick={() => void reconcile()}>
-            {reconciling && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
-            {reconciling ? 'Checking provider…' : 'Reconcile refund'}
-          </Button>
-        </div>}
+        {detail.payment?.status === 'REFUND_PENDING' && (
+          <div className="mt-4 space-y-3">
+            {detail.payment?.refundRequestStatus === 'APPROVED' && !detail.payment?.refundId && (
+              <div className="flex flex-wrap items-center gap-3 rounded-md border border-primary/30 bg-primary/5 p-3">
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-primary">Approved refund awaiting recovery</p>
+                  <p className="text-xs text-muted-foreground">
+                    This refund was approved but failed before provider creation. Safe recovery checks provider status, acquires an atomic claim, and executes the refund without duplicating.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={recovering || reconciling}
+                  onClick={() => void recover()}
+                >
+                  {recovering && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                  {recovering ? 'Recovering refund…' : 'Recover refund'}
+                </Button>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-3 rounded-md bg-muted p-3">
+              <p className="flex-1 text-xs text-muted-foreground">
+                The refund outcome is unresolved. This action checks Razorpay and never issues another refund.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={reconciling || recovering}
+                onClick={() => void reconcile()}
+              >
+                {reconciling && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                {reconciling ? 'Checking provider…' : 'Reconcile refund'}
+              </Button>
+            </div>
+          </div>
+        )}
       </section>}
     </div>
   );
@@ -648,26 +728,71 @@ function EventsTab({
                 </td>
                 <td className="px-4 py-3 text-xs">{ev.organizerEmail}</td>
                 <td className="px-4 py-3">
-                  <StatusBadge status={ev.status} />
+                  <div className="flex flex-col gap-1">
+                    <StatusBadge status={ev.status} />
+                    {ev.moderation && (
+                      <span className={`w-fit rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                        ev.moderation.status === 'PENDING_APPROVAL' ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300' :
+                        ev.moderation.status === 'APPROVED' ? 'bg-green-500/20 text-green-700 dark:text-green-300' :
+                        ev.moderation.status === 'REJECTED' ? 'bg-destructive/20 text-destructive' :
+                        'bg-muted text-muted-foreground'
+                      }`}>
+                        {ev.moderation.status === 'PENDING_APPROVAL' ? 'PENDING REVIEW' : ev.moderation.status}
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3">{ev.bookingCount}</td>
                 <td className="px-4 py-3 text-right">
-                  {ev.status === 'PUBLISHED' && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => {
-                        const reason = window.prompt('Moderation reason (optional):') ?? undefined;
-                        void onAction(async () => {
-                          await moderateAdminEvent(ev.id, reason || undefined);
-                          await load();
-                        });
-                      }}
-                    >
-                      Cancel event
-                    </Button>
-                  )}
+                  <div className="flex justify-end gap-1.5">
+                    {ev.moderation?.status === 'PENDING_APPROVAL' && (
+                      <>
+                        <Button
+                          size="sm"
+                          disabled={busy}
+                          onClick={() =>
+                            void onAction(async () => {
+                              await reviewAdminEvent(ev.id, 'APPROVE');
+                              await load();
+                            })
+                          }
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => {
+                            const reason = window.prompt('Rejection reason (required):');
+                            if (!reason || !reason.trim()) return;
+                            void onAction(async () => {
+                              await reviewAdminEvent(ev.id, 'REJECT', reason.trim());
+                              await load();
+                            });
+                          }}
+                        >
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                    {ev.status === 'PUBLISHED' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => {
+                          const reason = window.prompt('Moderation reason (optional):') ?? undefined;
+                          void onAction(async () => {
+                            await moderateAdminEvent(ev.id, reason || undefined);
+                            await load();
+                          });
+                        }}
+                      >
+                        Cancel event
+                      </Button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -824,3 +949,182 @@ function OrganizersTab({
     </div>
   );
 }
+
+// ── Audit logs tab ──────────────────────────────────
+
+function AuditLogsTab() {
+  const [logs, setLogs] = useState<AdminAuditLogRow[] | null>(null);
+  const [pages, setPages] = useState(1);
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [entity, setEntity] = useState('');
+  const [action, setAction] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    try {
+      const body = await listAdminAuditLogs({
+        search: debouncedSearch || undefined,
+        entity: entity || undefined,
+        action: action || undefined,
+        page,
+        signal,
+      });
+      setLogs(body.logs);
+      setPages(body.pages);
+      setError(null);
+    } catch (err) {
+      if (!signal?.aborted) {
+        setError(err instanceof Error ? err.message : 'Failed to load audit logs');
+      }
+    } finally {
+      if (!signal?.aborted) {
+        setLoading(false);
+      }
+    }
+  }, [debouncedSearch, entity, action, page]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  return (
+    <div className="mt-8">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search email, action, or entity ID"
+            aria-label="Search audit logs"
+            className="h-9 w-72 rounded-md border border-input bg-background pl-8 pr-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+        <select
+          value={entity}
+          onChange={(e) => {
+            setEntity(e.target.value);
+            setPage(1);
+          }}
+          aria-label="Filter by entity"
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+        >
+          <option value="">All entities</option>
+          <option value="USER">User</option>
+          <option value="ORGANIZER">Organizer</option>
+          <option value="EVENT">Event</option>
+          <option value="PAYMENT">Payment</option>
+        </select>
+        <select
+          value={action}
+          onChange={(e) => {
+            setAction(e.target.value);
+            setPage(1);
+          }}
+          aria-label="Filter by action"
+          className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+        >
+          <option value="">All actions</option>
+          <option value="USER_ACTIVATED">USER_ACTIVATED</option>
+          <option value="USER_DEACTIVATED">USER_DEACTIVATED</option>
+          <option value="ORGANIZER_VERIFIED">ORGANIZER_VERIFIED</option>
+          <option value="ORGANIZER_UNVERIFIED">ORGANIZER_UNVERIFIED</option>
+          <option value="EVENT_CANCELLED_BY_ADMIN">EVENT_CANCELLED_BY_ADMIN</option>
+          <option value="REFUND_RECONCILIATION_REQUIRED">REFUND_RECONCILIATION_REQUIRED</option>
+        </select>
+        {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+      </div>
+
+      {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
+
+      <div className="mt-3 overflow-x-auto rounded-lg border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-4 py-2.5">Timestamp</th>
+              <th className="px-4 py-2.5">Acting Admin</th>
+              <th className="px-4 py-2.5">Action</th>
+              <th className="px-4 py-2.5">Entity</th>
+              <th className="px-4 py-2.5">Details</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {(logs ?? []).map((log) => (
+              <tr key={log.id}>
+                <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
+                  {new Date(log.createdAt).toLocaleString()}
+                </td>
+                <td className="px-4 py-3">
+                  {log.user ? (
+                    <div>
+                      <p className="font-medium">{log.user.firstName} {log.user.lastName}</p>
+                      <p className="text-xs text-muted-foreground">{log.user.email}</p>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">System / Unknown</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <span className="inline-block rounded bg-muted px-2 py-0.5 font-mono text-xs font-medium">
+                    {log.action}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <p className="text-xs font-semibold">{log.entity}</p>
+                  {log.entityId && (
+                    <p className="font-mono text-[11px] text-muted-foreground">{log.entityId}</p>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  {log.details ? (
+                    <pre className="max-w-xs overflow-x-auto rounded bg-muted/60 p-1.5 font-mono text-[11px] text-muted-foreground">
+                      {JSON.stringify(log.details, null, 1)}
+                    </pre>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!loading && (logs ?? []).length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  No audit logs found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {pages > 1 && (
+        <div className="mt-3 flex items-center justify-end gap-2 text-sm">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            Previous
+          </Button>
+          <span className="text-muted-foreground">
+            Page {page} of {pages}
+          </span>
+          <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+            Next
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+

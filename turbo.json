@@ -11,7 +11,11 @@
     "GROK_API_KEY",
     "PINECONE_API_KEY",
     "PINECONE_INDEX",
-    "BREVO_API_KEY"
+    "BREVO_API_KEY",
+    "CLOUDINARY_*",
+    "MEDIA_*",
+    "UPLOAD_DIR",
+    "ALLOW_LOCAL_UPLOADS"
   ],
   "tasks": {
     "build": {

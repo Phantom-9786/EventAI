@@ -1,6 +1,8 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EventsService } from '../events/events.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AdminService } from './admin.service';
 
 describe('AdminService', () => {
@@ -15,11 +17,21 @@ describe('AdminService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
-    booking: { groupBy: jest.Mock; findMany: jest.Mock; count: jest.Mock; findUnique: jest.Mock };
-    ticket: { groupBy: jest.Mock };
+    booking: {
+      groupBy: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
+      findUnique: jest.Mock;
+      updateMany: jest.Mock;
+    };
+    ticket: { groupBy: jest.Mock; updateMany: jest.Mock };
+    payment: { updateMany: jest.Mock };
     session: { deleteMany: jest.Mock };
+    auditLog: { create: jest.Mock; findMany: jest.Mock; count: jest.Mock };
     $transaction: jest.Mock;
   };
+  let eventsService: { invalidateEventCache: jest.Mock };
+  let notificationsService: { sendEventCancellationNotice: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -40,14 +52,28 @@ describe('AdminService', () => {
         findMany: jest.fn(),
         count: jest.fn(),
         findUnique: jest.fn(),
+        updateMany: jest.fn(),
       },
-      ticket: { groupBy: jest.fn().mockResolvedValue([{ status: 'USED', _count: { _all: 4 } }]) },
+      ticket: {
+        groupBy: jest.fn().mockResolvedValue([{ status: 'USED', _count: { _all: 4 } }]),
+        updateMany: jest.fn(),
+      },
+      payment: { updateMany: jest.fn() },
       session: { deleteMany: jest.fn().mockResolvedValue({ count: 3 }) },
+      auditLog: { create: jest.fn(), findMany: jest.fn(), count: jest.fn() },
       $transaction: jest.fn(),
     };
 
+    eventsService = { invalidateEventCache: jest.fn().mockResolvedValue(undefined) };
+    notificationsService = { sendEventCancellationNotice: jest.fn().mockResolvedValue(undefined) };
+
     const moduleRef = await Test.createTestingModule({
-      providers: [AdminService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        AdminService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: EventsService, useValue: eventsService },
+        { provide: NotificationsService, useValue: notificationsService },
+      ],
     }).compile();
 
     service = moduleRef.get(AdminService);
@@ -140,12 +166,13 @@ describe('AdminService', () => {
   });
 
   describe('setUserStatus', () => {
-    it('deactivates a user and revokes all sessions in one transaction', async () => {
+    it('deactivates a user, revokes sessions, and records audit log in one transaction', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 'u1', isActive: true });
       prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
         fn({
           user: { update: prisma.user.update },
           session: { deleteMany: prisma.session.deleteMany },
+          auditLog: { create: prisma.auditLog.create },
         }),
       );
       prisma.user.update.mockResolvedValue({ id: 'u1', email: 'a@b.c', role: 'CUSTOMER', isActive: false });
@@ -154,6 +181,15 @@ describe('AdminService', () => {
 
       expect(result.isActive).toBe(false);
       expect(prisma.session.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u1' } });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'admin-1',
+          action: 'USER_DEACTIVATED',
+          entity: 'USER',
+          entityId: 'u1',
+          details: { email: 'a@b.c', previousStatus: true, newStatus: false },
+        }),
+      });
     });
 
     it('does not revoke sessions when reactivating', async () => {
@@ -162,6 +198,7 @@ describe('AdminService', () => {
         fn({
           user: { update: prisma.user.update },
           session: { deleteMany: prisma.session.deleteMany },
+          auditLog: { create: prisma.auditLog.create },
         }),
       );
       prisma.user.update.mockResolvedValue({ id: 'u1', email: 'a@b.c', role: 'CUSTOMER', isActive: true });
@@ -169,6 +206,14 @@ describe('AdminService', () => {
       await service.setUserStatus('admin-1', 'u1', { isActive: true });
 
       expect(prisma.session.deleteMany).not.toHaveBeenCalled();
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'admin-1',
+          action: 'USER_ACTIVATED',
+          entity: 'USER',
+          entityId: 'u1',
+        }),
+      });
     });
 
     it('refuses an admin deactivating their own account', async () => {
@@ -210,23 +255,93 @@ describe('AdminService', () => {
   });
 
   describe('moderateEvent', () => {
-    it('cancels a published event', async () => {
+    it('cancels a published event and executes full cascade (refunds, bookings, tickets, cache, notifications)', async () => {
       prisma.event.findUnique.mockResolvedValue({ id: 'e1', title: 'T', status: 'PUBLISHED' });
       prisma.event.update.mockResolvedValue({ id: 'e1', title: 'T', status: 'CANCELLED' });
+      prisma.payment.updateMany.mockResolvedValue({ count: 2 });
+      prisma.booking.updateMany.mockResolvedValue({ count: 3 });
+      prisma.ticket.updateMany.mockResolvedValue({ count: 5 });
+      prisma.booking.findMany.mockResolvedValue([
+        {
+          id: 'b1',
+          user: { email: 'attendee@test.com', firstName: 'John', lastName: 'Doe' },
+          payment: { status: 'CAPTURED', refundRequestStatus: 'PENDING' },
+        },
+      ]);
+      prisma.auditLog.create.mockResolvedValue({ id: 'a1' });
 
-      const result = await service.moderateEvent('e1', { action: 'CANCEL', reason: 'Fraud' });
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          event: { update: prisma.event.update },
+          payment: { updateMany: prisma.payment.updateMany },
+          booking: { updateMany: prisma.booking.updateMany, findMany: prisma.booking.findMany },
+          ticket: { updateMany: prisma.ticket.updateMany },
+          auditLog: { create: prisma.auditLog.create },
+        }),
+      );
+
+      const result = await service.moderateEvent('admin-1', 'e1', { action: 'CANCEL', reason: 'Fraud' });
 
       expect(prisma.event.update).toHaveBeenCalledWith({
         where: { id: 'e1' },
         data: { status: 'CANCELLED' },
         select: { id: true, title: true, status: true },
       });
+      expect(prisma.payment.updateMany).toHaveBeenCalledWith({
+        where: {
+          status: 'CAPTURED',
+          OR: [
+            { refundRequestStatus: null },
+            { refundRequestStatus: 'REJECTED' },
+            { refundRequestStatus: 'FAILED' },
+          ],
+          booking: { eventId: 'e1', status: 'CONFIRMED' },
+        },
+        data: expect.objectContaining({
+          refundRequestStatus: 'PENDING',
+          refundRequestReason: 'Event cancelled by administrator: Fraud',
+        }),
+      });
+      expect(prisma.booking.updateMany).toHaveBeenCalledWith({
+        where: { eventId: 'e1', status: { in: ['PENDING', 'PAYMENT_PENDING', 'CONFIRMED'] } },
+        data: expect.objectContaining({
+          status: 'CANCELLED',
+          cancellationReason: 'Event cancelled by administrator: Fraud',
+        }),
+      });
+      expect(prisma.ticket.updateMany).toHaveBeenCalledWith({
+        where: { eventId: 'e1', status: 'VALID' },
+        data: { status: 'CANCELLED' },
+      });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'admin-1',
+          action: 'EVENT_CANCELLED_BY_ADMIN',
+          entity: 'EVENT',
+          entityId: 'e1',
+          details: {
+            title: 'T',
+            reason: 'Fraud',
+            bookingsCancelled: 3,
+            refundRequestsQueued: 2,
+          },
+        }),
+      });
+      expect(eventsService.invalidateEventCache).toHaveBeenCalled();
+      expect(notificationsService.sendEventCancellationNotice).toHaveBeenCalledWith({
+        to: 'attendee@test.com',
+        holderName: 'John Doe',
+        eventTitle: 'T',
+        bookingId: 'b1',
+        paymentStatus: 'CAPTURED',
+        refundRequestStatus: 'PENDING',
+      });
       expect(result.status).toBe('CANCELLED');
     });
 
     it('refuses to cancel a non-published event', async () => {
       prisma.event.findUnique.mockResolvedValue({ id: 'e1', title: 'T', status: 'DRAFT' });
-      await expect(service.moderateEvent('e1', { action: 'CANCEL' })).rejects.toThrow(
+      await expect(service.moderateEvent('admin-1', 'e1', { action: 'CANCEL' })).rejects.toThrow(
         ConflictException,
       );
       expect(prisma.event.update).not.toHaveBeenCalled();
@@ -234,7 +349,7 @@ describe('AdminService', () => {
 
     it('404s for an unknown event', async () => {
       prisma.event.findUnique.mockResolvedValue(null);
-      await expect(service.moderateEvent('ghost', { action: 'CANCEL' })).rejects.toThrow(
+      await expect(service.moderateEvent('admin-1', 'ghost', { action: 'CANCEL' })).rejects.toThrow(
         NotFoundException,
       );
     });
@@ -268,16 +383,31 @@ describe('AdminService', () => {
   });
 
   describe('setOrganizerVerification', () => {
-    it('toggles the verified badge', async () => {
-      prisma.organizer.findUnique.mockResolvedValue({ id: 'o1', isVerified: false });
+    it('toggles the verified badge and records audit log', async () => {
+      prisma.organizer.findUnique.mockResolvedValue({ id: 'o1', organizationName: 'Acme', isVerified: false });
       prisma.organizer.update.mockResolvedValue({ id: 'o1', organizationName: 'Acme', isVerified: true });
+      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
+        fn({
+          organizer: { update: prisma.organizer.update },
+          auditLog: { create: prisma.auditLog.create },
+        }),
+      );
 
-      const result = await service.setOrganizerVerification('o1', { isVerified: true });
+      const result = await service.setOrganizerVerification('admin-1', 'o1', { isVerified: true });
 
       expect(prisma.organizer.update).toHaveBeenCalledWith({
         where: { id: 'o1' },
         data: { isVerified: true },
         select: { id: true, organizationName: true, isVerified: true },
+      });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          userId: 'admin-1',
+          action: 'ORGANIZER_VERIFIED',
+          entity: 'ORGANIZER',
+          entityId: 'o1',
+          details: { organizationName: 'Acme', previousVerified: false, newVerified: true },
+        }),
       });
       expect(result.isVerified).toBe(true);
     });
@@ -285,8 +415,47 @@ describe('AdminService', () => {
     it('404s for an unknown organizer', async () => {
       prisma.organizer.findUnique.mockResolvedValue(null);
       await expect(
-        service.setOrganizerVerification('ghost', { isVerified: true }),
+        service.setOrganizerVerification('admin-1', 'ghost', { isVerified: true }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ── Audit logs ───────────────────────────────────
+
+  describe('listAuditLogs', () => {
+    it('queries audit logs with filters and pagination', async () => {
+      prisma.$transaction.mockResolvedValue([
+        [
+          {
+            id: 'log-1',
+            action: 'USER_DEACTIVATED',
+            entity: 'USER',
+            entityId: 'u1',
+            details: { email: 'test@example.com' },
+            createdAt: new Date('2026-10-14T08:00:00Z'),
+            user: { id: 'admin-1', email: 'admin@eventai.test', firstName: 'Admin', lastName: 'User' },
+          },
+        ],
+        1,
+      ]);
+
+      const result = await service.listAuditLogs({
+        page: 1,
+        limit: 10,
+        entity: 'USER',
+        action: 'USER_DEACTIVATED',
+      });
+
+      const findManyArgs = prisma.auditLog.findMany.mock.calls[0][0];
+      expect(findManyArgs.where).toEqual({
+        AND: [
+          { entity: 'USER' },
+          { action: 'USER_DEACTIVATED' },
+          {},
+        ],
+      });
+      expect(result.logs[0].id).toBe('log-1');
+      expect(result.total).toBe(1);
     });
   });
 });

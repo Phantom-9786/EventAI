@@ -2,9 +2,11 @@ import { z } from 'zod';
 
 const eventImageUrlSchema = z
   .string()
-  .url('Image must be a valid URL')
   .max(2048)
-  .refine((value) => /^https?:\/\//i.test(value), 'Image URL must use HTTP or HTTPS');
+  .refine(
+    (value) => /^https?:\/\//i.test(value) || /^\/uploads\/[\w.-]+$/i.test(value),
+    'Image URL must use HTTP, HTTPS, or a valid /uploads path',
+  );
 
 export const createEventSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters').max(200).trim(),

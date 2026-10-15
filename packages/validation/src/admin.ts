@@ -64,3 +64,12 @@ export const adminBookingListSchema = paginationSchema.extend({
   status: bookingStatusEnum.optional(),
 });
 export type AdminBookingListInput = z.infer<typeof adminBookingListSchema>;
+
+// ── Admin: audit logs ──────────────────────────────
+export const adminAuditLogListSchema = paginationSchema.extend({
+  search: z.string().trim().max(100).optional(),
+  entity: z.string().trim().max(50).optional(),
+  action: z.string().trim().max(50).optional(),
+});
+export type AdminAuditLogListInput = z.infer<typeof adminAuditLogListSchema>;
+

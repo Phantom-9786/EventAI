@@ -22,6 +22,7 @@ import { useAuth } from '@/components/auth/auth-provider';
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner';
 import { buttonVariants } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
+import { NotificationBell } from '@/components/notifications/notification-bell';
 import { cn } from '@/lib/utils';
 
 const attendeeLinks = [
@@ -32,11 +33,11 @@ const attendeeLinks = [
 ];
 
 const organizerLinks = [
-  { href: '/dashboard', label: 'Overview', icon: LayoutDashboard },
-  { href: '/organizer/events', label: 'Manage Events', icon: CalendarDays },
-  { href: '/organizer/events/new', label: 'Create Event', icon: CalendarDays },
-  { href: '/organizer/refunds', label: 'Refund Requests', icon: RotateCcw },
-  { href: '/dashboard/scan', label: 'Door Scanner', icon: QrCode },
+  { href: '/dashboard', label: 'Overview', shortLabel: 'Overview', icon: LayoutDashboard },
+  { href: '/organizer/events', label: 'Manage Events', shortLabel: 'Events', icon: CalendarDays },
+  { href: '/organizer/events/new', label: 'Create Event', shortLabel: 'Create', icon: CalendarDays },
+  { href: '/organizer/refunds', label: 'Refund Requests', shortLabel: 'Refunds', icon: RotateCcw },
+  { href: '/dashboard/scan', label: 'Door Scanner', shortLabel: 'Scanner', icon: QrCode },
 ];
 
 export function Header() {
@@ -51,7 +52,7 @@ export function Header() {
   // Close the mobile menu when resizing up to desktop
   useEffect(() => {
     const onResize = () => {
-      if (window.innerWidth >= 768) setMobileOpen(false);
+      if (window.innerWidth >= 1024) setMobileOpen(false);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
@@ -59,9 +60,9 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/70">
-      <div className="container flex h-16 items-center justify-between gap-4">
+      <div className="container flex h-16 items-center justify-between gap-2 lg:gap-4">
         {/* Brand / Logo */}
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2.5">
           <Link
             href={isOrganizerSection ? '/dashboard' : '/'}
             className="flex items-center gap-2 text-lg font-bold tracking-tight"
@@ -70,49 +71,56 @@ export function Header() {
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
               <CalendarDays className="h-5 w-5" />
             </span>
-            <span>EventAI</span>
+            <span className="hidden sm:inline">EventAI</span>
           </Link>
           {isOrganizerSection && (
-            <span className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-primary">
-              Organizer Hub
+            <span className="hidden sm:inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-primary">
+              Organizer
             </span>
           )}
         </div>
 
         {/* Desktop navigation */}
         <nav
-          className="hidden items-center gap-5 md:flex"
+          className="hidden items-center gap-1 xl:gap-2 lg:flex shrink-0"
           aria-label={isOrganizerSection ? 'Organizer navigation' : 'Attendee navigation'}
         >
           {isOrganizerSection ? (
             organizerLinks.map((link) => {
               const active = pathname === link.href;
+              const Icon = link.icon;
               return (
                 <Link
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    'text-sm font-medium transition-colors hover:text-foreground',
-                    active ? 'text-primary' : 'text-muted-foreground',
+                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors',
+                    active
+                      ? 'bg-primary/10 text-primary font-bold shadow-sm'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                   )}
                 >
-                  {link.label}
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="hidden xl:inline">{link.label}</span>
+                  <span className="inline xl:hidden">{link.shortLabel}</span>
                 </Link>
               );
             })
           ) : (
             attendeeLinks.map((link) => {
               const active = pathname === link.href;
+              const Icon = link.icon;
               return (
                 <Link
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    'text-sm font-medium transition-colors hover:text-foreground',
-                    active ? 'text-primary' : 'text-muted-foreground',
+                    'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium whitespace-nowrap transition-colors hover:text-foreground',
+                    active ? 'text-primary font-semibold' : 'text-muted-foreground',
                   )}
                 >
-                  {link.label}
+                  <Icon className="h-4 w-4 shrink-0 text-muted-foreground/70" />
+                  <span>{link.label}</span>
                 </Link>
               );
             })
@@ -120,9 +128,9 @@ export function Header() {
         </nav>
 
         {/* Desktop actions & role switching */}
-        <div className="hidden items-center gap-2 md:flex">
+        <div className="hidden items-center gap-1.5 xl:gap-2.5 lg:flex shrink-0">
           {loading ? (
-            <span className="h-9 w-24 animate-pulse rounded-md bg-muted" aria-hidden />
+            <span className="h-8 w-20 animate-pulse rounded-md bg-muted" aria-hidden />
           ) : user ? (
             <>
               {isOrganizerSection ? (
@@ -131,11 +139,11 @@ export function Header() {
                   href="/events"
                   className={cn(
                     buttonVariants({ variant: 'outline', size: 'sm' }),
-                    'gap-1.5 text-xs font-medium',
+                    'gap-1.5 text-xs font-medium whitespace-nowrap shrink-0 h-8 px-2.5',
                   )}
                 >
                   <ArrowLeftRight className="h-3.5 w-3.5 text-muted-foreground" />
-                  Attendee Mode
+                  <span>Attendee Mode</span>
                 </Link>
               ) : (
                 // Inside Attendee section: provide tickets and role switch if eligible
@@ -144,11 +152,11 @@ export function Header() {
                     href="/tickets"
                     className={cn(
                       buttonVariants({ variant: 'ghost', size: 'sm' }),
-                      'gap-1.5 text-xs font-medium',
+                      'gap-1.5 text-xs font-medium whitespace-nowrap h-8 px-2.5',
                     )}
                   >
-                    <Ticket className="h-4 w-4" />
-                    My Tickets
+                    <Ticket className="h-3.5 w-3.5" />
+                    <span>My Tickets</span>
                   </Link>
 
                   {user.role === 'ORGANIZER' ? (
@@ -156,16 +164,16 @@ export function Header() {
                       href="/dashboard"
                       className={cn(
                         buttonVariants({ variant: 'outline', size: 'sm' }),
-                        'gap-1.5 text-xs font-medium border-primary/30 bg-primary/5 text-primary hover:bg-primary/10',
+                        'gap-1.5 text-xs font-medium border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 whitespace-nowrap shrink-0 h-8 px-2.5',
                       )}
                     >
                       <Briefcase className="h-3.5 w-3.5" />
-                      Organizer Hub
+                      <span>Organizer Hub</span>
                     </Link>
                   ) : (
                     <Link
                       href="/dashboard"
-                      className="px-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      className="px-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
                     >
                       Become Organizer
                     </Link>
@@ -174,12 +182,12 @@ export function Header() {
               )}
 
               {user.role === 'ADMIN' && (
-                <Link href="/admin" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+                <Link href="/admin" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'h-8 px-2 text-xs')}>
                   Admin
                 </Link>
               )}
 
-              <span className="max-w-[140px] truncate text-xs font-medium text-muted-foreground">
+              <span className="hidden 2xl:inline max-w-[120px] truncate text-xs font-medium text-muted-foreground">
                 Hi, {user.firstName ?? user.email}
               </span>
 
@@ -187,18 +195,20 @@ export function Header() {
                 href="/account"
                 className={cn(
                   buttonVariants({ variant: 'ghost', size: 'sm' }),
-                  'gap-1.5 text-xs font-medium',
+                  'gap-1.5 text-xs font-medium h-8 px-2',
                 )}
-                title="Account Settings"
+                aria-label="My Account"
+                title="My Account"
               >
                 <User className="h-4 w-4" />
-                <span>My Account</span>
+                <span className="hidden xl:inline">Account</span>
               </Link>
 
               <button
                 type="button"
-                className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'text-xs text-muted-foreground hover:text-destructive')}
+                className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'h-8 w-8 p-0 text-muted-foreground hover:text-destructive')}
                 aria-label="Sign out"
+                title="Sign out"
                 onClick={async () => {
                   await signOut();
                   router.push('/');
@@ -210,28 +220,33 @@ export function Header() {
             </>
           ) : (
             <>
-              <Link href="/signin" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+              <Link href="/signin" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'h-8 text-xs')}>
                 Sign In
               </Link>
-              <Link href="/signup" className={buttonVariants({ size: 'sm' })}>
+              <Link href="/signup" className={cn(buttonVariants({ size: 'sm' }), 'h-8 text-xs font-semibold')}>
                 Get Started
               </Link>
             </>
           )}
+          {user && <NotificationBell />}
           <ThemeToggle />
         </div>
 
-        {/* Mobile menu toggle */}
-        <button
-          type="button"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-accent md:hidden"
-          aria-expanded={mobileOpen}
-          aria-controls="mobile-nav"
-          aria-label="Toggle navigation menu"
-          onClick={() => setMobileOpen((open) => !open)}
-        >
-          {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </button>
+        {/* Mobile / Tablet controls */}
+        <div className="flex items-center gap-1.5 lg:hidden">
+          {user && <NotificationBell />}
+          <ThemeToggle />
+          <button
+            type="button"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent border border-input/40"
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-nav"
+            aria-label="Toggle navigation menu"
+            onClick={() => setMobileOpen((open) => !open)}
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
       </div>
 
       <EmailVerificationBanner />
@@ -240,7 +255,7 @@ export function Header() {
       <div
         id="mobile-nav"
         className={cn(
-          'border-t bg-background/95 backdrop-blur md:hidden',
+          'border-t bg-background/95 backdrop-blur lg:hidden',
           mobileOpen ? 'block' : 'hidden',
         )}
       >

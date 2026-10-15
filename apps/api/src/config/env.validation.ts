@@ -35,6 +35,20 @@ export interface EnvConfig {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   GOOGLE_CALLBACK_URL?: string;
+  // Cloudinary media storage & upload controls
+  CLOUDINARY_CLOUD_NAME?: string;
+  CLOUDINARY_API_KEY?: string;
+  CLOUDINARY_API_SECRET?: string;
+  CLOUDINARY_FOLDER?: string;
+  CLOUDINARY_PROVIDERS?: string;
+  CLOUDINARY_ROUTING_STRATEGY?: string;
+  CLOUDINARY_PRIMARY_PROVIDER?: string;
+  CLOUDINARY_MAX_USAGE_PERCENT?: number;
+  MEDIA_UPLOADS_ENABLED?: string;
+  MEDIA_MAX_FILE_SIZE_BYTES?: number;
+  ALLOW_LOCAL_UPLOADS?: string;
+  UPLOAD_DIR?: string;
+  TRUST_PROXY?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvConfig {
@@ -105,6 +119,75 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
     }
   }
 
+  const cloudinaryKeys = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'] as const;
+  const configuredCloudinary = cloudinaryKeys.filter(
+    (key) => config[key] !== undefined && String(config[key]).trim() !== '',
+  );
+
+  // Multi-provider configuration is optional and takes precedence when present.
+  const providerIds = String(config.CLOUDINARY_PROVIDERS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+  if (providerIds.length > 0) {
+    for (const id of providerIds) {
+      const upper = id.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+      const providerKeys = [
+        `CLOUDINARY_${upper}_CLOUD_NAME`,
+        `CLOUDINARY_${upper}_API_KEY`,
+        `CLOUDINARY_${upper}_API_SECRET`,
+      ] as const;
+      const providerConfigured = providerKeys.filter(
+        (key) => config[key] !== undefined && String(config[key]).trim() !== '',
+      );
+      if (providerConfigured.length > 0 && providerConfigured.length < 3) {
+        errors.push(`Cloudinary provider "${id}" must have all three credentials set together`);
+      }
+    }
+  } else if (configuredCloudinary.length > 0 && configuredCloudinary.length < 3) {
+    errors.push('CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET must all be set together');
+  }
+
+  if (config.CLOUDINARY_ROUTING_STRATEGY !== undefined) {
+    const validStrategies = ['least-used', 'round-robin', 'primary-only', 'failover'];
+    if (!validStrategies.includes(String(config.CLOUDINARY_ROUTING_STRATEGY).toLowerCase().trim())) {
+      errors.push('CLOUDINARY_ROUTING_STRATEGY must be one of: least-used, round-robin, primary-only, failover');
+    }
+  }
+
+  if (config.MEDIA_UPLOADS_ENABLED !== undefined) {
+    const val = String(config.MEDIA_UPLOADS_ENABLED).toLowerCase().trim();
+    if (val !== 'true' && val !== 'false' && val !== '1' && val !== '0') {
+      errors.push('MEDIA_UPLOADS_ENABLED must be true or false');
+    }
+  }
+
+  if (config.MEDIA_MAX_FILE_SIZE_BYTES !== undefined) {
+    const bytes = Number(config.MEDIA_MAX_FILE_SIZE_BYTES);
+    if (!Number.isInteger(bytes) || bytes < 1024 || bytes > 50 * 1024 * 1024) {
+      errors.push('MEDIA_MAX_FILE_SIZE_BYTES must be an integer between 1024 and 52428800');
+    } else {
+      config.MEDIA_MAX_FILE_SIZE_BYTES = bytes;
+    }
+  }
+
+  if (config.CLOUDINARY_MAX_USAGE_PERCENT !== undefined) {
+    const pct = Number(config.CLOUDINARY_MAX_USAGE_PERCENT);
+    if (!Number.isFinite(pct) || pct < 1 || pct > 100) {
+      errors.push('CLOUDINARY_MAX_USAGE_PERCENT must be a number between 1 and 100');
+    } else {
+      config.CLOUDINARY_MAX_USAGE_PERCENT = pct;
+    }
+  }
+
+  if (config.CLOUDINARY_FOLDER !== undefined) {
+    const folder = String(config.CLOUDINARY_FOLDER).trim();
+    if (!/^[a-zA-Z0-9_\-\/]+$/.test(folder)) {
+      errors.push('CLOUDINARY_FOLDER must only contain alphanumeric characters, underscores, hyphens, and slashes');
+    }
+  }
+
   if (config.NODE_ENV === 'production') {
     for (const key of [
       'FRONTEND_URL',
@@ -167,6 +250,15 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
       const value = String(config[key] ?? '');
       if (/x{6,}|placeholder|change[-_ ]?me|your[-_ ]?(key|secret)|example/i.test(value)) {
         errors.push(`${key} must not contain a placeholder value in production`);
+      }
+    }
+
+    if (configuredCloudinary.length === 3) {
+      for (const key of cloudinaryKeys) {
+        const value = String(config[key] ?? '');
+        if (/x{6,}|placeholder|change[-_ ]?me|your[-_ ]?(key|secret|cloud)|example/i.test(value)) {
+          errors.push(`${key} must not contain a placeholder value in production`);
+        }
       }
     }
 

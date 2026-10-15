@@ -50,6 +50,15 @@ interface RazorpayRefundRecord {
   notes?: Record<string, string | number>;
 }
 
+interface RazorpayPaymentRecord {
+  id: string;
+  status: string;
+  amount: number;
+  currency: string;
+  amount_refunded?: number;
+  refund_status?: string | null;
+}
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -94,10 +103,18 @@ export class PaymentsService {
       })) as RazorpayOrder;
     } catch (err: any) {
       const statusCode = Number(err?.statusCode);
+      const errDescription = err?.error?.description || err?.message;
       this.logger.error(
-        `Razorpay order creation failed${Number.isInteger(statusCode) ? ` (HTTP ${statusCode})` : ''}`,
+        `Razorpay order creation failed${Number.isInteger(statusCode) ? ` (HTTP ${statusCode})` : ''}: ${errDescription ?? 'unknown error'}`,
       );
-      throw new BadRequestException('Payment gateway error: unable to create payment order');
+      if (statusCode === 401 || statusCode === 403) {
+        throw new ServiceUnavailableException(
+          'Payment gateway authentication failed: invalid or expired Razorpay API keys. Please verify your Razorpay configuration in .env.',
+        );
+      }
+      throw new BadRequestException(
+        `Payment gateway error: ${errDescription || 'unable to create payment order'}`,
+      );
     }
 
     const payment = existing
@@ -157,6 +174,9 @@ export class PaymentsService {
     }
 
     const booking = payment.booking;
+    if (payment.amount !== booking.totalAmount) {
+      throw new ConflictException('Payment amount does not match booking amount');
+    }
     const expected = createHmac('sha256', this.requireSecret())
       .update(`${input.razorpayOrderId}|${input.razorpayPaymentId}`)
       .digest('hex');
@@ -307,7 +327,14 @@ export class PaymentsService {
       include: {
         booking: {
           include: {
-            event: { select: { title: true, organizerId: true } },
+            event: {
+              select: {
+                id: true,
+                title: true,
+                organizerId: true,
+                organizer: { select: { userId: true } },
+              },
+            },
           },
         },
       },
@@ -372,6 +399,16 @@ export class PaymentsService {
       throw new ConflictException('A refund request is already open or this payment is no longer eligible');
     }
 
+    if (booking.event.organizer?.userId) {
+      void this.notifications.createInAppNotification({
+        userId: booking.event.organizer.userId,
+        type: 'SYSTEM',
+        title: 'New refund request',
+        message: `An attendee requested a refund for "${booking.event.title}".`,
+        data: { bookingId, eventId: booking.event.id, link: '/organizer/refunds' },
+      });
+    }
+
     return {
       refundRequest: {
         bookingId,
@@ -382,52 +419,130 @@ export class PaymentsService {
     };
   }
 
-  async listOrganizerRefundRequests(organizerId: string, statusFilter?: string) {
+  async listOrganizerRefundRequests(
+    organizerId: string,
+    statusFilter?: string,
+    page = 1,
+    limit = 20,
+  ) {
     const where: Prisma.PaymentWhereInput = {
       booking: { event: { organizerId } },
     };
 
-    if (statusFilter && statusFilter.toUpperCase() !== 'ALL') {
-      const upper = statusFilter.toUpperCase();
-      if (upper === 'PENDING' || upper === 'APPROVED' || upper === 'REJECTED' || upper === 'FAILED') {
-        where.refundRequestStatus = upper as any;
-      }
-    } else if (!statusFilter) {
+    const upper = statusFilter?.toUpperCase();
+    if (upper === 'PENDING') {
       where.refundRequestStatus = 'PENDING';
+    } else if (upper === 'APPROVED') {
+      where.refundRequestStatus = 'APPROVED';
+      where.status = 'REFUND_PENDING';
+    } else if (upper === 'REFUNDED') {
+      where.status = 'REFUNDED';
+    } else if (upper === 'REJECTED') {
+      where.refundRequestStatus = 'REJECTED';
+    } else if (upper === 'FAILED') {
+      where.refundRequestStatus = 'FAILED';
+    } else if (upper === 'ALL' || !statusFilter) {
+      where.OR = [
+        { refundRequestStatus: { not: null } },
+        { status: { in: ['REFUND_PENDING', 'REFUNDED'] } },
+      ];
     } else {
       where.refundRequestStatus = { not: null };
     }
 
-    return this.prisma.payment.findMany({
-      where,
-      orderBy: { refundRequestedAt: 'desc' },
-      select: {
-        id: true,
-        bookingId: true,
-        amount: true,
-        currency: true,
-        status: true,
-        refundRequestStatus: true,
-        refundRequestReason: true,
-        refundRequestedAt: true,
-        refundReviewedAt: true,
-        refundReviewedBy: true,
-        refundId: true,
-        booking: {
-          select: {
-            id: true,
-            totalAmount: true,
-            status: true,
-            createdAt: true,
-            user: { select: { id: true, firstName: true, lastName: true, email: true } },
-            event: { select: { id: true, title: true, slug: true, startDate: true, status: true } },
-            items: {
-              select: { quantity: true, ticketType: { select: { name: true } } },
+    const [pendingCount, approvedCount, refundedCount, rejectedCount, failedCount, allCount] =
+      await Promise.all([
+        this.prisma.payment.count({
+          where: { booking: { event: { organizerId } }, refundRequestStatus: 'PENDING' },
+        }),
+        this.prisma.payment.count({
+          where: {
+            booking: { event: { organizerId } },
+            refundRequestStatus: 'APPROVED',
+            status: 'REFUND_PENDING',
+          },
+        }),
+        this.prisma.payment.count({
+          where: { booking: { event: { organizerId } }, status: 'REFUNDED' },
+        }),
+        this.prisma.payment.count({
+          where: { booking: { event: { organizerId } }, refundRequestStatus: 'REJECTED' },
+        }),
+        this.prisma.payment.count({
+          where: { booking: { event: { organizerId } }, refundRequestStatus: 'FAILED' },
+        }),
+        this.prisma.payment.count({
+          where: {
+            booking: { event: { organizerId } },
+            OR: [
+              { refundRequestStatus: { not: null } },
+              { status: { in: ['REFUND_PENDING', 'REFUNDED'] } },
+            ],
+          },
+        }),
+      ]);
+
+    const [refundRequests, total] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        orderBy: { refundRequestedAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        select: {
+          id: true,
+          bookingId: true,
+          amount: true,
+          currency: true,
+          status: true,
+          refundRequestStatus: true,
+          refundRequestReason: true,
+          refundRequestedAt: true,
+          refundReviewedAt: true,
+          refundReviewedBy: true,
+          refundId: true,
+          updatedAt: true,
+          booking: {
+            select: {
+              id: true,
+              totalAmount: true,
+              status: true,
+              createdAt: true,
+              user: { select: { id: true, firstName: true, lastName: true, email: true } },
+              event: { select: { id: true, title: true, slug: true, startDate: true, status: true } },
+              items: {
+                select: { quantity: true, ticketType: { select: { name: true } } },
+              },
             },
           },
         },
+      }),
+      this.prisma.payment.count({ where }),
+    ]);
+
+    return {
+      refundRequests,
+      counts: {
+        PENDING: pendingCount,
+        APPROVED: approvedCount,
+        REFUNDED: refundedCount,
+        REJECTED: rejectedCount,
+        FAILED: failedCount,
+        ALL: allCount,
       },
-    });
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async reconcileOrganizerRefund(organizerId: string, actorUserId: string, bookingId: string) {
+    await this.loadOrganizerRefundPayment(organizerId, bookingId);
+    return this.reconcileRefund(actorUserId, bookingId);
+  }
+
+  async recoverOrganizerRefund(organizerId: string, actorUserId: string, bookingId: string) {
+    await this.loadOrganizerRefundPayment(organizerId, bookingId);
+    return this.recoverApprovedRefund(actorUserId, bookingId);
   }
 
   async approveRefundRequest(organizerId: string, actorUserId: string, bookingId: string) {
@@ -481,6 +596,16 @@ export class PaymentsService {
       throw new ConflictException('This refund request was already reviewed or processed');
     }
 
+    if (payment.booking.userId) {
+      void this.notifications.createInAppNotification({
+        userId: payment.booking.userId,
+        type: 'REFUND_PROCESSED',
+        title: 'Refund approved',
+        message: `Your refund for "${payment.booking.event.title}" was approved and settlement is being processed.`,
+        data: { bookingId, link: '/tickets' },
+      });
+    }
+
     return this.initiateApprovedRefund(
       { ...payment, status: 'REFUND_PENDING', refundRequestStatus: 'APPROVED', refundAttemptKey },
       actorUserId,
@@ -524,6 +649,17 @@ export class PaymentsService {
     if (!rejected) {
       throw new ConflictException('This refund request was already reviewed or processed');
     }
+
+    if (payment.booking.userId) {
+      void this.notifications.createInAppNotification({
+        userId: payment.booking.userId,
+        type: 'SYSTEM',
+        title: 'Refund request declined',
+        message: `Your refund request for "${payment.booking.event.title}" was declined by the organizer.`,
+        data: { bookingId, link: '/tickets' },
+      });
+    }
+
     return { bookingId, status: 'REJECTED' as const, reviewedAt };
   }
 
@@ -537,8 +673,8 @@ export class PaymentsService {
         booking: {
           include: {
             items: true,
-            user: { select: { email: true, firstName: true, lastName: true } },
-            event: { select: { title: true, organizerId: true, status: true } },
+            user: { select: { id: true, email: true, firstName: true, lastName: true } },
+            event: { select: { id: true, title: true, organizerId: true, status: true } },
           },
         },
       },
@@ -598,7 +734,7 @@ export class PaymentsService {
     if (state === 'failed') {
       throw new BadRequestException('The payment provider could not process the refund');
     }
-    if (state === 'unknown') {
+    if (state === 'unknown' || state === 'pending') {
       return {
         booking: await this.prisma.booking.findUniqueOrThrow({
           where: { id: booking.id },
@@ -652,21 +788,87 @@ export class PaymentsService {
     try {
       const client = this.ensureClient();
       if (payment.refundId) {
-        refund = await client.payments.fetchRefund(
+        refund = (await client.payments.fetchRefund(
           payment.razorpayPaymentId,
           payment.refundId,
-        ) as RazorpayRefundRecord;
+        )) as RazorpayRefundRecord;
       } else {
-        const result = await client.payments.fetchMultipleRefund(payment.razorpayPaymentId, { count: 100 });
+        const providerPayment = (await client.payments.fetch(payment.razorpayPaymentId)) as RazorpayPaymentRecord;
+        const result = (await client.payments.fetchMultipleRefund(payment.razorpayPaymentId, { count: 100 })) as {
+          count: number;
+          items: RazorpayRefundRecord[];
+        };
+        const rawKey = payment.refundAttemptKey ?? '';
+        const claimMeta = parseClaimKey(rawKey);
+
         const matches = result.items.filter((candidate) =>
           candidate.payment_id === payment.razorpayPaymentId &&
           candidate.amount === payment.amount &&
-          (payment.refundAttemptKey
-            ? String(candidate.notes?.eventaiRefundAttempt ?? '') === payment.refundAttemptKey
+          (rawKey
+            ? String(candidate.notes?.eventaiRefundAttempt ?? '') === claimMeta.baseKey
             : String(candidate.notes?.bookingId ?? '') === payment.bookingId),
         );
-        if (matches.length === 1) refund = matches[0] as RazorpayRefundRecord;
+
+        if (matches.length === 1) {
+          refund = matches[0] as RazorpayRefundRecord;
+        } else if (result.items.length === 0 && (providerPayment.amount_refunded ?? 0) === 0) {
+          // Provider authoritatively verifies zero refunds exist.
+          if (claimMeta.isClaimed && claimMeta.claimedAt) {
+            const elapsed = Date.now() - claimMeta.claimedAt;
+            if (elapsed >= STALE_CLAIM_TIMEOUT_MS) {
+              // Stale claim confirmed dead and zero refunds exist at provider: safely release claim.
+              await this.prisma.payment.updateMany({
+                where: {
+                  id: payment.id,
+                  status: 'REFUND_PENDING',
+                  refundAttemptKey: rawKey,
+                },
+                data: {
+                  refundAttemptKey: claimMeta.baseKey || null,
+                },
+              });
+              await this.prisma.auditLog.create({
+                data: {
+                  userId: adminUserId,
+                  action: 'STALE_RECOVERY_CLAIM_RELEASED',
+                  entity: 'PAYMENT',
+                  entityId: payment.id,
+                  details: {
+                    bookingId: payment.bookingId,
+                    staleClaimKey: rawKey,
+                    baseAttemptKey: claimMeta.baseKey,
+                    elapsedMs: elapsed,
+                  },
+                },
+              });
+              return {
+                bookingId,
+                status: 'REFUND_PENDING',
+                outcome: 'stale_claim_released',
+                message:
+                  'Provider reconciliation verified no refund exists at provider. Stale recovery claim has been safely cleared; recovery can now be retried.',
+              };
+            } else {
+              return {
+                bookingId,
+                status: 'REFUND_PENDING',
+                outcome: 'recovery_in_progress',
+                message:
+                  'A recovery operation is currently in progress. Please allow it to finish or wait for the timeout before reconciling.',
+              };
+            }
+          }
+
+          return {
+            bookingId,
+            status: 'REFUND_PENDING',
+            outcome: 'no_provider_refund',
+            message:
+              'Provider reconciliation verified no refund exists at provider. Payment remains pending and eligible for recovery.',
+          };
+        }
       }
+
       if (
         !refund ||
         refund.payment_id !== payment.razorpayPaymentId ||
@@ -676,21 +878,395 @@ export class PaymentsService {
           bookingId: payment.bookingId,
           outcome: 'unknown',
         });
-        return { bookingId, status: 'REFUND_PENDING', outcome: 'unknown' };
+        return {
+          bookingId,
+          status: 'REFUND_PENDING',
+          outcome: 'unknown',
+          message:
+            'Provider settlement is still in progress or contains uncoordinated refunds that require manual inspection.',
+        };
       }
-    } catch {
+    } catch (err: any) {
+      const isMissingConfig =
+        !process.env.RAZORPAY_KEY_ID?.trim() || !process.env.RAZORPAY_KEY_SECRET?.trim();
+      const statusCode = Number(err?.statusCode);
+      const isAuthError = statusCode === 401 || statusCode === 403;
+      const outcome = isMissingConfig
+        ? 'missing_configuration'
+        : isAuthError
+        ? 'provider_error'
+        : 'provider_unavailable';
+      const message = isMissingConfig
+        ? 'Payment provider configuration missing: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are not set in .env.'
+        : isAuthError
+        ? 'Payment provider authentication failed (HTTP 401/403): invalid or expired Razorpay API keys in .env.'
+        : err?.message || 'Payment provider is temporarily unavailable. The refund remains safely pending settlement.';
+
       await this.auditRefundOutcome(payment.id, adminUserId, 'REFUND_RECONCILIATION_REQUIRED', {
         bookingId: payment.bookingId,
-        outcome: 'provider_unavailable',
+        outcome,
+        error: message,
       });
-      return { bookingId, status: 'REFUND_PENDING', outcome: 'provider_unavailable' };
+      return {
+        bookingId,
+        status: 'REFUND_PENDING',
+        outcome,
+        message,
+      };
     }
     const state = await this.applyRefundStatus(payment, refund, adminUserId);
+    const message =
+      state === 'processed'
+        ? 'Provider reconciliation complete: refund confirmed as processed.'
+        : state === 'failed'
+        ? 'Provider reconciliation complete: refund settlement failed.'
+        : state === 'pending'
+        ? 'Provider settlement is in progress at payment provider. Please check back shortly.'
+        : 'Provider settlement outcome is pending confirmation.';
+
     return {
       bookingId,
       refundId: refund.id,
       status: state === 'processed' ? 'REFUNDED' : state === 'failed' ? 'CAPTURED' : 'REFUND_PENDING',
-      outcome: state,
+      outcome: state === 'pending' ? 'provider_pending' : state,
+      message,
+    };
+  }
+
+  /**
+   * Guarded recovery for an approved REFUND_PENDING payment whose initial request
+   * definitively failed before refund creation at the provider.
+   *
+   * Hardened safety design:
+   * 1. Validates local record is in approved REFUND_PENDING state with null refundId.
+   * 2. Inspects audit history: definitive 4xx pre-creation rejections (400/401/403/404)
+   *    can proceed; ambiguous errors (timeouts, 5xx) require a 10-minute cooldown window.
+   * 3. Claims the recovery operation via an atomic, conditional database update BEFORE
+   *    any provider calls that could lead to refund creation.
+   *    - Mutates the attempt key with an active claim token and timestamp.
+   *    - Rejects concurrent requests unconditionally (count === 0).
+   *    - Fails closed on any held claim; crashed claims must be reconciled with provider.
+   * 4. Post-claim provider checks:
+   *    - Validates client configuration, payment identity, captured status, and amount.
+   *    - Checks Razorpay refund list: correlates existing refunds without issuing duplicates.
+   *    - If pre-checks fail or cannot proceed, cleanly releases the claim back to the base attempt key.
+   * 5. Refund initiation:
+   *    - Passes durable base attempt key in notes (notes are correlation metadata, not gateway idempotency).
+   *    - On ambiguous transport/gateway exceptions: records REFUND_RECONCILIATION_REQUIRED,
+   *      restores base attempt key, and throws ServiceUnavailableException to prevent unsafe retry.
+   * 6. Finalizes refund via applyRefundStatus (restores inventory, cancels tickets, notifies attendee).
+   */
+  async recoverApprovedRefund(actorUserId: string, bookingId: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { bookingId },
+      include: {
+        booking: {
+          include: {
+            items: true,
+            user: { select: { id: true, email: true, firstName: true, lastName: true } },
+            event: { select: { id: true, title: true, organizerId: true, status: true } },
+          },
+        },
+      },
+    });
+    if (!payment) throw new NotFoundException('Payment not found');
+
+    if (payment.status !== 'REFUND_PENDING' || payment.refundRequestStatus !== 'APPROVED') {
+      throw new ConflictException('Payment is not in an approved pending refund state eligible for recovery');
+    }
+    if (payment.refundId !== null) {
+      throw new ConflictException('Payment already has a provider refund ID; use reconciliation instead of recovery');
+    }
+    if (!payment.razorpayPaymentId) {
+      throw new ConflictException('No captured payment exists for this booking');
+    }
+
+    // 1. Audit trail inspection for definitive pre-creation failure vs ambiguous error
+    const auditLogs = await this.prisma.auditLog.findMany({
+      where: { entity: 'PAYMENT', entityId: payment.id },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+
+    const reconciliationLogs = auditLogs.filter(
+      (log) => log.action === 'REFUND_RECONCILIATION_REQUIRED',
+    );
+    const latestReconciliationLog = reconciliationLogs[0];
+
+    if (latestReconciliationLog) {
+      const details = (latestReconciliationLog.details ?? {}) as Record<string, unknown>;
+      const statusCode = Number(details.providerStatusCode);
+      const isDefinitivePreCreationFailure =
+        statusCode === 400 || statusCode === 401 || statusCode === 403 || statusCode === 404;
+
+      if (!isDefinitivePreCreationFailure) {
+        const cooldownMs = 10 * 60 * 1000;
+        const logTime = latestReconciliationLog.createdAt
+          ? new Date(latestReconciliationLog.createdAt).getTime()
+          : 0;
+        const elapsedMs = Date.now() - logTime;
+        if (elapsedMs < cooldownMs) {
+          return {
+            bookingId,
+            status: 'REFUND_PENDING',
+            outcome: 'ambiguous_provider_state',
+            message:
+              'Previous refund attempt had an ambiguous outcome and is within the 10-minute cooldown window. Please allow provider settlement to proceed or use reconciliation.',
+          };
+        }
+      }
+    }
+
+    // 2. Inspect current claim state on payment.refundAttemptKey
+    const rawKey = payment.refundAttemptKey ?? '';
+    const claimMeta = parseClaimKey(rawKey);
+    const baseAttemptKey = claimMeta.baseKey || randomBytes(16).toString('hex');
+
+    // Strict fail-closed guard: NEVER steal/reclaim an active claim solely on elapsed time.
+    // Delayed provider requests or slow resumed processes could race and cause duplicate refunds.
+    // Any held claim must be reconciled authoritatively with the provider before retrying.
+    if (claimMeta.isClaimed) {
+      throw new ConflictException(
+        'A refund recovery operation is already claimed or in progress for this payment. Please run reconciliation to verify provider status before retrying.',
+      );
+    }
+
+    // 3. Acquire Durable, Atomic Database Claim BEFORE provider calls
+    const claimToken = randomBytes(8).toString('hex');
+    const claimTimestamp = Date.now();
+    const activeClaimKey = `${baseAttemptKey}:claim:${claimToken}:${claimTimestamp}`;
+
+    const claimed = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.payment.updateMany({
+        where: {
+          id: payment.id,
+          status: 'REFUND_PENDING',
+          refundRequestStatus: 'APPROVED',
+          refundId: null,
+          refundAttemptKey: payment.refundAttemptKey,
+        },
+        data: {
+          refundAttemptKey: activeClaimKey,
+          updatedAt: new Date(),
+        },
+      });
+      if (result.count === 1) {
+        await tx.auditLog.create({
+          data: {
+            userId: actorUserId,
+            action: 'REFUND_RECOVERY_STARTED',
+            entity: 'PAYMENT',
+            entityId: payment.id,
+            details: {
+              bookingId: payment.bookingId,
+              refundAttemptKey: baseAttemptKey,
+              claimToken,
+            },
+          },
+        });
+      }
+      return result.count === 1;
+    });
+
+    if (!claimed) {
+      throw new ConflictException('Concurrent recovery or refund processing detected');
+    }
+
+    // Safe helper to release claim back to baseAttemptKey on non-refund exit paths
+    const releaseClaim = async () => {
+      try {
+        await this.prisma.payment.updateMany({
+          where: {
+            id: payment.id,
+            status: 'REFUND_PENDING',
+            refundAttemptKey: activeClaimKey,
+          },
+          data: {
+            refundAttemptKey: baseAttemptKey,
+          },
+        });
+      } catch (releaseErr) {
+        this.logger.error(`Failed to release recovery claim on payment ${payment.id}: ${releaseErr}`);
+      }
+    };
+
+    // 4. Provider Pre-Checks and Verification (Executed under protection of the claim)
+    let client: Razorpay;
+    try {
+      client = this.ensureClient();
+    } catch {
+      await releaseClaim();
+      return {
+        bookingId,
+        status: 'REFUND_PENDING',
+        outcome: 'missing_configuration',
+        message: 'Payment provider configuration missing: keys not configured.',
+      };
+    }
+
+    let providerPayment: RazorpayPaymentRecord;
+    let refundList: { count: number; items: RazorpayRefundRecord[] };
+
+    try {
+      providerPayment = (await client.payments.fetch(payment.razorpayPaymentId)) as RazorpayPaymentRecord;
+      refundList = (await client.payments.fetchMultipleRefund(payment.razorpayPaymentId, { count: 100 })) as {
+        count: number;
+        items: RazorpayRefundRecord[];
+      };
+    } catch (err: any) {
+      await releaseClaim();
+      const statusCode = Number(err?.statusCode);
+      const isAuthError = statusCode === 401 || statusCode === 403;
+      const outcome = isAuthError ? 'provider_error' : 'provider_unavailable';
+      const message = isAuthError
+        ? 'Payment provider authentication failed (HTTP 401/403): invalid or expired Razorpay API keys.'
+        : err?.message || 'Payment provider is temporarily unavailable during recovery verification.';
+
+      await this.auditRefundOutcome(payment.id, actorUserId, 'REFUND_RECONCILIATION_REQUIRED', {
+        bookingId: payment.bookingId,
+        outcome,
+        error: message,
+      });
+
+      return {
+        bookingId,
+        status: 'REFUND_PENDING',
+        outcome,
+        message,
+      };
+    }
+
+    // Validate payment identity, captured status, amount, and currency
+    if (providerPayment.id !== payment.razorpayPaymentId) {
+      await releaseClaim();
+      throw new ConflictException('Provider payment ID does not match local payment record');
+    }
+    if (providerPayment.amount !== payment.amount || providerPayment.currency !== payment.currency) {
+      await releaseClaim();
+      throw new ConflictException('Provider payment amount or currency does not match local payment record');
+    }
+
+    // Check if matching refund already exists at provider
+    const existingMatchingRefund = refundList.items.find((candidate) => {
+      const notes = candidate.notes ?? {};
+      const matchesAttempt = baseAttemptKey
+        ? String(notes.eventaiRefundAttempt ?? '') === baseAttemptKey
+        : false;
+      const matchesBooking = String(notes.bookingId ?? '') === payment.bookingId;
+      return (
+        candidate.payment_id === payment.razorpayPaymentId &&
+        candidate.amount === payment.amount &&
+        (matchesAttempt || matchesBooking)
+      );
+    });
+
+    if (existingMatchingRefund) {
+      const state = await this.applyRefundStatus(
+        { ...payment, refundAttemptKey: activeClaimKey },
+        existingMatchingRefund,
+        actorUserId,
+        payment.refundRequestReason ?? 'Customer refund',
+      );
+      // Restore baseAttemptKey
+      await this.prisma.payment.updateMany({
+        where: { id: payment.id, refundAttemptKey: activeClaimKey },
+        data: { refundAttemptKey: baseAttemptKey },
+      }).catch(() => undefined);
+
+      return {
+        bookingId,
+        refundId: existingMatchingRefund.id,
+        status: state === 'processed' ? 'REFUNDED' : state === 'failed' ? 'CAPTURED' : 'REFUND_PENDING',
+        outcome: 'reconciled_existing',
+        message: 'Existing provider refund correlated and finalized.',
+      };
+    }
+
+    // Check for any uncoordinated or partial refunds on the provider payment
+    if (refundList.items.length > 0 || (providerPayment.amount_refunded ?? 0) > 0) {
+      await releaseClaim();
+      throw new ConflictException(
+        'Provider payment has existing or partial refunds that cannot be safely correlated. Manual reconciliation required.',
+      );
+    }
+
+    // Verify payment is in captured state
+    if (providerPayment.status !== 'captured') {
+      await releaseClaim();
+      throw new ConflictException(
+        `Provider payment is in unexpected status '${providerPayment.status}'; expected 'captured'`,
+      );
+    }
+
+    // 5. Safe Refund Initiation (Correlation metadata via notes; provider idempotency not guaranteed)
+    const booking = payment.booking;
+    const reason = payment.refundRequestReason ?? 'Customer refund';
+
+    let refund: { id: string; amount: number; status: string };
+    try {
+      refund = (await client.payments.refund(
+        payment.razorpayPaymentId,
+        {
+          speed: 'normal',
+          notes: {
+            bookingId: booking.id,
+            eventaiRefundAttempt: baseAttemptKey,
+            reason,
+          },
+        },
+      )) as { id: string; amount: number; status: string };
+    } catch (error) {
+      const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
+        ? Number((error as { statusCode?: unknown }).statusCode)
+        : NaN;
+
+      // DO NOT release to retryable state! Restore baseAttemptKey for reconciliation lookups.
+      await this.prisma.payment.updateMany({
+        where: { id: payment.id, status: 'REFUND_PENDING', refundAttemptKey: activeClaimKey },
+        data: { refundAttemptKey: baseAttemptKey },
+      }).catch(() => undefined);
+
+      await this.auditRefundOutcome(payment.id, actorUserId, 'REFUND_RECONCILIATION_REQUIRED', {
+        bookingId: booking.id,
+        providerStatusCode: Number.isInteger(statusCode) ? statusCode : undefined,
+        outcome: 'unknown',
+      });
+      throw new ServiceUnavailableException(
+        'Refund outcome is pending provider reconciliation; do not retry yet',
+      );
+    }
+
+    // 6. Finalize using existing applyRefundStatus (restores inventory, tickets, status, and notifies)
+    const state = await this.applyRefundStatus(
+      { ...payment, status: 'REFUND_PENDING', refundAttemptKey: activeClaimKey },
+      { ...refund, payment_id: payment.razorpayPaymentId },
+      actorUserId,
+      reason,
+    );
+
+    // Restore baseAttemptKey on the finalized record
+    await this.prisma.payment.updateMany({
+      where: { id: payment.id, refundAttemptKey: activeClaimKey },
+      data: { refundAttemptKey: baseAttemptKey },
+    }).catch(() => undefined);
+
+    if (state === 'failed') {
+      throw new BadRequestException('The payment provider could not process the refund');
+    }
+
+    return {
+      booking: await this.prisma.booking.findUniqueOrThrow({
+        where: { id: booking.id },
+        include: {
+          items: true,
+          payment: true,
+          tickets: { select: { id: true, ticketCode: true, holderName: true, status: true, ticketTypeId: true } },
+        },
+      }),
+      refundId: refund.id,
+      refundAmount: refund.amount,
+      refundStatus: state === 'processed' ? 'processed' : 'pending',
+      outcome: 'recovered',
     };
   }
 
@@ -713,7 +1289,7 @@ export class PaymentsService {
     refund: RazorpayRefundRecord,
     actorUserId: string | null,
     reason?: string,
-  ): Promise<'processed' | 'failed' | 'unknown'> {
+  ): Promise<'processed' | 'failed' | 'pending' | 'unknown'> {
     if (payment.status !== 'REFUND_PENDING') {
       return payment.status === 'REFUNDED' && payment.refundId === refund.id
         ? 'processed'
@@ -750,7 +1326,7 @@ export class PaymentsService {
         providerStatus: refund.status,
         outcome: 'pending',
       });
-      return 'unknown';
+      return 'pending';
     }
 
     if (refund.status === 'failed') {
@@ -854,7 +1430,8 @@ export class PaymentsService {
   private notifyRefund(
     booking: {
       id: string;
-      user: { email: string; firstName: string; lastName: string };
+      userId?: string;
+      user: { id?: string; email: string; firstName: string; lastName: string };
       event: { title: string };
     },
     refundId: string,
@@ -872,6 +1449,17 @@ export class PaymentsService {
         reason,
       })
       .catch(() => undefined);
+
+    const attendeeId = booking.userId ?? booking.user.id;
+    if (attendeeId) {
+      void this.notifications.createInAppNotification({
+        userId: attendeeId,
+        type: 'REFUND_PROCESSED',
+        title: 'Refund settled',
+        message: `Your refund of ₹${(refundAmount / 100).toLocaleString('en-IN')} for "${booking.event.title}" has been settled.`,
+        data: { bookingId: booking.id, refundId, link: '/tickets' },
+      });
+    }
   }
 
   // ── Digital ticket QR ────────────────────────────
@@ -1067,11 +1655,16 @@ export class PaymentsService {
     }
   }
 
-  /** Fire-and-forget ticket email after a successful confirmation. */
+  /** Fire-and-forget ticket email and in-app notifications after a successful confirmation. */
   private notifyConfirmation(
-    bookingWithEvent: { user: { email: string }; event: { title: string; startDate: Date } },
+    bookingWithEvent: {
+      userId?: string;
+      user: { id?: string; email: string };
+      event: { id?: string; title: string; startDate: Date; organizer?: { userId: string } };
+    },
     confirmed: {
       id: string;
+      userId?: string;
       totalAmount: number;
       tickets: { ticketCode: string; holderName: string }[];
     },
@@ -1087,6 +1680,27 @@ export class PaymentsService {
         ticketCodes: confirmed.tickets.map((t) => t.ticketCode),
       })
       .catch(() => undefined);
+
+    const attendeeId = confirmed.userId ?? bookingWithEvent.userId ?? bookingWithEvent.user.id;
+    if (attendeeId) {
+      void this.notifications.createInAppNotification({
+        userId: attendeeId,
+        type: 'BOOKING_CONFIRMED',
+        title: 'Booking confirmed!',
+        message: `Your booking for "${bookingWithEvent.event.title}" is confirmed (${confirmed.tickets.length} ticket${confirmed.tickets.length === 1 ? '' : 's'}).`,
+        data: { bookingId: confirmed.id, link: '/tickets' },
+      });
+    }
+
+    if (bookingWithEvent.event.organizer?.userId) {
+      void this.notifications.createInAppNotification({
+        userId: bookingWithEvent.event.organizer.userId,
+        type: 'BOOKING_CONFIRMED',
+        title: 'New ticket booking',
+        message: `A booking for "${bookingWithEvent.event.title}" was confirmed (₹${(confirmed.totalAmount / 100).toLocaleString('en-IN')}).`,
+        data: { bookingId: confirmed.id, eventId: bookingWithEvent.event.id, link: '/organizer/events' },
+      });
+    }
   }
 
   private async loadOwnBooking(userId: string, bookingId: string) {
@@ -1150,6 +1764,9 @@ export class PaymentsService {
     };
   }
 
+  private currentKeyId: string | null = null;
+  private currentKeySecret: string | null = null;
+
   private ensureClient(): Razorpay {
     const keyId = process.env.RAZORPAY_KEY_ID?.trim();
     const keySecret = process.env.RAZORPAY_KEY_SECRET?.trim();
@@ -1160,6 +1777,15 @@ export class PaymentsService {
     }
     if (!this.razorpayClient) {
       this.razorpayClient = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      this.currentKeyId = keyId;
+      this.currentKeySecret = keySecret;
+    } else if (
+      this.currentKeyId !== null &&
+      (this.currentKeyId !== keyId || this.currentKeySecret !== keySecret)
+    ) {
+      this.razorpayClient = new Razorpay({ key_id: keyId, key_secret: keySecret });
+      this.currentKeyId = keyId;
+      this.currentKeySecret = keySecret;
     }
     return this.razorpayClient;
   }
@@ -1180,4 +1806,29 @@ function safeEqualHex(expected: string, received: string): boolean {
   const a = Buffer.from(expected, 'utf8');
   const b = Buffer.from(received, 'utf8');
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+const STALE_CLAIM_TIMEOUT_MS = 5 * 60 * 1000;
+
+function parseClaimKey(key: string | null): {
+  baseKey: string;
+  isClaimed: boolean;
+  claimToken?: string;
+  claimedAt?: number;
+} {
+  if (!key) return { baseKey: '', isClaimed: false };
+  const parts = key.split(':claim:');
+  if (parts.length < 2) {
+    return { baseKey: key, isClaimed: false };
+  }
+  const baseKey = parts[0];
+  const claimMeta = parts[1].split(':');
+  const claimToken = claimMeta[0];
+  const claimedAt = Number(claimMeta[1]);
+  return {
+    baseKey,
+    isClaimed: true,
+    claimToken,
+    claimedAt: Number.isFinite(claimedAt) ? claimedAt : undefined,
+  };
 }

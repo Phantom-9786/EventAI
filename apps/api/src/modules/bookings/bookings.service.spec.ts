@@ -11,6 +11,7 @@ describe('BookingsService', () => {
   let notifications: {
     sendBookingCancellation: jest.Mock;
     sendRefundConfirmation: jest.Mock;
+    createInAppNotification: jest.Mock;
   };
   let prisma: {
     booking: {
@@ -78,6 +79,7 @@ describe('BookingsService', () => {
     notifications = {
       sendBookingCancellation: jest.fn().mockResolvedValue(true),
       sendRefundConfirmation: jest.fn().mockResolvedValue(true),
+      createInAppNotification: jest.fn().mockResolvedValue({ id: 'notif-1' }),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -213,6 +215,53 @@ describe('BookingsService', () => {
       );
       expect(prisma.booking.create).not.toHaveBeenCalled();
     });
+
+    it('decrements stock in sorted ticket type order and consolidates duplicate item lines in booking items', async () => {
+      prisma.booking.findUnique.mockResolvedValue(null);
+      prisma.event.findFirst.mockResolvedValue(event);
+      const ttB = { ...ticketType, id: 'tt-b', name: 'B', price: 1000 };
+      const ttA = { ...ticketType, id: 'tt-a', name: 'A', price: 2000 };
+      prisma.ticketType.findMany.mockResolvedValue([ttB, ttA]);
+      prisma.ticketType.updateMany.mockResolvedValue({ count: 1 });
+      prisma.booking.create.mockImplementation(async ({ data }) => ({
+        ...booking,
+        totalAmount: data.totalAmount,
+        items: data.items.create,
+      }));
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+
+      // Input has 'tt-b' first, then 'tt-a', and multiple lines of 'tt-b'
+      const input = {
+        ...validInput,
+        items: [
+          { ticketTypeId: 'tt-b', quantity: 1 },
+          { ticketTypeId: 'tt-a', quantity: 2 },
+          { ticketTypeId: 'tt-b', quantity: 1 },
+        ],
+      };
+
+      const result = await service.create('user-1', input);
+
+      // Decrement order must be sorted: 'tt-a' first, then 'tt-b'
+      expect(prisma.ticketType.updateMany).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ where: expect.objectContaining({ id: 'tt-a' }) }),
+      );
+      expect(prisma.ticketType.updateMany).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ where: expect.objectContaining({ id: 'tt-b' }) }),
+      );
+
+      // Items should be consolidated into exactly 2 rows
+      const createdItems = (result as { items: unknown[] }).items;
+      expect(createdItems).toHaveLength(2);
+      expect(createdItems).toEqual(
+        expect.arrayContaining([
+          { ticketTypeId: 'tt-a', quantity: 2, unitPrice: 2000, totalPrice: 4000 },
+          { ticketTypeId: 'tt-b', quantity: 2, unitPrice: 1000, totalPrice: 2000 },
+        ]),
+      );
+    });
   });
 
   describe('getOwn', () => {
@@ -309,6 +358,131 @@ describe('BookingsService', () => {
       expect(requestRefund).toHaveBeenCalledWith('user-1', 'bk-1', 'changed plans');
       expect(result.refundRequest.status).toBe('PENDING');
       expect(prisma.booking.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleStaleBookingsCron & seat hold expiration', () => {
+    it('expires stale bookings past TTL and releases ticket stock', async () => {
+      const staleBooking = {
+        id: 'bk-stale-1',
+        status: 'PENDING',
+        expiresAt: new Date(Date.now() - 60_000),
+        items: [{ ticketTypeId: 'tt-1', quantity: 3, seatId: null }],
+      };
+
+      prisma.booking.findMany.mockResolvedValue([{ id: 'bk-stale-1' }]);
+      prisma.booking.findFirst.mockResolvedValue(staleBooking);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.booking.updateMany.mockResolvedValue({ count: 1 });
+      prisma.ticketType.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.handleStaleBookingsCron();
+
+      expect(result.expiredCount).toBe(1);
+      expect(prisma.booking.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'bk-stale-1',
+          status: { in: ['PENDING', 'PAYMENT_PENDING'] },
+          expiresAt: { lt: expect.any(Date) },
+        },
+        data: { status: 'EXPIRED' },
+      });
+      expect(prisma.ticketType.updateMany).toHaveBeenCalledWith({
+        where: { id: 'tt-1' },
+        data: { availableQuantity: { increment: 3 } },
+      });
+    });
+
+    it('releases held seat back to AVAILABLE when booking items contain seatId', async () => {
+      const staleBookingWithSeat = {
+        id: 'bk-stale-seat',
+        status: 'PENDING',
+        expiresAt: new Date(Date.now() - 60_000),
+        items: [{ ticketTypeId: 'tt-1', quantity: 1, seatId: 'seat-42' }],
+      };
+
+      prisma.booking.findMany.mockResolvedValue([{ id: 'bk-stale-seat' }]);
+      prisma.booking.findFirst.mockResolvedValue(staleBookingWithSeat);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.booking.updateMany.mockResolvedValue({ count: 1 });
+      const mockSeatUpdateMany = jest.fn().mockResolvedValue({ count: 1 });
+      (prisma as any).seat = { updateMany: mockSeatUpdateMany };
+
+      const result = await service.handleStaleBookingsCron();
+
+      expect(result.expiredCount).toBe(1);
+      expect(mockSeatUpdateMany).toHaveBeenCalledWith({
+        where: { id: 'seat-42', status: 'HELD' },
+        data: { status: 'AVAILABLE' },
+      });
+      expect(prisma.ticketType.updateMany).toHaveBeenCalledWith({
+        where: { id: 'tt-1' },
+        data: { availableQuantity: { increment: 1 } },
+      });
+    });
+
+    it('does not release stock twice if concurrent process already transitioned booking', async () => {
+      const staleBooking = {
+        id: 'bk-concurrent',
+        status: 'PENDING',
+        expiresAt: new Date(Date.now() - 60_000),
+        items: [{ ticketTypeId: 'tt-1', quantity: 2, seatId: null }],
+      };
+
+      prisma.booking.findMany.mockResolvedValue([{ id: 'bk-concurrent' }]);
+      prisma.booking.findFirst.mockResolvedValue(staleBooking);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      // Compare-and-set returns count 0 (already transitioned by another worker/request)
+      prisma.booking.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.handleStaleBookingsCron();
+
+      expect(result.expiredCount).toBe(0);
+      expect(prisma.ticketType.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('isolates per-booking errors so failure of one does not break the batch', async () => {
+      prisma.booking.findMany.mockResolvedValue([
+        { id: 'bk-error' },
+        { id: 'bk-success' },
+      ]);
+
+      prisma.booking.findFirst
+        .mockRejectedValueOnce(new Error('DB read glitch'))
+        .mockResolvedValueOnce({
+          id: 'bk-success',
+          status: 'PENDING',
+          expiresAt: new Date(Date.now() - 60_000),
+          items: [{ ticketTypeId: 'tt-1', quantity: 1, seatId: null }],
+        });
+
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      prisma.booking.updateMany.mockResolvedValue({ count: 1 });
+      prisma.ticketType.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.handleStaleBookingsCron();
+
+      // bk-success succeeded despite bk-error failing
+      expect(result.expiredCount).toBe(1);
+      expect(prisma.ticketType.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('skips concurrent execution when a sweep is already running', async () => {
+      let resolveFirstSweep!: () => void;
+      const slowPromise = new Promise<{ id: string }[]>((resolve) => {
+        resolveFirstSweep = () => resolve([]);
+      });
+
+      prisma.booking.findMany.mockImplementationOnce(() => slowPromise);
+
+      const firstSweep = service.handleStaleBookingsCron();
+      const secondSweepResult = await service.handleStaleBookingsCron();
+
+      expect(secondSweepResult.expiredCount).toBe(0);
+
+      resolveFirstSweep();
+      const firstResult = await firstSweep;
+      expect(firstResult.expiredCount).toBe(0);
     });
   });
 });

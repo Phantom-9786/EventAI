@@ -15,6 +15,7 @@ describe('TicketsService', () => {
       delete: jest.Mock;
     };
     seatSection: { findFirst: jest.Mock };
+    bookingItem: { count: jest.Mock };
   };
   let eventsService: { requireOwnedEvent: jest.Mock; invalidateEventCache: jest.Mock };
 
@@ -36,6 +37,7 @@ describe('TicketsService', () => {
         delete: jest.fn(),
       },
       seatSection: { findFirst: jest.fn() },
+      bookingItem: { count: jest.fn().mockResolvedValue(0) },
     };
     eventsService = {
       requireOwnedEvent: jest.fn().mockResolvedValue(futureEvent),
@@ -103,6 +105,15 @@ describe('TicketsService', () => {
         service.create('org-1', 'event-1', {
           ...baseInput,
           saleEndDate: new Date(futureEvent.startDate.getTime() + 86400000).toISOString(),
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects a sale window starting after the event starts', async () => {
+      await expect(
+        service.create('org-1', 'event-1', {
+          ...baseInput,
+          saleStartDate: new Date(futureEvent.startDate.getTime() + 86400000).toISOString(),
         }),
       ).rejects.toThrow(ConflictException);
     });
@@ -189,6 +200,30 @@ describe('TicketsService', () => {
       });
       await expect(service.remove('org-1', 'tt-1')).rejects.toThrow(ConflictException);
       expect(prisma.ticketType.delete).not.toHaveBeenCalled();
+    });
+
+    it('refuses to delete a ticket type with past booking items even if current sold is 0', async () => {
+      prisma.ticketType.findUnique.mockResolvedValue({
+        id: 'tt-1',
+        totalQuantity: 50,
+        availableQuantity: 50,
+        event: futureEvent,
+      });
+      prisma.bookingItem.count.mockResolvedValue(2);
+      await expect(service.remove('org-1', 'tt-1')).rejects.toThrow(ConflictException);
+      expect(prisma.ticketType.delete).not.toHaveBeenCalled();
+    });
+
+    it('handles P2003 foreign key violation defensively', async () => {
+      prisma.ticketType.findUnique.mockResolvedValue({
+        id: 'tt-1',
+        totalQuantity: 50,
+        availableQuantity: 50,
+        event: futureEvent,
+      });
+      prisma.bookingItem.count.mockResolvedValue(0);
+      prisma.ticketType.delete.mockRejectedValue({ code: 'P2003' });
+      await expect(service.remove('org-1', 'tt-1')).rejects.toThrow(ConflictException);
     });
   });
 });
