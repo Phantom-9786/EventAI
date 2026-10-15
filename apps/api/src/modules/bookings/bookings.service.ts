@@ -299,34 +299,38 @@ export class BookingsService {
     reason?: string,
   ): void {
     void this.notifications
-      .sendBookingCancellation({
+      ?.sendBookingCancellation?.({
         to: booking.user.email,
         holderName: `${booking.user.firstName} ${booking.user.lastName}`.trim() || 'Guest',
         eventTitle: booking.event.title,
         bookingId: booking.id,
         reason,
       })
-      .catch(() => undefined);
+      ?.catch?.(() => undefined);
 
     const attendeeId = booking.userId ?? booking.user.id;
-    if (attendeeId) {
-      void this.notifications.createInAppNotification({
-        userId: attendeeId,
-        type: 'BOOKING_CANCELLED',
-        title: 'Reservation cancelled',
-        message: `Your reservation for "${booking.event.title}" has been cancelled.`,
-        data: { bookingId: booking.id, link: '/tickets' },
-      });
+    if (attendeeId && typeof this.notifications?.createInAppNotification === 'function') {
+      void this.notifications
+        .createInAppNotification({
+          userId: attendeeId,
+          type: 'BOOKING_CANCELLED',
+          title: 'Reservation cancelled',
+          message: `Your reservation for "${booking.event.title}" has been cancelled.`,
+          data: { bookingId: booking.id, link: '/tickets' },
+        })
+        ?.catch?.(() => undefined);
     }
 
-    if (booking.event.organizer?.userId) {
-      void this.notifications.createInAppNotification({
-        userId: booking.event.organizer.userId,
-        type: 'BOOKING_CANCELLED',
-        title: 'Reservation cancelled by attendee',
-        message: `A reservation for "${booking.event.title}" was cancelled by the attendee.`,
-        data: { bookingId: booking.id, link: '/organizer/events' },
-      });
+    if (booking.event.organizer?.userId && typeof this.notifications?.createInAppNotification === 'function') {
+      void this.notifications
+        .createInAppNotification({
+          userId: booking.event.organizer.userId,
+          type: 'BOOKING_CANCELLED',
+          title: 'Reservation cancelled by attendee',
+          message: `A reservation for "${booking.event.title}" was cancelled by the attendee.`,
+          data: { bookingId: booking.id, link: '/organizer/events' },
+        })
+        ?.catch?.(() => undefined);
     }
   }
 

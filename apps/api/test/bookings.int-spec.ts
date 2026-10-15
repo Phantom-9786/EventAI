@@ -14,7 +14,7 @@ describe('BookingsService (integration)', () => {
   let prisma: TestPrisma;
   let bookings: BookingsService;
   let buyerId: string;
-  let notifications: { sendBookingCancellation: jest.Mock };
+  let notifications: { sendBookingCancellation: jest.Mock; createInAppNotification: jest.Mock };
 
   const itemsFor = (ticketTypeId: string, quantity: number) => [
     { ticketTypeId, quantity },
@@ -23,7 +23,10 @@ describe('BookingsService (integration)', () => {
 
   beforeAll(async () => {
     prisma = await prepareTestDatabase();
-    notifications = { sendBookingCancellation: jest.fn(async () => true) };
+    notifications = {
+      sendBookingCancellation: jest.fn(async () => true),
+      createInAppNotification: jest.fn(async () => undefined),
+    };
     const payments = { requestRefund: jest.fn() } as unknown as PaymentsService;
     bookings = new BookingsService(
       prisma as never,
