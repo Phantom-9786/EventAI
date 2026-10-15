@@ -43,6 +43,9 @@ export interface AdminBookingDetail extends AdminBookingRow {
     currency: string;
     method: string | null;
     refundId: string | null;
+    refundRequestStatus?: string | null;
+    refundRequestReason?: string | null;
+    refundRequestedAt?: string | null;
     failureReason: string | null;
     createdAt: string;
   }) | null;
@@ -88,6 +91,33 @@ export async function reconcileAdminRefund(bookingId: string): Promise<{
     status: body.status ?? 'REFUND_PENDING',
     outcome: body.outcome ?? 'unknown',
     ...(body.refundId ? { refundId: body.refundId } : {}),
+  };
+}
+
+export async function recoverAdminRefund(bookingId: string): Promise<{
+  bookingId: string;
+  status: string;
+  outcome?: string;
+  message?: string;
+}> {
+  const res = await authFetch(`/admin/bookings/${bookingId}/refund/recover`, { method: 'POST' });
+  const body = (await res.json().catch(() => ({}))) as {
+    bookingId?: string;
+    status?: string;
+    outcome?: string;
+    message?: string | string[];
+    booking?: { id: string; status: string };
+  };
+  if (!res.ok) {
+    throw new Error(
+      Array.isArray(body.message) ? body.message.join(', ') : body.message ?? `Refund recovery failed (${res.status})`,
+    );
+  }
+  return {
+    bookingId: body.bookingId ?? body.booking?.id ?? bookingId,
+    status: body.status ?? body.booking?.status ?? 'REFUND_PENDING',
+    outcome: body.outcome,
+    message: typeof body.message === 'string' ? body.message : undefined,
   };
 }
 
@@ -138,6 +168,13 @@ export interface AdminEventRow {
   organizerEmail: string;
   venue: { name: string; city: string } | null;
   bookingCount: number;
+  moderation?: {
+    status: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+    rejectionReason?: string;
+    reviewedAt?: string;
+    reviewedBy?: string;
+    submittedAt?: string;
+  };
 }
 
 export async function listAdminEvents(
@@ -155,6 +192,12 @@ export async function listAdminEvents(
 export const moderateAdminEvent = (id: string, reason?: string) =>
   adminMutation(`/admin/events/${id}/moderate`, 'POST', {
     action: 'CANCEL',
+    ...(reason && { reason }),
+  });
+
+export const reviewAdminEvent = (id: string, action: 'APPROVE' | 'REJECT', reason?: string) =>
+  adminMutation(`/admin/events/${id}/review`, 'POST', {
+    action,
     ...(reason && { reason }),
   });
 
@@ -238,3 +281,37 @@ export function useAdminData(enabled: boolean) {
 
   return { stats, categories, error, loading, reload: load };
 }
+
+// ── Audit logs ────────────────────────────────────
+
+export interface AdminAuditLogRow {
+  id: string;
+  action: string;
+  entity: string;
+  entityId: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+  user: { id: string; email: string; firstName: string; lastName: string } | null;
+}
+
+export async function listAdminAuditLogs(
+  params: {
+    search?: string;
+    entity?: string;
+    action?: string;
+    page?: number;
+    limit?: number;
+    signal?: AbortSignal;
+  } = {},
+): Promise<{ logs: AdminAuditLogRow[]; total: number; page: number; pages: number }> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.entity) qs.set('entity', params.entity);
+  if (params.action) qs.set('action', params.action);
+  if (params.page) qs.set('page', String(params.page));
+  if (params.limit) qs.set('limit', String(params.limit));
+  const res = await authFetch(`/admin/audit-logs?${qs.toString()}`, { signal: params.signal });
+  if (!res.ok) throw new Error(`Failed to load audit logs (${res.status})`);
+  return res.json();
+}
+

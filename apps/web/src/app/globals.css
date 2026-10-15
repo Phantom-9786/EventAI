@@ -51,4 +51,23 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+
+  @media (prefers-reduced-motion: no-preference) {
+    body,
+    header,
+    nav,
+    main,
+    footer,
+    section,
+    aside,
+    article,
+    dialog,
+    input,
+    textarea,
+    select {
+      transition-property: background-color, border-color, color;
+      transition-duration: 200ms;
+      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  }
 }

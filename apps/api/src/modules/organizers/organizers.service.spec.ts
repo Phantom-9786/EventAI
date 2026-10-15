@@ -6,7 +6,7 @@ import { excelColumnLabel, OrganizersService } from './organizers.service';
 describe('OrganizersService venue operations', () => {
   let service: OrganizersService;
   let prisma: {
-    venue: { findFirst: jest.Mock; update: jest.Mock; delete: jest.Mock };
+    venue: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock; delete: jest.Mock };
     event: { count: jest.Mock };
     seatSection: { create: jest.Mock; findMany: jest.Mock };
     seat: { createMany: jest.Mock };
@@ -14,7 +14,7 @@ describe('OrganizersService venue operations', () => {
 
   beforeEach(async () => {
     prisma = {
-      venue: { findFirst: jest.fn(), update: jest.fn(), delete: jest.fn() },
+      venue: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
       event: { count: jest.fn() },
       seatSection: { create: jest.fn(), findMany: jest.fn() },
       seat: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -38,6 +38,52 @@ describe('OrganizersService venue operations', () => {
       expect(excelColumnLabel(27)).toBe('AB');
       expect(excelColumnLabel(51)).toBe('AZ');
       expect(excelColumnLabel(52)).toBe('BA');
+    });
+  });
+
+  describe('createVenue', () => {
+    it('reuses existing matching venue when normalized name, city, and address match', async () => {
+      const existing = {
+        id: 'venue-existing',
+        organizerId: 'org-1',
+        name: 'Royal Opera House',
+        address: 'Mama Parmanand Marg',
+        city: 'Mumbai',
+        state: 'Maharashtra',
+      };
+      prisma.venue.findMany.mockResolvedValue([existing]);
+
+      const result = await service.createVenue('org-1', {
+        name: '  royal opera house  ',
+        address: 'Mama Parmanand Marg,',
+        city: 'mumbai',
+        state: 'Maharashtra',
+        country: 'India',
+        capacity: 500,
+      });
+
+      expect(result).toBe(existing);
+      expect(prisma.venue.create).not.toHaveBeenCalled();
+    });
+
+    it('creates a new venue if no existing venue matches normalized attributes', async () => {
+      prisma.venue.findMany.mockResolvedValue([]);
+      prisma.venue.create.mockResolvedValue({
+        id: 'venue-new',
+        name: 'Grand Theater',
+      });
+
+      const result = await service.createVenue('org-1', {
+        name: 'Grand Theater',
+        address: '10 Main Road',
+        city: 'Bangalore',
+        state: 'Karnataka',
+        country: 'India',
+        capacity: 1000,
+      });
+
+      expect(result.id).toBe('venue-new');
+      expect(prisma.venue.create).toHaveBeenCalled();
     });
   });
 

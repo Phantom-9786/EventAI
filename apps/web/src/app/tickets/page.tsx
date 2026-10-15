@@ -67,9 +67,12 @@ function TicketQr({ ticketId }: { ticketId: string }) {
   );
 }
 
+export type TicketTabFilter = 'all' | 'upcoming' | 'past' | 'cancelled';
+
 export default function TicketsPage() {
   const { user, loading } = useAuth();
   const [bookings, setBookings] = useState<BookingListEntry[] | null>(null);
+  const [ticketFilter, setTicketFilter] = useState<TicketTabFilter>('all');
   const [error, setError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -115,6 +118,22 @@ export default function TicketsPage() {
     );
   }
 
+  const now = Date.now();
+  const filteredBookings = (bookings ?? []).filter((booking) => {
+    const isCancelledOrRefunded =
+      booking.status === 'CANCELLED' ||
+      booking.status === 'REFUNDED' ||
+      booking.event.status === 'CANCELLED' ||
+      booking.payment?.status === 'REFUNDED' ||
+      booking.payment?.refundRequestStatus === 'APPROVED';
+    const isPast = new Date(booking.event.startDate).getTime() < now;
+
+    if (ticketFilter === 'upcoming') return !isCancelledOrRefunded && !isPast;
+    if (ticketFilter === 'past') return !isCancelledOrRefunded && isPast;
+    if (ticketFilter === 'cancelled') return isCancelledOrRefunded;
+    return true;
+  });
+
   return (
     <div className="container max-w-5xl py-10">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -134,6 +153,30 @@ export default function TicketsPage() {
           <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
         </Button>
+      </div>
+
+      {/* Ticket status filter tabs */}
+      <div role="tablist" aria-label="Ticket status categories" className="mt-6 flex flex-wrap gap-1 border-b">
+        {[
+          { id: 'all' as const, label: 'All Tickets' },
+          { id: 'upcoming' as const, label: 'Upcoming' },
+          { id: 'past' as const, label: 'Past Events' },
+          { id: 'cancelled' as const, label: 'Cancelled & Refunded' },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            role="tab"
+            aria-selected={ticketFilter === tab.id}
+            onClick={() => setTicketFilter(tab.id)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+              ticketFilter === tab.id
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {error && (
@@ -168,9 +211,13 @@ export default function TicketsPage() {
             Discover events
           </Link>
         </div>
+      ) : filteredBookings.length === 0 ? (
+        <div className="mt-8 rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">
+          No bookings match the selected category.
+        </div>
       ) : (
         <div className="mt-8 space-y-6">
-          {bookings.map((booking) => {
+          {filteredBookings.map((booking) => {
             const isEventCancelled = booking.event.status === 'CANCELLED';
             const refundStatus = booking.payment?.refundRequestStatus;
             const isConfirmed = booking.status === 'CONFIRMED';
@@ -270,6 +317,11 @@ export default function TicketsPage() {
                     {refundStatus === 'REJECTED' && (
                       <p className="flex items-center gap-1 text-muted-foreground">
                         <XCircle className="h-3.5 w-3.5" /> Refund request declined by organizer
+                      </p>
+                    )}
+                    {refundStatus === 'FAILED' && (
+                      <p className="flex items-center gap-1 text-destructive font-medium">
+                        <XCircle className="h-3.5 w-3.5" /> Refund settlement failed — please contact support
                       </p>
                     )}
                     {booking.payment?.status === 'REFUNDED' && (

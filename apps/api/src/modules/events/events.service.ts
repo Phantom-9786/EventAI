@@ -12,6 +12,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
+import { EventMediaService } from './event-media.service';
+
 const EVENT_SUMMARY_INCLUDE = {
   category: { select: { id: true, name: true, slug: true } },
   venue: { select: { id: true, name: true, city: true } },
@@ -43,7 +45,10 @@ const EVENT_DETAIL_INCLUDE = {
   faqs: { orderBy: { order: 'asc' } },
 } satisfies Prisma.EventInclude;
 
-type EventDetail = Prisma.EventGetPayload<{ include: typeof EVENT_DETAIL_INCLUDE }>;
+type EventDetail = Prisma.EventGetPayload<{ include: typeof EVENT_DETAIL_INCLUDE }> & {
+  minPrice?: number | null;
+  maxPrice?: number | null;
+};
 
 const EVENT_DETAIL_MANAGE_INCLUDE = {
   category: { select: { id: true, name: true, slug: true, icon: true, color: true } },
@@ -102,6 +107,7 @@ export class EventsService {
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
     private readonly notifications: NotificationsService,
+    private readonly media: EventMediaService,
   ) {}
 
   /** Bumps the public event cache after any write that can affect it. */
@@ -119,7 +125,7 @@ export class EventsService {
     await this.assertCategoryAndVenue(organizerId, input.categoryId, input.venueId);
 
     const slug = `${slugify(input.title)}-${randomBytes(4).toString('hex')}`;
-    return this.prisma.event.create({
+    const event = await this.prisma.event.create({
       data: {
         title: input.title,
         slug,
@@ -139,6 +145,10 @@ export class EventsService {
       },
       include: EVENT_DETAIL_MANAGE_INCLUDE,
     });
+
+    await this.attachMediaAssets(event.id, input.coverImage, input.images);
+
+    return event;
   }
 
   async getEventForManage(organizerId: string, idOrSlug: string) {
@@ -149,7 +159,7 @@ export class EventsService {
     });
   }
 
-  async getPublishedEvent(idOrSlug: string) {
+  async getPublishedEvent(idOrSlug: string): Promise<EventDetail> {
     const cacheKey = `event:detail:${idOrSlug.toLowerCase()}`;
     const cached = await this.cache.get<EventDetail>(cacheKey);
     if (cached) return cached;
@@ -162,8 +172,15 @@ export class EventsService {
     if (!event) {
       throw new NotFoundException('Event not found');
     }
-    await this.cache.set(cacheKey, event, 60);
-    return event;
+    const prices = (event.ticketTypes ?? []).map((t) => t.price);
+    const range = priceRange(prices);
+    const eventWithPrices = {
+      ...event,
+      minPrice: range.minPrice,
+      maxPrice: range.maxPrice,
+    };
+    await this.cache.set(cacheKey, eventWithPrices, 60);
+    return eventWithPrices;
   }
 
   /**
@@ -245,6 +262,9 @@ export class EventsService {
     const endDate = input.endDate !== undefined ? new Date(input.endDate) : undefined;
     const effectiveStart = startDate ?? owned.startDate;
     const effectiveEnd = endDate ?? owned.endDate;
+    if (startDate !== undefined && startDate.getTime() <= Date.now()) {
+      throw new ConflictException('Start date must be in the future');
+    }
     if (effectiveEnd <= effectiveStart) {
       throw new ConflictException('End date must be after start date');
     }
@@ -267,6 +287,7 @@ export class EventsService {
       },
       include: EVENT_DETAIL_MANAGE_INCLUDE,
     });
+    await this.attachMediaAssets(updated.id, input.coverImage, input.images);
     await this.invalidateEventCache();
     return updated;
   }
@@ -279,6 +300,13 @@ export class EventsService {
     }
     if (owned.startDate.getTime() <= Date.now()) {
       throw new ConflictException('Cannot publish an event whose start date has passed');
+    }
+
+    const ticketTypeCount = await this.prisma.ticketType.count({
+      where: { eventId: owned.id, isActive: true },
+    });
+    if (ticketTypeCount === 0) {
+      throw new ConflictException('Event must have at least one active ticket type before publishing');
     }
 
     const published = await this.prisma.event.update({
@@ -392,8 +420,26 @@ export class EventsService {
       );
     }
 
+    // Capture candidate media assets before cascading delete removes their records
+    const candidates = this.prisma.eventMediaAsset
+      ? await this.prisma.eventMediaAsset.findMany({
+          where: { eventId: owned.id },
+          select: { url: true, publicId: true },
+        })
+      : [];
+
     await this.prisma.event.delete({ where: { id: owned.id } });
     await this.invalidateEventCache();
+
+    // After successful database deletion, clean up unshared Cloudinary assets safely
+    if (candidates.length > 0 && this.media?.cleanupUnsharedEventAssets) {
+      await this.media.cleanupUnsharedEventAssets(owned.id, candidates).catch((err: unknown) => {
+        this.logger.warn(
+          `Post-delete media cleanup failed for event ${owned.id}: ${err instanceof Error ? err.message : 'unknown'}`,
+        );
+      });
+    }
+
     return { message: 'Event deleted' };
   }
 
@@ -405,11 +451,12 @@ export class EventsService {
    */
   async searchEvents(input: EventSearchInput) {
     const offset = (input.page - 1) * input.limit;
+    const query = input.query?.trim();
 
     const conditions: Prisma.Sql[] = [Prisma.sql`e.status = 'PUBLISHED'`];
-    if (input.query) {
+    if (query) {
       conditions.push(
-        Prisma.sql`e.search_vector @@ websearch_to_tsquery('english', ${input.query})`,
+        Prisma.sql`e.search_vector @@ websearch_to_tsquery('english', ${query})`,
       );
     }
     if (input.categoryId) {
@@ -445,9 +492,9 @@ export class EventsService {
 
     const dir = input.sortDir === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`;
     let orderBy: Prisma.Sql;
-    if (input.query) {
+    if (query) {
       // Relevance first when searching
-      orderBy = Prisma.sql`ts_rank(e.search_vector, websearch_to_tsquery('english', ${input.query})) DESC, e.start_date ASC`;
+      orderBy = Prisma.sql`ts_rank(e.search_vector, websearch_to_tsquery('english', ${query})) DESC, e.start_date ASC`;
     } else {
       switch (input.sortBy) {
         case 'price':
@@ -513,6 +560,18 @@ export class EventsService {
       throw new NotFoundException('Event not found');
     }
     return event;
+  }
+
+  private async attachMediaAssets(
+    eventId: string,
+    coverImage: string | undefined | null,
+    images: string[] | undefined | null,
+  ): Promise<void> {
+    const urls: string[] = [];
+    if (coverImage) urls.push(coverImage);
+    if (images) urls.push(...images);
+    if (urls.length === 0) return;
+    await this.media.attachUrlsToEvent(eventId, urls);
   }
 
   private async assertCategoryAndVenue(

@@ -245,6 +245,118 @@ export class UsersService {
     return { message: 'Your account has been deactivated' };
   }
 
+  async getDeletionBlockers(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.role === 'ORGANIZER') {
+      const organizer = await this.prisma.organizer.findUnique({
+        where: { userId },
+        select: { id: true },
+      });
+      if (organizer) {
+        const [blockingEvents, blockingRefunds] = await Promise.all([
+          this.prisma.event.findMany({
+            where: {
+              organizerId: organizer.id,
+              status: { in: ['DRAFT', 'PUBLISHED', 'SOLDOUT'] },
+            },
+            select: { id: true, title: true, status: true, slug: true },
+          }),
+          this.prisma.payment.findMany({
+            where: {
+              OR: [
+                { refundRequestStatus: 'PENDING' },
+                { status: 'REFUND_PENDING' },
+              ],
+              booking: { event: { organizerId: organizer.id } },
+            },
+            select: {
+              id: true,
+              bookingId: true,
+              amount: true,
+              status: true,
+              refundRequestStatus: true,
+              booking: {
+                select: {
+                  id: true,
+                  event: { select: { id: true, title: true } },
+                },
+              },
+            },
+          }),
+        ]);
+
+        return {
+          canDelete: blockingEvents.length === 0 && blockingRefunds.length === 0,
+          blockers: {
+            events: blockingEvents.map((e) => ({
+              type: 'event' as const,
+              id: e.id,
+              title: e.title,
+              status: e.status,
+              link: `/organizer/events/${e.id}`,
+            })),
+            refunds: blockingRefunds.map((r) => ({
+              type: 'refund' as const,
+              id: r.id,
+              bookingId: r.bookingId,
+              amount: r.amount,
+              status: r.status,
+              refundRequestStatus: r.refundRequestStatus,
+              eventTitle: r.booking?.event?.title ?? 'Event',
+              link: '/organizer/refunds',
+            })),
+          },
+        };
+      }
+    }
+
+    const pendingAttendeeRefunds = await this.prisma.payment.findMany({
+      where: {
+        booking: { userId },
+        OR: [
+          { refundRequestStatus: 'PENDING' },
+          { status: 'REFUND_PENDING' },
+        ],
+      },
+      select: {
+        id: true,
+        bookingId: true,
+        amount: true,
+        status: true,
+        refundRequestStatus: true,
+        booking: {
+          select: {
+            event: { select: { title: true } },
+          },
+        },
+      },
+    });
+
+    return {
+      canDelete: pendingAttendeeRefunds.length === 0,
+      blockers: {
+        events: [],
+        refunds: pendingAttendeeRefunds.map((r) => ({
+          type: 'refund' as const,
+          id: r.id,
+          bookingId: r.bookingId,
+          amount: r.amount,
+          status: r.status,
+          refundRequestStatus: r.refundRequestStatus,
+          eventTitle: r.booking?.event?.title ?? 'Event',
+          link: '/tickets',
+        })),
+      },
+    };
+  }
+
   async deleteAccount(
     userId: string,
     confirmation: string,
@@ -260,52 +372,21 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    // Safeguards for organizers:
-    if (user.role === 'ORGANIZER') {
-      const organizer = await this.prisma.organizer.findUnique({
-        where: { userId },
-        select: { id: true },
-      });
-      if (organizer) {
-        const [activeEvents, pendingRefunds] = await Promise.all([
-          this.prisma.event.count({
-            where: {
-              organizerId: organizer.id,
-              status: { in: ['DRAFT', 'PUBLISHED', 'SOLDOUT'] },
-            },
-          }),
-          this.prisma.payment.count({
-            where: {
-              OR: [
-                { refundRequestStatus: 'PENDING' },
-                { status: 'REFUND_PENDING' },
-              ],
-              booking: { event: { organizerId: organizer.id } },
-            },
-          }),
-        ]);
-        if (activeEvents > 0 || pendingRefunds > 0) {
-          throw new ConflictException(
+    const { canDelete, blockers } = await this.getDeletionBlockers(userId);
+    if (!canDelete) {
+      if (user.role === 'ORGANIZER') {
+        throw new ConflictException({
+          message:
             'Cannot delete account: cancel all draft, published or sold-out events and resolve all pending refunds before deleting this organizer account.',
-          );
-        }
+          blockers,
+        });
+      } else {
+        throw new ConflictException({
+          message:
+            'Cannot delete account while you have pending refund requests. Please wait for refunds to be resolved.',
+          blockers,
+        });
       }
-    }
-
-    // Safeguards for attendees: check pending refunds
-    const pendingAttendeeRefunds = await this.prisma.payment.count({
-      where: {
-        booking: { userId },
-        OR: [
-          { refundRequestStatus: 'PENDING' },
-          { status: 'REFUND_PENDING' },
-        ],
-      },
-    });
-    if (pendingAttendeeRefunds > 0) {
-      throw new ConflictException(
-        'Cannot delete account while you have pending refund requests. Please wait for refunds to be resolved.',
-      );
     }
 
     // Anonymize personal info without cascade-deleting financial history (bookings, tickets, payments, events, audit logs)

@@ -20,6 +20,13 @@ export interface OrganizerEventRow {
   startDate: string;
   venue: { id: string; name: string; city: string };
   category: { id: string; name: string; slug: string };
+  moderation?: {
+    status: 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+    rejectionReason?: string;
+    reviewedAt?: string;
+    reviewedBy?: string;
+    submittedAt?: string;
+  };
 }
 
 export interface OrganizerEventDetail extends OrganizerEventRow {
@@ -191,6 +198,14 @@ export async function updateOrganizerEvent(
   return body.event;
 }
 
+export async function submitOrganizerEventForReview(
+  idOrSlug: string,
+): Promise<{ message: string; eventId: string; moderation: { status: string } }> {
+  const res = await authFetch(`/events/${encodeURIComponent(idOrSlug)}/submit`, { method: 'POST' });
+  if (!res.ok) throw await readApiError(res, 'Failed to submit event for review');
+  return res.json();
+}
+
 export async function publishOrganizerEvent(idOrSlug: string): Promise<OrganizerEventDetail> {
   const res = await authFetch(`/events/${encodeURIComponent(idOrSlug)}/publish`, { method: 'POST' });
   if (!res.ok) throw await readApiError(res, 'Failed to publish event');
@@ -281,6 +296,8 @@ export interface OrganizerRefundRequest {
   refundRequestedAt: string | null;
   refundReviewedAt?: string | null;
   refundReviewedBy?: string | null;
+  refundId?: string | null;
+  updatedAt?: string | null;
   booking: {
     id?: string;
     totalAmount: number;
@@ -292,17 +309,74 @@ export interface OrganizerRefundRequest {
   };
 }
 
-export async function getOrganizerRefundRequests(status?: string): Promise<OrganizerRefundRequest[]> {
-  const res = await authFetch('/organizers/refund-requests');
+export interface OrganizerRefundCounts {
+  PENDING: number;
+  APPROVED: number;
+  REFUNDED: number;
+  REJECTED: number;
+  FAILED: number;
+  ALL: number;
+}
+
+export interface OrganizerRefundListResponse {
+  refundRequests: OrganizerRefundRequest[];
+  counts: OrganizerRefundCounts;
+  total?: number;
+  page?: number;
+  limit?: number;
+}
+
+export async function getOrganizerRefundRequests(
+  status?: string,
+  page = 1,
+  limit = 20,
+): Promise<OrganizerRefundListResponse> {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (page) params.set('page', String(page));
+  if (limit) params.set('limit', String(limit));
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const res = await authFetch(`/organizers/refund-requests${qs}`);
   if (!res.ok) throw new Error(`Failed to load refund requests (${res.status})`);
-  const body = (await res.json()) as { refundRequests: OrganizerRefundRequest[] };
-  if (!status || status === 'ALL') {
-    return body.refundRequests;
-  }
-  return body.refundRequests.filter((r) => {
-    const itemStatus = r.refundRequestStatus ?? 'PENDING';
-    return itemStatus === status;
+  const body = (await res.json()) as {
+    refundRequests?: OrganizerRefundRequest[];
+    counts?: OrganizerRefundCounts;
+    total?: number;
+    page?: number;
+    limit?: number;
+  };
+  return {
+    refundRequests: body.refundRequests ?? [],
+    counts: body.counts ?? {
+      PENDING: 0,
+      APPROVED: 0,
+      REFUNDED: 0,
+      REJECTED: 0,
+      FAILED: 0,
+      ALL: 0,
+    },
+    total: body.total,
+    page: body.page,
+    limit: body.limit,
+  };
+}
+
+export async function reconcileOrganizerRefund(
+  bookingId: string,
+): Promise<{ bookingId?: string; status?: string; outcome?: string; message?: string }> {
+  const res = await authFetch(`/organizers/refund-requests/${bookingId}/reconcile`, {
+    method: 'POST',
   });
+  const body = (await res.json().catch(() => ({}))) as {
+    message?: string;
+    bookingId?: string;
+    status?: string;
+    outcome?: string;
+  };
+  if (!res.ok) {
+    throw new Error(body.message ?? `Failed to reconcile refund (${res.status})`);
+  }
+  return body;
 }
 
 async function decideOrganizerRefund(
@@ -383,6 +457,8 @@ export interface OrganizerProfile {
   id: string;
   organizationName: string;
   phone: string | null;
+  applicationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  rejectionReason?: string;
   _count: { events: number; venues: number };
 }
 
@@ -445,3 +521,15 @@ export async function uploadOrganizerMedia(file: File, eventId?: string): Promis
   const body = (await res.json()) as { url: string };
   return body.url;
 }
+
+export async function deleteOrganizerMedia(eventId: string, mediaUrl: string): Promise<void> {
+  const res = await authFetch(`/events/${eventId}/images`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mediaUrl }),
+  });
+  if (!res.ok) {
+    throw await readApiError(res, 'Failed to delete image');
+  }
+}
+

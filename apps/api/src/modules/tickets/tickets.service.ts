@@ -138,15 +138,32 @@ export class TicketsService {
     const existing = await this.requireOwnedTicketType(organizerId, ticketTypeId);
 
     const sold = existing.totalQuantity - existing.availableQuantity;
-    if (sold > 0) {
+    const historyCount = await this.prisma.bookingItem.count({
+      where: { ticketTypeId },
+    });
+    if (sold > 0 || historyCount > 0) {
       throw new ConflictException(
-        'Ticket type has bookings — deactivate it instead of deleting',
+        'Ticket type has booking history — deactivate it instead of deleting',
       );
     }
 
-    await this.prisma.ticketType.delete({ where: { id: ticketTypeId } });
-    await this.eventsService.invalidateEventCache();
-    return { message: 'Ticket type deleted' };
+    try {
+      await this.prisma.ticketType.delete({ where: { id: ticketTypeId } });
+      await this.eventsService.invalidateEventCache();
+      return { message: 'Ticket type deleted' };
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error as { code?: string }).code === 'P2003'
+      ) {
+        throw new ConflictException(
+          'Ticket type has booking history — deactivate it instead of deleting',
+        );
+      }
+      throw error;
+    }
   }
 
   private async requireOwnedTicketType(
@@ -192,6 +209,9 @@ export class TicketsService {
       if (new Date(saleEndDate) <= new Date(saleStartDate)) {
         throw new ConflictException('Sale end must be after sale start');
       }
+    }
+    if (saleStartDate && new Date(saleStartDate) > eventStartDate) {
+      throw new ConflictException('Sale start must not be after the event start');
     }
     if (saleEndDate && new Date(saleEndDate) > eventStartDate) {
       throw new ConflictException('Sale end must not be after the event start');

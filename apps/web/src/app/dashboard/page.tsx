@@ -128,6 +128,60 @@ export default function DashboardPage() {
         <Link href="/organizer/events/new" className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90">Create event</Link>
       </div>
 
+      {profile.applicationStatus === 'PENDING' && (
+        <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-300" role="status">
+          <p className="font-semibold">Organizer Application Under Review</p>
+          <p className="mt-1">
+            Your application is awaiting administrator verification. You will be able to create and publish events once your profile is approved.
+          </p>
+        </div>
+      )}
+
+      {profile.applicationStatus === 'REJECTED' && (
+        <div className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive" role="alert">
+          <p className="font-semibold">Organizer Application Rejected</p>
+          <p className="mt-1">Reason: {profile.rejectionReason ?? 'Application was not approved by administration.'}</p>
+          <p className="mt-2 text-xs text-muted-foreground">You can submit updated details below to reapply for administrator review.</p>
+          <form
+            className="mt-3 flex flex-wrap items-center gap-2"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setJoinError(null);
+              setJoining(true);
+              try {
+                await becomeOrganizer({ organizationName: orgName || profile.organizationName, phone: orgPhone || profile.phone || undefined });
+                window.location.reload();
+              } catch (err) {
+                setJoinError(err instanceof Error ? err.message : 'Reapplication failed');
+              } finally {
+                setJoining(false);
+              }
+            }}
+          >
+            <input
+              required
+              minLength={2}
+              defaultValue={profile.organizationName}
+              onChange={(e) => setOrgName(e.target.value)}
+              placeholder="Organization name"
+              aria-label="Updated organization name"
+              className="h-9 w-60 rounded-md border border-input bg-background px-3 text-xs"
+            />
+            <input
+              type="tel"
+              defaultValue={profile.phone ?? ''}
+              onChange={(e) => setOrgPhone(e.target.value)}
+              placeholder="Contact phone"
+              aria-label="Updated contact phone"
+              className="h-9 w-40 rounded-md border border-input bg-background px-3 text-xs"
+            />
+            <Button size="sm" type="submit" disabled={joining}>
+              {joining ? 'Submitting…' : 'Reapply for review'}
+            </Button>
+          </form>
+        </div>
+      )}
+
       {error && (
         <p role="alert" className="mt-6 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {error}

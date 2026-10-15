@@ -4,6 +4,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
+  adminAuditLogListSchema,
   adminEventListSchema,
   adminBookingListSchema,
   adminModerateEventSchema,
@@ -69,6 +70,16 @@ export class AdminController {
   }
 
   @Roles('ADMIN')
+  @Post('bookings/:id/refund/recover')
+  @ApiOperation({ summary: 'Safely recover an approved refund that failed before provider creation (admin only)' })
+  async recoverRefund(
+    @CurrentUser('id') adminUserId: string,
+    @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
+  ) {
+    return this.paymentsService.recoverApprovedRefund(adminUserId, params.id);
+  }
+
+  @Roles('ADMIN')
   @Patch('users/:id/status')
   @ApiOperation({ summary: 'Activate/deactivate a user (admin only)' })
   async setUserStatus(
@@ -94,13 +105,14 @@ export class AdminController {
   @Post('events/:id/moderate')
   @ApiOperation({ summary: 'Moderate an event (cancel published events; admin only)' })
   async moderateEvent(
+    @CurrentUser('id') adminUserId: string,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
     @Body(new ZodValidationPipe(adminModerateEventSchema)) body: {
       action: 'CANCEL';
       reason?: string;
     },
   ) {
-    return this.adminService.moderateEvent(params.id, body);
+    return this.adminService.moderateEvent(adminUserId, params.id, body);
   }
 
   // ── Organizer management ─────────────────────────
@@ -118,9 +130,21 @@ export class AdminController {
   @Patch('organizers/:id/verification')
   @ApiOperation({ summary: 'Set the organizer verified badge (admin only)' })
   async setOrganizerVerification(
+    @CurrentUser('id') adminUserId: string,
     @Param(new ZodValidationPipe(idParamSchema)) params: { id: string },
     @Body(new ZodValidationPipe(adminSetOrganizerVerificationSchema)) body: { isVerified: boolean },
   ) {
-    return this.adminService.setOrganizerVerification(params.id, body);
+    return this.adminService.setOrganizerVerification(adminUserId, params.id, body);
+  }
+
+  // ── Audit logs ───────────────────────────────────
+
+  @Roles('ADMIN')
+  @Get('audit-logs')
+  @ApiOperation({ summary: 'List/search audit logs (admin only)' })
+  async listAuditLogs(
+    @Query(new ZodValidationPipe(adminAuditLogListSchema)) query: Record<string, unknown>,
+  ) {
+    return this.adminService.listAuditLogs(query as never);
   }
 }

@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationType } from '@prisma/client';
 
 interface SendEmailInput {
   to: string;
@@ -53,7 +55,96 @@ export function parseEmailSender(raw: string, fallbackName = 'EventAI'): BrevoSe
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  async sendEmail(input: SendEmailInput): Promise<boolean> {
+  constructor(@Optional() private readonly prisma?: PrismaService) {}
+
+  async createInAppNotification(input: {
+    userId: string;
+    type: NotificationType;
+    title: string;
+    message: string;
+    data?: Record<string, unknown>;
+  }) {
+    if (!this.prisma) {
+      this.logger.debug('In-app notification skipped: Prisma not injected');
+      return null;
+    }
+    try {
+      const dedupeKey = input.data?.bookingId ?? input.data?.key ?? input.data?.eventId;
+      if (dedupeKey) {
+        const recent = await this.prisma.notification.findMany({
+          where: {
+            userId: input.userId,
+            type: input.type,
+            createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+          },
+          take: 10,
+        });
+        const match = recent.find((n) => {
+          if (!n.data || typeof n.data !== 'object') return false;
+          const d = n.data as Record<string, unknown>;
+          return (
+            d.bookingId === dedupeKey ||
+            d.key === dedupeKey ||
+            (input.data?.action && d.action === input.data.action && d.eventId === dedupeKey)
+          );
+        });
+        if (match) return match;
+      }
+
+      return await this.prisma.notification.create({
+        data: {
+          userId: input.userId,
+          type: input.type,
+          title: input.title,
+          message: input.message,
+          data: input.data ? JSON.parse(JSON.stringify(input.data)) : undefined,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to persist in-app notification: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  async getUserNotifications(userId: string, limit = 30) {
+    if (!this.prisma) return { notifications: [], unreadCount: 0 };
+    const [notifications, unreadCount] = await Promise.all([
+      this.prisma.notification.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      }),
+      this.prisma.notification.count({
+        where: { userId, isRead: false },
+      }),
+    ]);
+    return { notifications, unreadCount };
+  }
+
+  async markAsRead(userId: string, id: string) {
+    if (!this.prisma) return null;
+    const notification = await this.prisma.notification.findUnique({ where: { id } });
+    if (!notification || notification.userId !== userId) {
+      throw new NotFoundException('Notification not found');
+    }
+    return this.prisma.notification.update({
+      where: { id },
+      data: { isRead: true, readAt: new Date() },
+    });
+  }
+
+  async markAllAsRead(userId: string) {
+    if (!this.prisma) return { success: true };
+    await this.prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
+    return { success: true };
+  }
+
+  async sendEmail(input: SendEmailInput, retries = 2, backoffMs = 100): Promise<boolean> {
     const apiKey = process.env.BREVO_API_KEY;
     const sender = parseEmailSender(
       process.env.EMAIL_FROM ?? 'EventAI <noreply@eventai.dev>',
@@ -63,33 +154,53 @@ export class NotificationsService {
       return false;
     }
 
-    try {
-      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
-        headers: {
-          'api-key': apiKey,
-          'Content-Type': 'application/json',
-          accept: 'application/json',
-        },
-        body: JSON.stringify({
-          sender,
-          to: [{ email: input.to }],
-          subject: input.subject,
-          htmlContent: input.html,
-        }),
-      });
-      if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as BrevoSendResponse;
-        this.logger.warn(`Brevo send failed (HTTP ${res.status})`);
-        return false;
+    let attempt = 0;
+    while (attempt <= retries) {
+      attempt++;
+      try {
+        const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: {
+            'api-key': apiKey,
+            'Content-Type': 'application/json',
+            accept: 'application/json',
+          },
+          body: JSON.stringify({
+            sender,
+            to: [{ email: input.to }],
+            subject: input.subject,
+            htmlContent: input.html,
+          }),
+        });
+
+        if (res.ok) {
+          await res.json().catch(() => ({}));
+          this.logger.log('Email sent successfully');
+          return true;
+        }
+
+        // Non-retryable permanent client errors (400, 401, 403, 404, etc.)
+        // 429 Too Many Requests is transient rate-limiting and eligible for retry.
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+          this.logger.warn(`Brevo send failed with non-retryable error (HTTP ${res.status})`);
+          return false;
+        }
+
+        this.logger.warn(
+          `Brevo send failed (HTTP ${res.status}), attempt ${attempt}/${retries + 1}`,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Brevo request network error: ${err instanceof Error ? err.message : String(err)}, attempt ${attempt}/${retries + 1}`,
+        );
       }
-      const body = (await res.json()) as BrevoSendResponse;
-      this.logger.log('Email sent successfully');
-      return true;
-    } catch {
-      this.logger.warn('Brevo request failed');
-      return false;
+
+      if (attempt <= retries) {
+        await new Promise((resolve) => setTimeout(resolve, backoffMs * Math.pow(2, attempt - 1)));
+      }
     }
+
+    return false;
   }
 
   async sendBookingConfirmation(input: {

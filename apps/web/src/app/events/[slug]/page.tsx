@@ -263,17 +263,29 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         {/* Sidebar */}
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <div className="rounded-lg border bg-card p-6 shadow-sm">
-            {event.minPrice !== null ? (
-              <>
-                <p className="text-sm text-muted-foreground">Tickets from</p>
-                <p className="mt-1 text-3xl font-bold">{formatPrice(event.minPrice)}</p>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground">Pricing</p>
-                <p className="mt-1 text-2xl font-bold">To be announced</p>
-              </>
-            )}
+            {(() => {
+              const computedMinPrice =
+                typeof event.minPrice === 'number' && Number.isFinite(event.minPrice)
+                  ? event.minPrice
+                  : event.ticketTypes && event.ticketTypes.length > 0
+                    ? Math.min(
+                        ...event.ticketTypes.map((t) =>
+                          typeof t.price === 'number' && Number.isFinite(t.price) ? t.price : 0,
+                        ),
+                      )
+                    : null;
+              return computedMinPrice !== null ? (
+                <>
+                  <p className="text-sm text-muted-foreground">Tickets from</p>
+                  <p className="mt-1 text-3xl font-bold">{formatPrice(computedMinPrice)}</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">Pricing</p>
+                  <p className="mt-1 text-2xl font-bold">To be announced</p>
+                </>
+              );
+            })()}
             <BookingWidget
               eventId={event.id}
               eventTitle={event.title}

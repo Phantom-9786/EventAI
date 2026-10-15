@@ -123,15 +123,42 @@ export class OrganizersService {
     return organizer.id;
   }
 
+  private normalizeVenueString(val: string): string {
+    return val
+      .toLowerCase()
+      .replace(/[,\-.]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   async createVenue(organizerId: string, input: CreateVenueInput) {
+    const normName = this.normalizeVenueString(input.name);
+    const normCity = this.normalizeVenueString(input.city);
+    const normAddress = this.normalizeVenueString(input.address);
+
+    const existingVenues = await this.prisma.venue.findMany({
+      where: { organizerId },
+    });
+
+    const duplicate = existingVenues.find((v) => {
+      const vName = this.normalizeVenueString(v.name);
+      const vCity = this.normalizeVenueString(v.city);
+      const vAddress = this.normalizeVenueString(v.address);
+      return vName === normName && vCity === normCity && vAddress === normAddress;
+    });
+
+    if (duplicate) {
+      return duplicate;
+    }
+
     return this.prisma.venue.create({
       data: {
         organizerId,
-        name: input.name,
+        name: input.name.trim().replace(/\s+/g, ' '),
         description: input.description,
-        address: input.address,
-        city: input.city,
-        state: input.state,
+        address: input.address.trim().replace(/\s+/g, ' '),
+        city: input.city.trim().replace(/\s+/g, ' '),
+        state: input.state.trim().replace(/\s+/g, ' '),
         zipCode: input.zipCode,
         country: input.country,
         latitude: input.latitude,

@@ -185,6 +185,7 @@ model Event {
   bookings     Booking[]
   faqs         EventFAQ[]
   tickets      Ticket[]
+  mediaAssets  EventMediaAsset[]
 
   @@index([categoryId])
   @@index([organizerId, createdAt])
@@ -210,6 +211,22 @@ model EventFAQ {
 
   @@index([eventId])
   @@map("event_faqs")
+}
+
+model EventMediaAsset {
+  id         String   @id @default(uuid())
+  eventId    String?  @map("event_id")
+  url        String
+  providerId String   @map("provider_id")
+  publicId   String   @map("public_id")
+  kind       String   @default("gallery") @map("kind")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([url])
+  @@map("event_media_assets")
 }
 
 // ── Venue ─────────────────────────────────────────

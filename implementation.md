@@ -338,3 +338,82 @@
 - [ ] AI assistant verification
 - [ ] Real-time updates verification
 - [ ] Docker Compose full stack test
+
+---
+
+## Phase 5 — Local-First Workflow Fixes & UI Improvements (2026-10-13)
+**Status: COMPLETE & LOCALLY VERIFIED**
+
+### Task 1 & 4 — Refund Workflow & Statistics
+- [x] State machine alignment across review, approval, rejection, provider processing, and reconciliation
+- [x] Database count calculations across 6 tabs (`PENDING`, `APPROVED`, `REFUNDED`, `REJECTED`, `FAILED`, `ALL`)
+- [x] Safe reconciliation endpoint (`POST /organizers/refund-requests/:bookingId/reconcile`) preventing blind duplicate provider calls
+- [x] Consistent status badges matching attendee tickets view (`/tickets`)
+- [x] Preserved audit logs for all refund status transitions
+
+### Task 2 — 6-Step Event Creation & Editing Wizard
+- [x] Moved ticket types & inventory into Step 5 of the wizard
+- [x] 6 Steps: 1. Basics, 2. Venue & Category, 3. Schedule, 4. Media & Policies, 5. Tickets & Inventory, 6. Review & Publish
+- [x] Form state preservation when navigating between wizard steps
+- [x] Removed disconnected `<TicketTypeManager>` section from `event-editor.tsx`
+- [x] Pre-publish validation for tickets, capacity, prices, and event dates
+- [x] Final Review step summarizes event details, venue, dates, and ticket tiers
+
+### Task 3 — Separate Organizer Venue Management from Public Discovery
+- [x] Address, city, and venue name normalization in `organizers.service.ts`
+- [x] Server-side deduplication in `createVenue` reusing existing matching venues
+- [x] Public venue directory restricted to published events only
+
+### Task 5 — In-App Notification Bell
+- [x] Persisted notifications in database with 24-hour idempotent deduplication
+- [x] Role-aware notifications triggered on booking confirmation, cancellation, refund request, approval, rejection, and settlement
+- [x] Shared header `NotificationBell` component with unread counter badge and notification tray
+- [x] Endpoints for fetching unread notifications, marking as read, and marking all as read
+
+### Task 6 — Account Deletion Blocker Diagnostics
+- [x] Updated `deleteAccount` to return structured blocker details (`{ events: [...], refunds: [...] }`)
+- [x] Actionable blocker alerts on `/account` with direct links to blocking events and refunds
+- [x] Preserved financial records and anonymization constraints
+
+### Task 7 — Accessible Event Date/Time Selection
+- [x] Created `DateTimePicker` component with time presets and `Intl.DateTimeFormat('en-IN')` preview
+- [x] Start date precedes end date validation with inline error messaging
+- [x] Keyboard and mobile accessibility
+
+### Task 8 — Smooth Dark/Light Theme Transitions
+- [x] Non-layout-shifting CSS color transitions (200ms) in `globals.css`
+- [x] Respects `@media (prefers-reduced-motion: no-preference)`
+- [x] No flash of wrong theme on initial load or toggling
+
+### Task 9 — UI Consistency & Spacing
+- [x] Clean responsive layout, spacing, typography, and status badges across organizer and attendee views
+- [x] High-contrast empty states and loading spinners
+
+### Task 10 — Test Suite & Verification Results
+- [x] `npm run test`: 21/21 suites passed, 277/277 unit tests passed
+- [x] `npm run lint`: 9/9 packages passed, 0 errors
+- [x] `npm run type-check`: 12/12 turbo tasks passed, 0 errors
+- [x] `npm run build`: 6/6 packages built, Next.js 24/24 static pages compiled
+- [x] `npx playwright test e2e/verification-flows.spec.ts`: 5/5 passed (refund workflow & 6 tabs, 6-step event wizard & tickets, in-app notifications & tray, account deletion blocker diagnostics, theme transitions & persistence)
+- [x] `npx playwright test e2e/product-lifecycle.spec.ts`: 7/7 passed
+- [x] `npx playwright test e2e/public-location.spec.ts`: 1/1 passed
+- [x] `npx playwright test e2e/auth-callback.spec.ts`: 2/2 passed
+- [x] Strict local execution: 0 remote git operations, 0 remote migrations, 0 remote deployments
+
+### Task 11 — Post-Reboot Live Browser & Provider Verification (October 13, 2026)
+- [x] **DevCon Mumbai 2026 Refund Provider Status**:
+  - Safe read-only inspection of payment `pay_TmDlRqutw11smq` at Razorpay.
+  - Authoritatively confirmed status: `captured`, `amount: 149900` paise, `amount_refunded: 0`, 0 refunds indexed at provider.
+  - Reason: original approval returned HTTP 401 upstream due to superseded keys; no provider refund was ever created.
+  - Safely preserved local state as `REFUND_PENDING` without approving, retrying, initiating, or duplicating any refund.
+- [x] **Browser Image Upload & Public Display**:
+  - Verified in live browser via Playwright Chromium (`e2e/browser-verification-live.spec.ts`):
+  - Uploaded real cover image (`test-cover.png`) and gallery image (`test-gallery.png`) on event manage page.
+  - Verified live previews rendered with `/uploads/event-...` URLs.
+  - Saved draft, reloaded page, and confirmed persistence.
+  - Verified public event page (`/events/mumbai-indie-night-02c73b12`) renders the uploaded cover banner.
+- [x] **Organizer Dashboard All Requests UI**:
+  - Verified in live browser: all 6 status tabs render with real count badges.
+  - "All requests" tab displays DevCon Mumbai 2026 (₹1,499 - *Approved — settlement processing*) and Mumbai Indie Night (₹499 - *Successfully refunded*).
+  - Specific filter tabs ("Approved / processing", "Successfully refunded") filter accurately.
+

@@ -88,6 +88,12 @@ export class UsersController {
     return this.usersService.deactivateAccount(userId);
   }
 
+  @Get('me/deletion-blockers')
+  @ApiOperation({ summary: 'Get active events or pending refunds blocking account deletion' })
+  async getDeletionBlockers(@CurrentUser('id') userId: string) {
+    return this.usersService.getDeletionBlockers(userId);
+  }
+
   @Post('me/delete')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Permanently delete and anonymize account with explicit confirmation' })

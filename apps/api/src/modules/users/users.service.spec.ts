@@ -20,8 +20,8 @@ describe('UsersService', () => {
     session: { deleteMany: jest.Mock };
     emailVerificationToken: { deleteMany: jest.Mock };
     organizer: { findUnique: jest.Mock };
-    event: { count: jest.Mock };
-    payment: { count: jest.Mock };
+    event: { count: jest.Mock; findMany: jest.Mock };
+    payment: { count: jest.Mock; findMany: jest.Mock };
     $transaction: jest.Mock;
   };
 
@@ -31,8 +31,8 @@ describe('UsersService', () => {
       session: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       emailVerificationToken: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       organizer: { findUnique: jest.fn() },
-      event: { count: jest.fn().mockResolvedValue(0) },
-      payment: { count: jest.fn().mockResolvedValue(0) },
+      event: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
+      payment: { count: jest.fn().mockResolvedValue(0), findMany: jest.fn().mockResolvedValue([]) },
       $transaction: jest.fn().mockResolvedValue([]),
     };
 
@@ -214,24 +214,37 @@ describe('UsersService', () => {
       );
     });
 
-    it('blocks organizer deletion if active events remain', async () => {
+    it('blocks organizer deletion if active events remain and returns structured blockers', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'ORGANIZER' });
       prisma.organizer.findUnique.mockResolvedValue({ id: 'org-1' });
-      prisma.event.count.mockResolvedValue(1);
+      prisma.event.findMany.mockResolvedValue([{ id: 'ev-1', title: 'Summer Fest', status: 'PUBLISHED', slug: 'summer-fest' }]);
+      prisma.payment.findMany.mockResolvedValue([]);
 
-      await expect(service.deleteAccount('user-1', 'DELETE')).rejects.toThrow(
-        ConflictException,
-      );
+      try {
+        await service.deleteAccount('user-1', 'DELETE');
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ConflictException);
+        const resp = (err as ConflictException).getResponse() as { blockers?: { events: unknown[] } };
+        expect(resp.blockers?.events).toHaveLength(1);
+      }
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
-    it('blocks deletion if user has pending refunds', async () => {
+    it('blocks deletion if user has pending refunds and returns structured blockers', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 'user-1', role: 'CUSTOMER' });
-      prisma.payment.count.mockResolvedValue(1);
+      prisma.payment.findMany.mockResolvedValue([
+        { id: 'pay-1', bookingId: 'bk-1', amount: 50000, status: 'REFUND_PENDING', refundRequestStatus: 'PENDING' },
+      ]);
 
-      await expect(service.deleteAccount('user-1', 'DELETE')).rejects.toThrow(
-        ConflictException,
-      );
+      try {
+        await service.deleteAccount('user-1', 'DELETE');
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ConflictException);
+        const resp = (err as ConflictException).getResponse() as { blockers?: { refunds: unknown[] } };
+        expect(resp.blockers?.refunds).toHaveLength(1);
+      }
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 

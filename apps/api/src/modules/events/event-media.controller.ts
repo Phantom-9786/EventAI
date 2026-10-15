@@ -2,7 +2,6 @@ import {
   Controller,
   HttpCode,
   Param,
-  ParseUUIDPipe,
   Post,
   UploadedFile,
   UseInterceptors,
@@ -30,7 +29,7 @@ export class EventMediaController {
   )
   upload(
     @CurrentUser('id') userId: string,
-    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Param('eventId') eventId: string,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     return this.media.upload(userId, eventId, file);

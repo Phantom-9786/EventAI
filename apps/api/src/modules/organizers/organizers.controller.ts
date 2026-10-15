@@ -65,6 +65,7 @@ export class OrganizersController {
     return this.organizersService.leaveOrganizer(userId);
   }
 
+  @Roles('ORGANIZER')
   @Get('me/events')
   @ApiOperation({ summary: 'List the authenticated organizer events (all statuses)' })
   async listOwnEvents(
@@ -75,6 +76,7 @@ export class OrganizersController {
     return this.organizersService.listOwnEvents(organizerId, query.page, query.limit);
   }
 
+  @Roles('ORGANIZER')
   @Get('me/stats')
   @ApiOperation({ summary: 'Dashboard aggregates for the authenticated organizer' })
   async getDashboardStats(@CurrentUser('id') userId: string) {
@@ -82,6 +84,7 @@ export class OrganizersController {
     return this.organizersService.getDashboardStats(organizerId);
   }
 
+  @Roles('ORGANIZER')
   @Post('venues')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a venue owned by the authenticated organizer' })
@@ -93,6 +96,7 @@ export class OrganizersController {
     return { venue: await this.organizersService.createVenue(organizerId, body) };
   }
 
+  @Roles('ORGANIZER')
   @Get('venues')
   @ApiOperation({ summary: 'List venues owned by the authenticated organizer' })
   async listVenues(@CurrentUser('id') userId: string) {
@@ -194,9 +198,13 @@ export class OrganizersController {
   async refundRequests(
     @CurrentUser('id') userId: string,
     @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
     const organizerId = await this.organizersService.requireOrganizerId(userId);
-    return { refundRequests: await this.paymentsService.listOrganizerRefundRequests(organizerId, status) };
+    const pageNum = page ? Math.max(1, parseInt(page, 10) || 1) : 1;
+    const limitNum = limit ? Math.min(100, Math.max(1, parseInt(limit, 10) || 20)) : 20;
+    return this.paymentsService.listOrganizerRefundRequests(organizerId, status, pageNum, limitNum);
   }
 
   @Roles('ORGANIZER')
@@ -222,4 +230,29 @@ export class OrganizersController {
     const organizerId = await this.organizersService.requireOrganizerId(userId);
     return this.paymentsService.rejectRefundRequest(organizerId, userId, bookingId);
   }
+
+  @Roles('ORGANIZER')
+  @Post('refund-requests/:bookingId/reconcile')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reconcile a pending refund with payment provider' })
+  async reconcileRefund(
+    @CurrentUser('id') userId: string,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return this.paymentsService.reconcileOrganizerRefund(organizerId, userId, bookingId);
+  }
+
+  @Roles('ORGANIZER')
+  @Post('refund-requests/:bookingId/recover')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Safely recover an approved refund that failed before provider creation (organizer only)' })
+  async recoverRefund(
+    @CurrentUser('id') userId: string,
+    @Param('bookingId', ParseUUIDPipe) bookingId: string,
+  ) {
+    const organizerId = await this.organizersService.requireOrganizerId(userId);
+    return this.paymentsService.recoverOrganizerRefund(organizerId, userId, bookingId);
+  }
 }
+

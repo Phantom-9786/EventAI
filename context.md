@@ -10,7 +10,7 @@ AI-powered Event Discovery and Ticket Booking Platform built as a modular monoli
 
 Modular monolith using Turborepo monorepo with three apps:
 - `apps/web` — Next.js 14 frontend (App Router, Tailwind, shadcn-style components)
-- `apps/api` — NestJS backend API (port 4000, global prefix `/api`)
+- `apps/api` — Express + TypeScript backend API (port 4000, global prefix `/api`)
 - `apps/worker` — BullMQ background worker (skeleton with Redis connection + graceful shutdown)
 
 Shared packages:
@@ -24,7 +24,7 @@ Shared packages:
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS, shadcn/ui-style components |
-| Backend | NestJS, TypeScript, REST APIs |
+| Backend | Express + TypeScript, REST APIs |
 | Database | PostgreSQL 16, Prisma ORM 6 |
 | Cache | Redis 7 |
 | Background Jobs | BullMQ + Redis |
@@ -45,7 +45,7 @@ Shared packages:
 eventai/
 ├── apps/
 │   ├── web/          — Next.js frontend
-│   ├── api/          — NestJS backend
+│   ├── api/          — Express + TypeScript backend
 │   └── worker/       — BullMQ worker
 ├── packages/
 │   ├── config/       — Shared ESLint/TS config
@@ -322,4 +322,104 @@ Comprehensive platform rescue executed on feature branch `feat/product-rescue-an
      - `e2e/product-lifecycle.spec.ts`: 7/7 passing.
      - `e2e/public-location.spec.ts`: 1/1 passing.
      - `e2e/auth-callback.spec.ts`: 2/2 passing.
+
+
+## Checkpoint: Local-First Workflow Fixes & UI Improvements (2026-10-13)
+
+### 1. Branch & Git Status
+- **Current Branch**: `feat/local-workflow-fixes-and-ui` (branched from `main` at `398746e`)
+- **Working Tree**: Preserved with all uncommitted changes intact.
+- **Modified Tracked Files (20)**:
+  - `apps/api/src/modules/bookings/bookings.service.ts`
+  - `apps/api/src/modules/bookings/bookings.service.spec.ts`
+  - `apps/api/src/modules/events/events.service.spec.ts`
+  - `apps/api/src/modules/notifications/notifications.module.ts`
+  - `apps/api/src/modules/notifications/notifications.service.ts`
+  - `apps/api/src/modules/notifications/notifications.service.spec.ts`
+  - `apps/api/src/modules/organizers/organizers.controller.ts`
+  - `apps/api/src/modules/organizers/organizers.service.ts`
+  - `apps/api/src/modules/organizers/organizers.service.spec.ts`
+  - `apps/api/src/modules/payments/payments.service.ts`
+  - `apps/api/src/modules/payments/payments.service.spec.ts`
+  - `apps/api/src/modules/users/users.service.ts`
+  - `apps/api/src/modules/users/users.service.spec.ts`
+  - `apps/web/src/app/account/page.tsx`
+  - `apps/web/src/app/globals.css`
+  - `apps/web/src/components/layout/header.tsx`
+  - `apps/web/src/components/organizer/event-editor.tsx`
+  - `apps/web/src/components/organizer/event-form.tsx`
+  - `apps/web/src/components/organizer/refund-requests.tsx`
+  - `apps/web/src/lib/organizer.ts`
+- **Untracked New Files (4)**:
+  - `apps/api/src/modules/notifications/notifications.controller.ts`
+  - `apps/web/src/components/notifications/notification-bell.tsx`
+  - `apps/web/src/components/ui/date-time-picker.tsx`
+  - `apps/web/src/lib/notifications.ts`
+- **Remote Operations**: Zero remote pushes, zero merges, zero remote deployments, zero remote migrations executed.
+
+### 2. Completed Features & Implementation Details
+- **Task 1 & 4 (Refund Workflow, History & Reconciliation)**:
+  - Enhanced `payments.service.ts` with real aggregation counts across 6 status tabs: `PENDING`, `APPROVED`, `REFUNDED`, `REJECTED`, `FAILED`, and `ALL`.
+  - Added `POST /organizers/refund-requests/:bookingId/reconcile` validating organizer ownership before executing safe provider reconciliation.
+  - Aligned status badges and messaging between `/tickets` and `/organizer/refunds`.
+  - Added in-app notification triggers across refund approval, decline, and settlement events.
+- **Task 2 (6-Step Event Creation & Editing Wizard)**:
+  - Integrated ticket tier management natively into Step 5 (**Tickets & Inventory**).
+  - Wizard steps: 1. Basics, 2. Venue & Category, 3. Schedule, 4. Media & Policies, 5. Tickets & Inventory, 6. Review & Publish.
+  - Removed disconnected `<TicketTypeManager>` section from `event-editor.tsx`.
+  - Enforced price, inventory capacity, and schedule validation before publishing.
+- **Task 3 (Venue Management & Public Discovery Separation)**:
+  - Added `normalizeVenueString` in `organizers.service.ts` (lowercases, removes punctuation, and trims).
+  - Implemented deduplication logic in `createVenue` to reuse existing matching organizer venues instead of creating duplicate records.
+- **Task 5 (In-App Notification Bell)**:
+  - Implemented `notifications.service.ts` with database persistence and 24-hour idempotent deduplication.
+  - Created `notifications.controller.ts` with `GET /notifications`, `PATCH /notifications/:id/read`, and `POST /notifications/read-all`.
+  - Built `notification-bell.tsx` with unread count badge, popover tray, and mark-all-read control in `header.tsx`.
+- **Task 6 (Account Deletion Blocker Diagnostics)**:
+  - Enhanced `deleteAccount` in `users.service.ts` to return structured `{ message, blockers: { events: [...], refunds: [...] } }`.
+  - Updated `account/page.tsx` with an actionable blocker alert with direct links to blocking events and refunds.
+- **Task 7 (Accessible Date/Time Selection)**:
+  - Created `DateTimePicker` with time presets, Indian format preview, keyboard accessibility, and min-date constraints.
+- **Task 8 (Smooth Dark/Light Theme Transitions)**:
+  - Added subtle 200ms background, border, surface, and text color transitions in `globals.css` under `@media (prefers-reduced-motion: no-preference)`.
+
+### 3. Test Results & Verification
+- `npm run test`: **21/21 suites passed, 277/277 tests passed** (Exit Code: 0).
+- `npm run lint`: **9/9 packages passed, 0 errors** (Exit Code: 0).
+- `npm run type-check`: **12/12 turbo tasks passed** (Exit Code: 0).
+- `npm run build`: **6/6 packages built, Next.js 24/24 static pages compiled** (Exit Code: 0).
+- `npx playwright test e2e/verification-flows.spec.ts`: **Passed (5/5)** (Exit Code: 0) — verified refund workflow with 6 status tabs, approve, reject & reconciliation; 6-step event wizard with state preservation & ticket types; in-app notification bell & tray; account deletion blocker diagnostics with links; and theme transitions & persistence.
+- `npx playwright test e2e/product-lifecycle.spec.ts`: **Passed (7/7)** (Exit Code: 0).
+- `npx playwright test e2e/public-location.spec.ts`: **Passed (1/1)** (Exit Code: 0).
+- `npx playwright test e2e/auth-callback.spec.ts`: **Passed (2/2)** (Exit Code: 0).
+
+### 4. Verification Checkpoint (October 13, 2026 - Post-Reboot)
+- **Razorpay 401 Authentication Diagnosis**:
+  - Diagnosed that Razorpay invalidated the older Oct 10 API key upon generation of the Oct 11 key. Synchronized active Oct 11 credentials into `.env` and `apps/api/.env` without exposing secrets.
+  - Safe read-only request to `GET https://api.razorpay.com/v1/items?count=1` returned HTTP 200 OK.
+  - Updated `ensureClient()` in `payments.service.ts` to reload credentials dynamically without stale caching.
+- **₹1,499 DevCon Mumbai 2026 Refund Provider Status**:
+  - Executed read-only GET requests to Razorpay for `pay_TmDlRqutw11smq`.
+  - Authoritatively established provider status: `status: 'captured'`, `amount: 149900` paise, `amount_refunded: 0`, `refunds: { count: 0, items: [] }`.
+  - Confirmed that because the original refund call failed upstream with 401, no provider refund was ever created at Razorpay.
+  - Preserved local status safely as `REFUND_PENDING` without initiating, approving, retrying, or duplicating any refund.
+- **Live Browser Image Upload & Persistence**:
+  - Performed live browser testing via Playwright in Chromium (`e2e/browser-verification-live.spec.ts`).
+  - Successfully uploaded real cover image (`test-cover.png`) and gallery image (`test-gallery.png`).
+  - Verified live previews rendered with `/uploads/event-...` URLs.
+  - Clicked "Save draft", verified "Draft saved." confirmation, reloaded page, and confirmed persistence.
+  - Verified public event page (`/events/mumbai-indie-night-02c73b12`) renders the cover image banner.
+- **Organizer Dashboard All Requests UI**:
+  - Verified via live browser test: all 6 filter tabs render with real count badges.
+  - "All requests" tab displays both DevCon Mumbai 2026 (₹1,499 - *Approved — settlement processing*) and Mumbai Indie Night (₹499 - *Successfully refunded*).
+  - Specific tabs correctly filter corresponding records.
+- **Test Suite Results**:
+  - API Unit Tests: **7/7 suites passed, 156/156 tests passed**.
+  - E2E Verification Flows: **5/5 passed** (`e2e/verification-flows.spec.ts`).
+  - Live Browser Verification: **2/2 passed** (`e2e/browser-verification-live.spec.ts`).
+
+### 5. Current State & Remaining Work
+- All requested features and verification suites are implemented and verified green locally.
+- Work conducted strictly locally: 0 remote commits, 0 pushes, 0 migrations, 0 deployments.
+- Uncommitted changes preserved across workspace.
 

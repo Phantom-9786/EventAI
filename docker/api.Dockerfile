@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════
-# EventAI API — NestJS
+# EventAI API — Express + TypeScript
 # Build context: repository root
 #   docker build -f docker/api.Dockerfile .
 # ═══════════════════════════════════════════════════

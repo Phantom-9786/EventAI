@@ -4,9 +4,13 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EventsService } from '../events/events.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import type {
+  AdminAuditLogListInput,
   AdminEventListInput,
   AdminBookingListInput,
   AdminModerateEventInput,
@@ -20,7 +24,11 @@ import type {
 export class AdminService {
   private readonly logger = new Logger(AdminService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly eventsService?: EventsService,
+    @Optional() private readonly notifications?: NotificationsService,
+  ) {}
 
   /** Search bookings with explicitly limited customer, event and payment fields. */
   async listBookings(query: AdminBookingListInput) {
@@ -93,6 +101,9 @@ export class AdminService {
             method: true,
             refundId: true,
             refundAmount: true,
+            refundRequestStatus: true,
+            refundRequestReason: true,
+            refundRequestedAt: true,
             failureReason: true,
             createdAt: true,
             updatedAt: true,
@@ -263,6 +274,19 @@ export class AdminService {
         // Consistent with self-deletion: kill every live session
         await tx.session.deleteMany({ where: { userId: targetUserId } });
       }
+      await tx.auditLog.create({
+        data: {
+          userId: adminUserId,
+          action: input.isActive ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+          entity: 'USER',
+          entityId: targetUserId,
+          details: {
+            email: u.email,
+            previousStatus: user.isActive,
+            newStatus: input.isActive,
+          },
+        },
+      });
       return u;
     });
 
@@ -317,7 +341,7 @@ export class AdminService {
     };
   }
 
-  async moderateEvent(eventId: string, input: AdminModerateEventInput) {
+  async moderateEvent(adminUserId: string, eventId: string, input: AdminModerateEventInput) {
     if (input.action !== 'CANCEL') {
       throw new BadRequestException('Unsupported moderation action');
     }
@@ -335,16 +359,110 @@ export class AdminService {
       );
     }
 
-    const updated = await this.prisma.event.update({
-      where: { id: eventId },
-      data: { status: 'CANCELLED' },
-      select: { id: true, title: true, status: true },
+    const cancellationReason = input.reason
+      ? `Event cancelled by administrator: ${input.reason}`
+      : 'Event cancelled by administrator';
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const e = await tx.event.update({
+        where: { id: eventId },
+        data: { status: 'CANCELLED' },
+        select: { id: true, title: true, status: true },
+      });
+
+      const now = new Date();
+      const refundRequests = await tx.payment.updateMany({
+        where: {
+          status: 'CAPTURED',
+          OR: [
+            { refundRequestStatus: null },
+            { refundRequestStatus: 'REJECTED' },
+            { refundRequestStatus: 'FAILED' },
+          ],
+          booking: { eventId, status: 'CONFIRMED' },
+        },
+        data: {
+          refundRequestStatus: 'PENDING',
+          refundRequestReason: cancellationReason,
+          refundRequestedAt: now,
+          refundReviewedAt: null,
+          refundReviewedBy: null,
+        },
+      });
+
+      const cancelledBookings = await tx.booking.updateMany({
+        where: { eventId, status: { in: ['PENDING', 'PAYMENT_PENDING', 'CONFIRMED'] } },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: now,
+          cancellationReason,
+        },
+      });
+
+      await tx.ticket.updateMany({
+        where: { eventId, status: 'VALID' },
+        data: { status: 'CANCELLED' },
+      });
+
+      const attendees = await tx.booking.findMany({
+        where: { eventId, status: 'CANCELLED' },
+        select: {
+          id: true,
+          user: { select: { email: true, firstName: true, lastName: true } },
+          payment: { select: { status: true, refundRequestStatus: true } },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: adminUserId,
+          action: 'EVENT_CANCELLED_BY_ADMIN',
+          entity: 'EVENT',
+          entityId: eventId,
+          details: {
+            title: event.title,
+            reason: input.reason ?? null,
+            bookingsCancelled: cancelledBookings.count,
+            refundRequestsQueued: refundRequests.count,
+          },
+        },
+      });
+
+      return {
+        event: e,
+        refundRequestsQueued: refundRequests.count,
+        bookingsCancelled: cancelledBookings.count,
+        attendees,
+      };
     });
 
+    if (this.eventsService) {
+      await this.eventsService.invalidateEventCache();
+    }
+
+    if (this.notifications) {
+      for (const attendee of result.attendees) {
+        void this.notifications
+          .sendEventCancellationNotice({
+            to: attendee.user.email,
+            holderName: `${attendee.user.firstName} ${attendee.user.lastName}`.trim() || 'Attendee',
+            eventTitle: result.event.title,
+            bookingId: attendee.id,
+            paymentStatus: attendee.payment?.status ?? null,
+            refundRequestStatus: attendee.payment?.refundRequestStatus ?? null,
+          })
+          .catch((error: unknown) => {
+            this.logger.warn(
+              `Admin cancellation notice failed for booking ${attendee.id}: ${error instanceof Error ? error.message : 'unknown error'}`,
+            );
+          });
+      }
+    }
+
     this.logger.log(
-      `Admin moderated event ${eventId}: CANCEL (reason: ${input.reason ?? 'none provided'})`,
+      `Admin ${adminUserId} moderated event ${eventId}: CANCEL (reason: ${input.reason ?? 'none provided'}, bookingsCancelled: ${result.bookingsCancelled}, refundRequestsQueued: ${result.refundRequestsQueued})`,
     );
-    return updated;
+    return result.event;
   }
 
   // ── Organizer management ─────────────────────────
@@ -397,26 +515,99 @@ export class AdminService {
   }
 
   async setOrganizerVerification(
+    adminUserId: string,
     organizerId: string,
     input: AdminSetOrganizerVerificationInput,
   ) {
     const organizer = await this.prisma.organizer.findUnique({
       where: { id: organizerId },
-      select: { id: true, isVerified: true },
+      select: { id: true, organizationName: true, isVerified: true },
     });
     if (!organizer) {
       throw new NotFoundException('Organizer not found');
     }
 
-    const updated = await this.prisma.organizer.update({
-      where: { id: organizerId },
-      data: { isVerified: input.isVerified },
-      select: { id: true, organizationName: true, isVerified: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const o = await tx.organizer.update({
+        where: { id: organizerId },
+        data: { isVerified: input.isVerified },
+        select: { id: true, organizationName: true, isVerified: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: adminUserId,
+          action: input.isVerified ? 'ORGANIZER_VERIFIED' : 'ORGANIZER_UNVERIFIED',
+          entity: 'ORGANIZER',
+          entityId: organizerId,
+          details: {
+            organizationName: organizer.organizationName,
+            previousVerified: organizer.isVerified,
+            newVerified: input.isVerified,
+          },
+        },
+      });
+      return o;
     });
 
     this.logger.log(
-      `Admin set organizer ${organizerId} isVerified=${input.isVerified}`,
+      `Admin ${adminUserId} set organizer ${organizerId} isVerified=${input.isVerified}`,
     );
     return updated;
   }
+
+  // ── Audit logs ───────────────────────────────────
+
+  async listAuditLogs(query: AdminAuditLogListInput) {
+    const { page, limit, search, entity, action } = query;
+    const where = {
+      AND: [
+        entity ? { entity } : {},
+        action ? { action } : {},
+        search
+          ? {
+              OR: [
+                { entityId: { contains: search, mode: 'insensitive' as const } },
+                { action: { contains: search, mode: 'insensitive' as const } },
+                { user: { email: { contains: search, mode: 'insensitive' as const } } },
+              ],
+            }
+          : {},
+      ],
+    };
+
+    const [logs, total] = await this.prisma.$transaction([
+      this.prisma.auditLog.findMany({
+        where,
+        select: {
+          id: true,
+          action: true,
+          entity: true,
+          entityId: true,
+          details: true,
+          createdAt: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return {
+      logs,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+    };
+  }
 }
+
