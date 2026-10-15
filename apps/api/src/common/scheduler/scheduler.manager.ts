@@ -136,7 +136,7 @@ export class SchedulerManager {
     this.logger.log('Stopping background scheduler and clearing job timers...');
 
     // 1. Clear all intervals
-    for (const [name, job] of this.jobs.entries()) {
+    for (const job of this.jobs.values()) {
       if (job.timer) {
         clearInterval(job.timer);
         job.timer = null;

@@ -185,7 +185,7 @@ describe('AdminController', () => {
       expect(isPublic).toBeUndefined();
     });
 
-    const createMockExecutionContext = (user: unknown, handler: Function) => {
+    const createMockExecutionContext = (user: unknown, handler: (...args: unknown[]) => unknown) => {
       return {
         getHandler: () => handler,
         getClass: () => AdminController,

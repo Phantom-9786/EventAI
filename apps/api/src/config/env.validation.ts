@@ -183,7 +183,7 @@ export function validateEnv(config: Record<string, unknown>): EnvConfig {
 
   if (config.CLOUDINARY_FOLDER !== undefined) {
     const folder = String(config.CLOUDINARY_FOLDER).trim();
-    if (!/^[a-zA-Z0-9_\-\/]+$/.test(folder)) {
+    if (!/^[a-zA-Z0-9_\-/]+$/.test(folder)) {
       errors.push('CLOUDINARY_FOLDER must only contain alphanumeric characters, underscores, hyphens, and slashes');
     }
   }
