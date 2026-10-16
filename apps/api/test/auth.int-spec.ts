@@ -17,7 +17,7 @@ const hashToken = (token: string): string => createHash('sha256').update(token).
 describe('AuthService (integration)', () => {
   let prisma: TestPrisma;
   let auth: AuthService;
-  let notifications: { sendPasswordResetEmail: jest.Mock; sendEmailVerificationEmail: jest.Mock };
+  let notifications: { sendPasswordResetEmail: jest.Mock; sendEmailVerificationEmail: jest.Mock; sendEmailVerificationOtp: jest.Mock };
   let capturedResetToken: string | null;
 
   beforeAll(async () => {
@@ -29,6 +29,7 @@ describe('AuthService (integration)', () => {
         return true;
       }),
       sendEmailVerificationEmail: jest.fn(async () => true),
+      sendEmailVerificationOtp: jest.fn(async () => true),
     };
     auth = new AuthService(
       prisma as never,
@@ -158,13 +159,13 @@ describe('AuthService (integration)', () => {
       await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
 
       // Create an active session
-      const jwt = new JwtService({ secret: 'integration-test-secret' });
-      const tokens = jwt.generateTokens({ userId: user.id, email: user.email, role: user.role });
+      const rawToken = uniqueSuffix();
+      const rawRefresh = uniqueSuffix();
       await prisma.session.create({
         data: {
           userId: user.id,
-          token: hashToken(tokens.accessToken),
-          refreshToken: hashToken(tokens.refreshToken),
+          token: hashToken(rawToken),
+          refreshToken: hashToken(rawRefresh),
           expiresAt: new Date(Date.now() + 1000 * 60 * 60),
         },
       });
