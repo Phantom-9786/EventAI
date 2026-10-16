@@ -533,6 +533,81 @@ describe('Express Events, Organizers & Moderation Modules', () => {
         'Invalid contact numbers provided',
       );
     });
+
+    it('Non-admin users cannot approve organizer applications (403 Forbidden)', async () => {
+      const token = createToken(attendeeUser);
+      const res = await fetch(`${baseUrl}/api/admin/organizers/00000000-0000-4000-8000-000000000001/approve`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      expect(res.status).toBe(403);
+      expect(mockModerationService.approveOrganizerApplication).not.toHaveBeenCalled();
+    });
+
+    it('Non-admin users cannot reject organizer applications (403 Forbidden)', async () => {
+      const token = createToken(organizerUser);
+      const res = await fetch(`${baseUrl}/api/admin/organizers/00000000-0000-4000-8000-000000000002/reject`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason: 'Unauthorized review' }),
+      });
+
+      expect(res.status).toBe(403);
+      expect(mockModerationService.rejectOrganizerApplication).not.toHaveBeenCalled();
+    });
+
+    it('Unapproved customer cannot create venues (403 Forbidden)', async () => {
+      const token = createToken(attendeeUser);
+      const res = await fetch(`${baseUrl}/api/organizers/venues`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: 'Forbidden Venue',
+          address: '100 Road',
+          city: 'Mumbai',
+          state: 'MH',
+          capacity: 100,
+        }),
+      });
+
+      expect(res.status).toBe(403);
+      expect(mockOrganizersService.createVenue).not.toHaveBeenCalled();
+    });
+
+    it('Pending organizer without approval cannot create events (403 Forbidden)', async () => {
+      mockModerationService.requireApprovedOrganizer!.mockRejectedValueOnce(
+        new ForbiddenException('Your organizer application is pending administrator review'),
+      );
+
+      const token = createToken(organizerUser);
+      const res = await fetch(`${baseUrl}/api/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: 'Blocked Event',
+          description: 'This event should be blocked because organizer is pending.',
+          categoryId: '00000000-0000-0000-0000-000000000010',
+          venueId: '00000000-0000-0000-0000-000000000020',
+          startDate: new Date(Date.now() + 86400000 * 5).toISOString(),
+          endDate: new Date(Date.now() + 86400000 * 6).toISOString(),
+        }),
+      });
+
+      expect(res.status).toBe(403);
+      const data = (await res.json()) as any;
+      expect(data.message).toContain('pending administrator review');
+      expect(mockEventsService.createEvent).not.toHaveBeenCalled();
+    });
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -835,6 +910,79 @@ describe('Express Events, Organizers & Moderation Modules', () => {
       const data = (await res.json()) as any;
       expect(data.message).toBe('Event deleted');
       expect(mockEventsService.deleteEvent).toHaveBeenCalledWith('org-verified-1', 'evt-draft-1');
+    });
+
+    it('Non-admin users cannot review events (403 Forbidden)', async () => {
+      const token = createToken(organizerUser);
+      const res = await fetch(`${baseUrl}/api/admin/events/00000000-0000-4000-8000-000000000099/review`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action: 'APPROVE' }),
+      });
+
+      expect(res.status).toBe(403);
+      expect(mockModerationService.reviewEvent).not.toHaveBeenCalled();
+    });
+
+    it('Event creation with a venue owned by another organizer is rejected (403 Forbidden)', async () => {
+      mockModerationService.requireApprovedOrganizer!.mockResolvedValueOnce('org-verified-1');
+      mockEventsService.createEvent!.mockRejectedValueOnce(
+        new ForbiddenException('Venue not found among your venues'),
+      );
+
+      const token = createToken(organizerUser);
+      const res = await fetch(`${baseUrl}/api/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: 'Cross Organizer Venue Event',
+          description: 'Attempting to use another organizer venue for an event.',
+          categoryId: '00000000-0000-0000-0000-000000000010',
+          venueId: '00000000-0000-0000-0000-000000000099',
+          startDate: new Date(Date.now() + 86400000 * 10).toISOString(),
+          endDate: new Date(Date.now() + 86400000 * 11).toISOString(),
+        }),
+      });
+
+      expect(res.status).toBe(403);
+      const data = (await res.json()) as any;
+      expect(data.message).toBe('Venue not found among your venues');
+    });
+
+    it('Organizer cannot bypass moderation by setting status=PUBLISHED directly in PATCH /api/events/:id', async () => {
+      mockModerationService.requireApprovedOrganizer!.mockResolvedValueOnce('org-verified-1');
+      // Even if client sends status: 'PUBLISHED', service receives it but status remains DRAFT
+      mockEventsService.updateEvent!.mockResolvedValueOnce({
+        id: 'evt-draft-1',
+        title: 'Draft Event Still',
+        status: 'DRAFT',
+      } as any);
+      mockModerationService.getEventModerationStatus!.mockResolvedValueOnce({
+        status: 'DRAFT',
+      });
+
+      const token = createToken(organizerUser);
+      const res = await fetch(`${baseUrl}/api/events/evt-draft-1`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          status: 'PUBLISHED',
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as any;
+      expect(data.event.status).toBe('DRAFT');
+      expect(data.moderation.status).toBe('DRAFT');
     });
   });
 

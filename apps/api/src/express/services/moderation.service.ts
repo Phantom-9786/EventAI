@@ -72,7 +72,7 @@ export class ExpressModerationService {
       return {
         status: 'REJECTED',
         rejectionReason: (details.reason as string) ?? 'Application was rejected by administrator',
-        reviewedAt: latestAudit.createdAt.toISOString(),
+        reviewedAt: latestAudit.createdAt ? new Date(latestAudit.createdAt).toISOString() : undefined,
         reviewedBy: latestAudit.userId ?? undefined,
       };
     }
@@ -346,7 +346,7 @@ export class ExpressModerationService {
     if (latestAudit.action === 'EVENT_APPROVED') {
       return {
         status: 'APPROVED',
-        reviewedAt: latestAudit.createdAt.toISOString(),
+        reviewedAt: latestAudit.createdAt ? new Date(latestAudit.createdAt).toISOString() : undefined,
         reviewedBy: latestAudit.userId ?? undefined,
       };
     }
@@ -355,7 +355,7 @@ export class ExpressModerationService {
       return {
         status: 'REJECTED',
         rejectionReason: (details.reason as string) ?? 'Event rejected by administrator',
-        reviewedAt: latestAudit.createdAt.toISOString(),
+        reviewedAt: latestAudit.createdAt ? new Date(latestAudit.createdAt).toISOString() : undefined,
         reviewedBy: latestAudit.userId ?? undefined,
       };
     }
@@ -363,7 +363,7 @@ export class ExpressModerationService {
     if (latestAudit.action === 'EVENT_SUBMITTED' || latestAudit.action === 'EVENT_MATERIAL_CHANGE') {
       return {
         status: 'PENDING_APPROVAL',
-        submittedAt: latestAudit.createdAt.toISOString(),
+        submittedAt: latestAudit.createdAt ? new Date(latestAudit.createdAt).toISOString() : undefined,
       };
     }
 
