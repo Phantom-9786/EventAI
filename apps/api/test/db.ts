@@ -68,7 +68,7 @@ export function uniqueSuffix(): string {
 export async function createUser(
   prisma: TestPrisma,
   suffix: string,
-  overrides: { email?: string; passwordHash?: string; role?: 'CUSTOMER' | 'ORGANIZER' | 'ADMIN' } = {},
+  overrides: { email?: string; passwordHash?: string; role?: 'CUSTOMER' | 'ORGANIZER' | 'ADMIN'; isEmailVerified?: boolean } = {},
 ) {
   return prisma.user.create({
     data: {
@@ -77,6 +77,7 @@ export async function createUser(
       firstName: 'Int',
       lastName: 'Test',
       role: overrides.role ?? 'CUSTOMER',
+      isEmailVerified: overrides.isEmailVerified ?? true,
     },
   });
 }

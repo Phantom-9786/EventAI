@@ -43,40 +43,52 @@ describe('AuthService (integration)', () => {
   });
 
   describe('register + login', () => {
-    it('registers a user with a verifiable Argon2id hash and a hashed session', async () => {
+    it('registers an unverified user and sends a 6-digit OTP email without issuing a session', async () => {
       const email = `reg-${uniqueSuffix()}@example.test`;
-      const { user, tokens } = await auth.register({
+      const result = await auth.register({
         email,
         password: 'Sup3rSecret!',
         firstName: 'Ada',
         lastName: 'Lovelace',
       });
 
-      expect(user.email).toBe(email);
+      expect(result.user.email).toBe(email);
+      expect(result.message).toContain('verification code');
 
       const row = await prisma.user.findUniqueOrThrow({ where: { email } });
       expect(row.passwordHash).not.toBeNull();
       expect(row.passwordHash).not.toBe('Sup3rSecret!');
       const argon2 = await import('argon2');
       await expect(argon2.verify(row.passwordHash as string, 'Sup3rSecret!')).resolves.toBe(true);
+      expect(row.isEmailVerified).toBe(false);
 
-      const sessions = await prisma.session.findMany({ where: { userId: user.id } });
-      expect(sessions).toHaveLength(1);
-      // Only hashes are stored at rest, never the raw tokens
-      expect(sessions[0].token).not.toBe(tokens.accessToken);
-      expect(sessions[0].refreshToken).not.toBe(tokens.refreshToken);
-      expect(sessions[0].token).toBe(hashToken(tokens.accessToken));
+      const tokenRow = await prisma.emailVerificationToken.findFirst({ where: { userId: row.id } });
+      expect(tokenRow).not.toBeNull();
+      expect(notifications.sendEmailVerificationEmail).toHaveBeenCalled();
+
+      // No session is created until verified
+      const sessions = await prisma.session.findMany({ where: { userId: row.id } });
+      expect(sessions).toHaveLength(0);
     });
 
-    it('rejects duplicate email registration with ConflictException', async () => {
+    it('rejects duplicate email registration with ConflictException if already verified', async () => {
       const email = `dup-${uniqueSuffix()}@example.test`;
-      await auth.register({ email, password: 'FirstPass1!', firstName: 'A', lastName: 'B' });
+      const registered = await auth.register({ email, password: 'FirstPass1!', firstName: 'A', lastName: 'B' });
+      await prisma.user.update({ where: { id: registered.user.id }, data: { isEmailVerified: true } });
+
       await expect(
         auth.register({ email, password: 'SecondPass2!', firstName: 'C', lastName: 'D' }),
       ).rejects.toThrow(ConflictException);
     });
 
-    it('logs in with correct credentials and creates a session', async () => {
+    it('allows unverified user to re-register and resends OTP', async () => {
+      const email = `re-reg-${uniqueSuffix()}@example.test`;
+      await auth.register({ email, password: 'FirstPass1!', firstName: 'A', lastName: 'B' });
+      const second = await auth.register({ email, password: 'SecondPass2!', firstName: 'A', lastName: 'B' });
+      expect(second.user.email).toBe(email);
+    });
+
+    it('logs in with correct credentials after verification and creates a session', async () => {
       const email = `login-${uniqueSuffix()}@example.test`;
       const registered = await auth.register({
         email,
@@ -84,8 +96,13 @@ describe('AuthService (integration)', () => {
         firstName: 'L',
         lastName: 'T',
       });
-      const before = await prisma.session.count({ where: { userId: registered.user.id } });
+      // Before verification: login is blocked
+      await expect(auth.login({ email, password: 'CorrectHorse1!' })).rejects.toThrow();
 
+      // Mark verified
+      await prisma.user.update({ where: { id: registered.user.id }, data: { isEmailVerified: true } });
+
+      const before = await prisma.session.count({ where: { userId: registered.user.id } });
       const { user, tokens } = await auth.login({ email, password: 'CorrectHorse1!' });
       expect(user.id).toBe(registered.user.id);
       expect(tokens.accessToken).toBeTruthy();
@@ -96,7 +113,8 @@ describe('AuthService (integration)', () => {
 
     it('rejects wrong password and unknown emails without leaking which failed', async () => {
       const email = `neg-${uniqueSuffix()}@example.test`;
-      await auth.register({ email, password: 'RightPassword1!', firstName: 'N', lastName: 'T' });
+      const registered = await auth.register({ email, password: 'RightPassword1!', firstName: 'N', lastName: 'T' });
+      await prisma.user.update({ where: { id: registered.user.id }, data: { isEmailVerified: true } });
 
       await expect(auth.login({ email, password: 'WrongPassword1!' })).rejects.toThrow(
         new UnauthorizedException('Invalid email or password'),
@@ -135,14 +153,22 @@ describe('AuthService (integration)', () => {
 
     it('resets the password, consumes the token, and signs out all sessions', async () => {
       const email = `flow-${uniqueSuffix()}@example.test`;
-      const registered = await auth.register({
-        email,
-        password: 'OldPassword1!',
-        firstName: 'F',
-        lastName: 'L',
+      const user = await createUser(prisma, uniqueSuffix(), { email, isEmailVerified: true });
+      const passwordHash = await (await import('argon2')).hash('OldPassword1!');
+      await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+      // Create an active session
+      const jwt = new JwtService({ secret: 'integration-test-secret' });
+      const tokens = jwt.generateTokens({ userId: user.id, email: user.email, role: user.role });
+      await prisma.session.create({
+        data: {
+          userId: user.id,
+          token: hashToken(tokens.accessToken),
+          refreshToken: hashToken(tokens.refreshToken),
+          expiresAt: new Date(Date.now() + 1000 * 60 * 60),
+        },
       });
-      await prisma.session.count({ where: { userId: registered.user.id } }); // sanity: session exists
-      expect(await prisma.session.count({ where: { userId: registered.user.id } })).toBe(1);
+      expect(await prisma.session.count({ where: { userId: user.id } })).toBe(1);
 
       await auth.requestPasswordReset(email);
       expect(capturedResetToken).toBeTruthy();
@@ -153,7 +179,7 @@ describe('AuthService (integration)', () => {
       expect(resetRow.usedAt).not.toBeNull();
 
       // Every session was signed out by the reset
-      expect(await prisma.session.count({ where: { userId: registered.user.id } })).toBe(0);
+      expect(await prisma.session.count({ where: { userId: user.id } })).toBe(0);
 
       // New password works, old password is dead
       await expect(auth.login({ email, password: 'NewPassword2!' })).resolves.toMatchObject({

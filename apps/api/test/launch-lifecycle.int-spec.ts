@@ -39,9 +39,12 @@ describe('launch lifecycle (isolated PostgreSQL, mocked external providers)', ()
   }
 
   async function register(prefix: string) {
-    return request('/auth/register', '', 'POST', {
-      email: `${prefix}-${uniqueSuffix()}@example.test`, password: 'IsolatedTest123!', firstName: 'Launch', lastName: 'Fixture',
+    const email = `${prefix}-${uniqueSuffix()}@example.test`;
+    await request('/auth/register', '', 'POST', {
+      email, password: 'IsolatedTest123!', firstName: 'Launch', lastName: 'Fixture',
     }, 201);
+    await prisma.user.update({ where: { email }, data: { isEmailVerified: true } });
+    return request('/auth/login', '', 'POST', { email, password: 'IsolatedTest123!' });
   }
 
   beforeAll(async () => {
@@ -74,7 +77,7 @@ describe('launch lifecycle (isolated PostgreSQL, mocked external providers)', ()
     await new Promise<void>((resolve) => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const passwordHash = await argon2.hash('IsolatedTest123!');
-    const fixture = await createUser(prisma, uniqueSuffix(), { role: 'ADMIN', passwordHash });
+    const fixture = await createUser(prisma, uniqueSuffix(), { role: 'ADMIN', passwordHash, isEmailVerified: true });
     admin = (await request('/auth/login', '', 'POST', { email: fixture.email, password: 'IsolatedTest123!' })).accessToken;
     customer = (await register('customer')).accessToken;
   }, 60_000);
@@ -86,13 +89,23 @@ describe('launch lifecycle (isolated PostgreSQL, mocked external providers)', ()
     process.env = originalEnv;
   });
 
-  it('registers, rotates a refresh cookie, revokes logout sessions, and enforces roles from the database', async () => {
+  it('registers, enforces OTP gate before verification, rotates a refresh cookie on verified login, revokes logout sessions, and enforces roles from the database', async () => {
     const email = `session-${uniqueSuffix()}@example.test`;
     const response = await fetch(`${base}/api/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'IsolatedTest123!', firstName: 'Session', lastName: 'Fixture' }) });
     expect(response.status).toBe(201);
-    const cookie = response.headers.get('set-cookie')!.split(';')[0];
-    expect(response.headers.get('set-cookie')).toContain('HttpOnly');
-    const auth = await response.json();
+    // Unverified login is blocked (403)
+    const unverifiedLogin = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'IsolatedTest123!' }) });
+    expect(unverifiedLogin.status).toBe(403);
+
+    // Verify the account
+    await prisma.user.update({ where: { email }, data: { isEmailVerified: true } });
+
+    // Verified login succeeds with cookie and access token
+    const loginRes = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'IsolatedTest123!' }) });
+    expect(loginRes.status).toBe(200);
+    const cookie = loginRes.headers.get('set-cookie')!.split(';')[0];
+    expect(loginRes.headers.get('set-cookie')).toContain('HttpOnly');
+    const auth = await loginRes.json();
     expect((await request('/auth/me', auth.accessToken)).user.role).toBe('CUSTOMER');
     await request('/admin/stats', auth.accessToken, 'GET', undefined, 403);
     await request('/admin/stats', '', 'GET', undefined, 401);
