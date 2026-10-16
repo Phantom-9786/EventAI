@@ -4,7 +4,7 @@ import express, { type Express, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService } from '../modules/auth/jwt.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@eventai/database';
 import { CacheService } from '../common/cache/cache.service';

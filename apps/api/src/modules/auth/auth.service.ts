@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService } from './jwt.service';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'crypto';
 import type { TokenPayload, UserRole } from '@eventai/types';

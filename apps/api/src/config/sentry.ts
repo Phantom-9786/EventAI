@@ -1,4 +1,4 @@
-import * as Sentry from '@sentry/nestjs';
+import * as Sentry from '@sentry/node';
 
 /**
  * Optional Sentry error monitoring for the API.
@@ -7,10 +7,6 @@ import * as Sentry from '@sentry/nestjs';
  * never initialized, no events are sent, and the app behaves exactly as
  * before. The structured logger and X-Request-Id correlation are untouched —
  * the request ID is attached to Sentry events so the two views line up.
- *
- * Uses the @sentry/nestjs v11 integration model: `nestIntegration()`
- * auto-captures exceptions from Nest channels once `init` runs (which is why
- * `initSentry()` is called at the very start of bootstrap).
  */
 
 /** Placeholder DSNs must not initialize the SDK. */
@@ -134,7 +130,6 @@ export function initSentry(env: NodeJS.ProcessEnv = process.env): boolean {
     release: env.SENTRY_RELEASE,
     // No PII beyond what the scrubbed event already contains (v11 default).
     tracesSampleRate: Number(env.SENTRY_TRACES_SAMPLE_RATE ?? 0.1),
-    integrations: [Sentry.nestIntegration()],
     beforeSend: scrubSentryEvent,
   });
   return true;

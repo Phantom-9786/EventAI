@@ -1,9 +1,8 @@
-import * as Sentry from '@sentry/nestjs';
+import * as Sentry from '@sentry/node';
 import { initSentry, isSentryConfigured, scrubSentryEvent } from './sentry';
 
-jest.mock('@sentry/nestjs', () => ({
+jest.mock('@sentry/node', () => ({
   init: jest.fn(),
-  nestIntegration: jest.fn(() => ({ name: 'Nest' })),
   captureException: jest.fn(),
 }));
 
