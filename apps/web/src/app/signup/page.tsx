@@ -84,9 +84,21 @@ export default function SignUpPage() {
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4 rounded-lg border bg-card p-6 shadow-sm">
         {error && (
-          <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </p>
+          <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive flex flex-col gap-1">
+            <p>{error}</p>
+            {error.toLowerCase().includes('already exists') && (
+              <p className="text-xs text-muted-foreground">
+                Already registered?{' '}
+                <Link href={`/signin?email=${encodeURIComponent(form.email)}`} className="text-primary font-medium underline">
+                  Sign in
+                </Link>{' '}
+                or{' '}
+                <Link href={`/verify-otp?email=${encodeURIComponent(form.email)}`} className="text-primary font-medium underline">
+                  verify with code
+                </Link>.
+              </p>
+            )}
+          </div>
         )}
         <div className="grid grid-cols-2 gap-4">
           <div className="flex flex-col gap-1.5">

@@ -59,7 +59,12 @@ describe('AuthService', () => {
           attempts: data?.attempts?.increment ? 1 : 0,
         })),
       },
-      $transaction: jest.fn().mockResolvedValue([{}, { count: 1 }]),
+      $transaction: jest.fn().mockImplementation(async (arg: any) => {
+        if (typeof arg === 'function') {
+          return arg(prisma);
+        }
+        return [{}, { count: 1 }];
+      }),
     };
     jwtService = { signAsync: jest.fn().mockResolvedValue('access-token') };
     configService = {
@@ -152,8 +157,8 @@ describe('AuthService', () => {
       expect(result.emailDeliveryFailed).toBe(false);
     });
 
-    it('rejects duplicate emails with ConflictException', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: 'user-1' });
+    it('rejects duplicate verified emails with ConflictException', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-1', isEmailVerified: true });
       await expect(
         service.register({
           email: 'taken@example.com',
@@ -163,6 +168,46 @@ describe('AuthService', () => {
         }),
       ).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('allows re-registering an unverified account: updates user and re-issues OTP challenge', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-unverified', isEmailVerified: false });
+      prisma.user.update.mockResolvedValue({
+        id: 'user-unverified',
+        email: 'pending@example.com',
+        role: 'CUSTOMER',
+        isEmailVerified: false,
+      });
+
+      const result = await service.register({
+        email: 'pending@example.com',
+        password: 'NewPassword123',
+        firstName: 'Updated',
+        lastName: 'Pending',
+      });
+
+      expect(result.user.isEmailVerified).toBe(false);
+      expect(prisma.user.update).toHaveBeenCalled();
+      expect(prisma.emailVerificationToken.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'user-unverified' },
+        }),
+      );
+      expect(sendEmailVerificationOtp).toHaveBeenCalled();
+    });
+
+    it('rolls back and propagates error if database transaction fails during registration', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.$transaction.mockRejectedValueOnce(new Error('DB failure'));
+
+      await expect(
+        service.register({
+          email: 'db-fail@example.com',
+          password: 'Password123',
+          firstName: 'Fail',
+          lastName: 'DB',
+        }),
+      ).rejects.toThrow('DB failure');
     });
 
     it('handles email delivery failure without marking account verified or creating session', async () => {

@@ -89,9 +89,9 @@ export class AuthService {
   }> {
     const existing = await this.prisma.user.findUnique({
       where: { email: input.email },
-      select: { id: true },
+      select: { id: true, email: true, role: true, isEmailVerified: true },
     });
-    if (existing) {
+    if (existing && existing.isEmailVerified) {
       throw new ConflictException('An account with this email already exists');
     }
 
@@ -99,16 +99,55 @@ export class AuthService {
       type: argon2.argon2id,
     });
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: input.email,
-        passwordHash,
-        firstName: input.firstName,
-        lastName: input.lastName,
-        role: 'CUSTOMER',
-        isEmailVerified: false,
-      },
-      select: { id: true, email: true, role: true, isEmailVerified: true },
+    // Generate cryptographically secure 6-digit numeric OTP
+    const otp = randomInt(0, 1_000_000).toString().padStart(6, '0');
+    const now = new Date();
+
+    // Atomically create or update unverified user and upsert OTP challenge
+    const user = await this.prisma.$transaction(async (tx) => {
+      let u;
+      if (existing) {
+        u = await tx.user.update({
+          where: { id: existing.id },
+          data: {
+            passwordHash,
+            firstName: input.firstName,
+            lastName: input.lastName,
+          },
+          select: { id: true, email: true, role: true, isEmailVerified: true },
+        });
+      } else {
+        u = await tx.user.create({
+          data: {
+            email: input.email,
+            passwordHash,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            role: 'CUSTOMER',
+            isEmailVerified: false,
+          },
+          select: { id: true, email: true, role: true, isEmailVerified: true },
+        });
+      }
+
+      await tx.emailVerificationToken.upsert({
+        where: { userId: u.id },
+        create: {
+          userId: u.id,
+          token: hashOtp(u.id, otp),
+          attempts: 0,
+          expiresAt: new Date(now.getTime() + 10 * 60 * 1000), // 10 minutes
+          lastSentAt: now,
+        },
+        update: {
+          token: hashOtp(u.id, otp),
+          attempts: 0,
+          expiresAt: new Date(now.getTime() + 10 * 60 * 1000),
+          lastSentAt: now,
+        },
+      });
+
+      return u;
     });
 
     const publicUser = {
@@ -117,26 +156,6 @@ export class AuthService {
       role: user.role as UserRole,
       isEmailVerified: false,
     };
-
-    // Generate cryptographically secure 6-digit numeric OTP
-    const otp = randomInt(0, 1_000_000).toString().padStart(6, '0');
-    const now = new Date();
-    await this.prisma.emailVerificationToken.upsert({
-      where: { userId: user.id },
-      create: {
-        userId: user.id,
-        token: hashOtp(user.id, otp),
-        attempts: 0,
-        expiresAt: new Date(now.getTime() + 10 * 60 * 1000), // 10 minutes
-        lastSentAt: now,
-      },
-      update: {
-        token: hashOtp(user.id, otp),
-        attempts: 0,
-        expiresAt: new Date(now.getTime() + 10 * 60 * 1000),
-        lastSentAt: now,
-      },
-    });
 
     const holderName = `${input.firstName} ${input.lastName}`.trim() || 'there';
     let emailSent = false;
@@ -484,7 +503,7 @@ export class AuthService {
     });
 
     const now = Date.now();
-    if (existingToken) {
+    if (existingToken && existingToken.lastSentAt) {
       const elapsedMs = now - existingToken.lastSentAt.getTime();
       if (elapsedMs < 60_000) {
         const remainingSeconds = Math.ceil((60_000 - elapsedMs) / 1000);

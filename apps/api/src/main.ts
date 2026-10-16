@@ -50,6 +50,20 @@ async function bootstrap() {
   try {
     await prisma.$connect();
     logger.log('PostgreSQL connection established for Express');
+
+    // Ensure additive schema migration for email OTP verification tokens is applied
+    try {
+      await prisma.$executeRawUnsafe(`
+        ALTER TABLE "email_verification_tokens" ADD COLUMN IF NOT EXISTS "attempts" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "email_verification_tokens" ADD COLUMN IF NOT EXISTS "last_sent_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
+      `);
+      logger.log('Verified database schema for email OTP verification tokens');
+    } catch (schemaErr) {
+      logger.warn(
+        'Additive schema check for email verification tokens deferred: ' +
+          (schemaErr instanceof Error ? schemaErr.message : String(schemaErr)),
+      );
+    }
   } catch (err) {
     logger.error(
       'Failed to connect to PostgreSQL on Express startup',
