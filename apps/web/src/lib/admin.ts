@@ -228,6 +228,32 @@ export async function listAdminOrganizers(
 export const setAdminOrganizerVerification = (id: string, isVerified: boolean) =>
   adminMutation(`/admin/organizers/${id}/verification`, 'PATCH', { isVerified });
 
+export interface OrganizerApplication {
+  id: string;
+  userId: string;
+  organizationName: string;
+  description: string | null;
+  phone: string | null;
+  website: string | null;
+  logo: string | null;
+  isVerified: boolean;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  reviewedAt?: string;
+  reviewedBy?: string;
+}
+
+export async function listPendingOrganizerApplications(): Promise<{ applications: OrganizerApplication[] }> {
+  const res = await authFetch('/admin/organizers/applications/pending');
+  if (!res.ok) throw new Error(`Failed to load pending organizer applications (${res.status})`);
+  return res.json();
+}
+
+export const approveOrganizerApplication = (id: string) =>
+  adminMutation(`/admin/organizers/${id}/approve`, 'POST');
+
+export const rejectOrganizerApplication = (id: string, reason: string) =>
+  adminMutation(`/admin/organizers/${id}/reject`, 'POST', { reason });
+
 export async function listAdminCategories(): Promise<AdminCategory[]> {
   const res = await authFetch('/categories');
   if (!res.ok) throw new Error(`Failed to load categories (${res.status})`);
