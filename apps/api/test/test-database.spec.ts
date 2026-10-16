@@ -1,4 +1,4 @@
-import { resolveTestDatabaseUrl } from '../../test/db';
+import { resolveTestDatabaseUrl } from './db';
 
 describe('destructive integration database guard', () => {
   const original = { ...process.env };
