@@ -1,5 +1,5 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { ConflictException, NotFoundException } from '../../common/exceptions';
+import { Test } from '../../common/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { excelColumnLabel, OrganizersService } from './organizers.service';
 

@@ -4,7 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 import type {
   CreateSeatSectionInput,
   CreateVenueInput,

@@ -1,5 +1,5 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { ConflictException, ForbiddenException, NotFoundException } from '../../common/exceptions';
+import { Test } from '../../common/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentsService } from '../payments/payments.service';

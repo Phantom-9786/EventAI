@@ -6,13 +6,13 @@ EventAI is a modular monolith served by a Turborepo monorepo.
 Browser ──► Next.js 14 web (apps/web, :3000)
                  │  REST (JSON, bearer JWT + httpOnly refresh cookie)
                  ▼
-            NestJS API (apps/api, :4000/api)
+            Express API (apps/api, :4000/api)
                  ├── Modules: auth, users, organizers, categories, events,
                  │            venues, tickets, bookings, payments,
                  │            notifications, ai, admin, health
-                 ├── Guards:   ThrottlerGuard → JwtAuthGuard → RolesGuard
+                 ├── Middleware: RateLimiter → AuthMiddleware → RolesMiddleware
                  ├── Cache:    CacheService (Redis, graceful no-op fallback)
-                 ├── Schedule: @nestjs/schedule minute cron (booking expiry)
+                 ├── Schedule: SchedulerManager background cron (booking expiry)
                  └── Prisma ──► PostgreSQL 16 (FTS + triggers)
 ```
 

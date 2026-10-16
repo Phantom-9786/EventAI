@@ -2,7 +2,7 @@ import {
   Injectable,
   Logger,
   ServiceUnavailableException,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 import type { AiChatInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';

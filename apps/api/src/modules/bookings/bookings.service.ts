@@ -4,8 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-} from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+} from '../../common/exceptions';
 import type { CreateBookingInput } from '@eventai/validation';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -337,7 +336,6 @@ export class BookingsService {
   private isSweepRunning = false;
 
   /** Minute cron: expires stale bookings across all users and releases stock. */
-  @Cron(CronExpression.EVERY_MINUTE)
   async handleStaleBookingsCron(): Promise<{ expiredCount: number }> {
     if (this.isSweepRunning) {
       this.logger.debug('Stale bookings sweep already in progress; skipping overlapping tick');

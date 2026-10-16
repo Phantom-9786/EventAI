@@ -5,14 +5,19 @@ import {
   Logger,
   NotFoundException,
   PayloadTooLargeException,
+  ServiceUnavailableException,
   UnsupportedMediaTypeException,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 import { randomBytes } from 'crypto';
 import { mkdir, unlink, writeFile } from 'fs/promises';
 import { join, resolve } from 'path';
 import { Prisma } from '@prisma/client';
 import type { UpdateProfileInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
+import { eventImageExtension } from '../events/event-media.service';
+import { MediaProviderFactory } from '../events/media-provider.factory';
+import { MediaProviderRouter } from '../events/media-provider.router';
+import { parseRoutingStrategy } from '../events/media-provider.types';
 
 const ALLOWED_IMAGE_TYPES = new Set([
   'image/jpeg',
@@ -162,7 +167,10 @@ export class UsersService {
       throw new PayloadTooLargeException('Image must be 5 MB or smaller');
     }
     const extension = IMAGE_EXTENSIONS[file.mimetype];
-    if (!extension || !ALLOWED_IMAGE_TYPES.has(file.mimetype)) {
+    const isGif = file.mimetype === 'image/gif' && file.buffer.length >= 13 &&
+      ['GIF87a', 'GIF89a'].includes(file.buffer.toString('ascii', 0, 6));
+    if (!extension || !ALLOWED_IMAGE_TYPES.has(file.mimetype) ||
+        file.size !== file.buffer.length || (!isGif && !eventImageExtension(file.buffer, file.mimetype))) {
       throw new UnsupportedMediaTypeException(
         'Only JPEG, PNG, WebP, or GIF images are allowed',
       );
@@ -172,6 +180,34 @@ export class UsersService {
       where: { id: userId },
       select: { profileImage: true },
     });
+    if (!previous) throw new NotFoundException('User not found');
+
+    const providers = MediaProviderFactory.createProviders();
+    if (providers.length > 0) {
+      const router = new MediaProviderRouter(providers, parseRoutingStrategy(process.env.CLOUDINARY_ROUTING_STRATEGY));
+      const uploaded = await router.upload(file.buffer, 'eventai/avatars', `avatar-${userId}-${randomBytes(8).toString('hex')}`);
+      try {
+        await this.prisma.user.update({ where: { id: userId }, data: { profileImage: uploaded.url } });
+      } catch (error) {
+        await providers.find((p) => p.id === uploaded.providerId)?.destroy(uploaded.publicId).catch(() => undefined);
+        throw error;
+      }
+
+      // Only delete our own avatar namespace on a configured cloud. Never destroy an arbitrary profile URL.
+      if (previous.profileImage?.startsWith('https://res.cloudinary.com/')) {
+        const oldUrl = new URL(previous.profileImage);
+        const [, cloudName, resourceType, deliveryType, ...parts] = oldUrl.pathname.split('/');
+        const publicId = parts.join('/').replace(/^v\d+\//, '').replace(/\.[a-zA-Z0-9]+$/, '');
+        if (resourceType === 'image' && deliveryType === 'upload' && publicId.startsWith(`eventai/avatars/avatar-${userId}-`)) {
+          await MediaProviderFactory.findProviderByCloudName(providers, cloudName)?.destroy(publicId).catch(() => undefined);
+        }
+      }
+      return { profileImage: uploaded.url };
+    }
+
+    if (process.env.NODE_ENV === 'production' || process.env.ALLOW_LOCAL_UPLOADS !== 'true') {
+      throw new ServiceUnavailableException('Cloudinary media storage is not configured on this server.');
+    }
 
     const filename = `${userId}-${randomBytes(8).toString('hex')}${extension}`;
     await mkdir(this.uploadDir, { recursive: true });

@@ -4,7 +4,7 @@ import {
   ForbiddenException,
   NotFoundException,
   BadRequestException,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 
 export type OrganizerApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type EventModerationStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
@@ -423,6 +423,9 @@ export class ExpressModerationService {
     eventId: string,
     input: { action: 'APPROVE' | 'REJECT'; reason?: string },
   ): Promise<EventModerationDetails> {
+    if (input.action !== 'APPROVE' && input.action !== 'REJECT') {
+      throw new BadRequestException('Review action must be APPROVE or REJECT');
+    }
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
       include: { ticketTypes: true },
@@ -437,7 +440,7 @@ export class ExpressModerationService {
         throw new BadRequestException('Rejection reason is required');
       }
 
-      await this.prisma.auditLog.create({
+      await this.prisma.$transaction([this.prisma.auditLog.create({
         data: {
           userId: adminUserId,
           action: 'EVENT_REJECTED',
@@ -448,7 +451,10 @@ export class ExpressModerationService {
             rejectedAt: new Date().toISOString(),
           },
         },
-      });
+      }), this.prisma.event.updateMany({
+        where: { id: eventId, status: 'PUBLISHED' },
+        data: { status: 'DRAFT' },
+      })]);
 
       return {
         status: 'REJECTED',
@@ -505,7 +511,7 @@ export class ExpressModerationService {
     const moderation = await this.getEventModerationStatus(eventId);
     // If the event was previously approved, a material change resets it to require re-review
     if (moderation.status === 'APPROVED') {
-      await this.prisma.auditLog.create({
+      await this.prisma.$transaction([this.prisma.auditLog.create({
         data: {
           userId: organizerUserId,
           action: 'EVENT_MATERIAL_CHANGE',
@@ -517,7 +523,10 @@ export class ExpressModerationService {
             timestamp: new Date().toISOString(),
           },
         },
-      });
+      }), this.prisma.event.updateMany({
+        where: { id: eventId, status: 'PUBLISHED' },
+        data: { status: 'DRAFT' },
+      })]);
     }
   }
 }

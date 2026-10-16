@@ -7,7 +7,7 @@ import { PaymentsService } from '../modules/payments/payments.service';
 import { ExpressModerationService } from './services/moderation.service';
 import { UserRole } from '@eventai/types';
 import { StructuredLogger } from '../common/logging/structured-logger';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '../common/exceptions';
 
 describe('Express Admin Module & Authorization Security', () => {
   let server: Server;
@@ -80,6 +80,7 @@ describe('Express Admin Module & Authorization Security', () => {
 
     mockAdminService = {
       platformStats: jest.fn().mockResolvedValue({ users: 42, revenue: 100000 }),
+      invalidateEventCache: jest.fn().mockResolvedValue(undefined),
       listUsers: jest.fn().mockResolvedValue({ users: [], total: 0 }),
       setUserStatus: jest.fn().mockImplementation((adminUserId, targetUserId, input) => {
         if (adminUserId === targetUserId && !input.isActive) {

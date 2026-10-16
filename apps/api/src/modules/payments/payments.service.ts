@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
   ServiceUnavailableException,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import * as QRCode from 'qrcode';
 import Razorpay from 'razorpay';

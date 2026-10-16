@@ -13,7 +13,7 @@ import {
   PayloadTooLargeException,
   ServiceUnavailableException,
   UnsupportedMediaTypeException,
-} from '@nestjs/common';
+} from '../common/exceptions';
 
 describe('Express Cloudinary Media Endpoints', () => {
   let server: Server;

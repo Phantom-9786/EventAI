@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger } from '../exceptions';
 
 export interface BackgroundJobDefinition {
   name: string;

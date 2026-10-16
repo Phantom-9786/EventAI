@@ -7,7 +7,7 @@ import { StructuredLogger } from '../common/logging/structured-logger';
 import { PrismaClient } from '@eventai/database';
 import { CacheService } from '../common/cache/cache.service';
 import { AiService } from '../modules/ai/ai.service';
-import { ServiceUnavailableException } from '@nestjs/common';
+import { ServiceUnavailableException } from '../common/exceptions';
 
 const TEST_JWT_SECRET = 'test-secret-at-least-32-chars-long-abc-123';
 

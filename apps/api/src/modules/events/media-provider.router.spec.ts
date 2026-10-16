@@ -1,4 +1,4 @@
-import { BadGatewayException, ServiceUnavailableException } from '@nestjs/common';
+import { BadGatewayException, ServiceUnavailableException } from '../../common/exceptions';
 import { MediaProviderRouter } from './media-provider.router';
 import type { MediaProvider, ProviderHealth, UploadResult } from './media-provider.types';
 

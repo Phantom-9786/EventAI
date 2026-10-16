@@ -3,11 +3,14 @@ import {
   ConflictException,
   NotFoundException,
   PayloadTooLargeException,
+  ServiceUnavailableException,
   UnsupportedMediaTypeException,
-} from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+} from '../../common/exceptions';
+import { Test } from '../../common/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UsersService } from './users.service';
+import { MediaProviderFactory } from '../events/media-provider.factory';
+import type { MediaProvider } from '../events/media-provider.types';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -128,6 +131,63 @@ describe('UsersService', () => {
   });
 
   describe('saveAvatar', () => {
+    const buffer = Buffer.from('89504e470d0a1a0a0000000d494844520000000100000001', 'hex');
+    const file = { buffer, mimetype: 'image/png', size: buffer.length };
+    let provider: MediaProvider;
+    beforeEach(() => {
+      provider = {
+        id: 'test', cloudName: 'test-cloud', isConfigured: () => true,
+        checkHealth: jest.fn().mockResolvedValue({ healthy: true, usagePercent: 0 }),
+        getUsagePercent: jest.fn().mockResolvedValue(0),
+        upload: jest.fn().mockResolvedValue({ url: 'https://res.cloudinary.com/test-cloud/image/upload/v1/eventai/avatars/avatar-user-1-new.png', publicId: 'eventai/avatars/avatar-user-1-new', providerId: 'test' }),
+        destroy: jest.fn().mockResolvedValue(undefined),
+      };
+      jest.spyOn(MediaProviderFactory, 'createProviders').mockReturnValue([provider]);
+      prisma.user.findUnique.mockResolvedValue({ profileImage: null });
+    });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('persists the cloud URL and removes only the previous owned avatar', async () => {
+      prisma.user.findUnique.mockResolvedValue({ profileImage: 'https://res.cloudinary.com/test-cloud/image/upload/v123/eventai/avatars/avatar-user-1-old.png' });
+      const result = await service.saveAvatar('user-1', file);
+      expect(result.profileImage).toMatch(/^https:\/\/res.cloudinary.com\//);
+      expect(prisma.user.update).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: result });
+      expect(provider.destroy).toHaveBeenCalledWith('eventai/avatars/avatar-user-1-old');
+    });
+
+    it('does not delete another users image', async () => {
+      prisma.user.findUnique.mockResolvedValue({ profileImage: 'https://res.cloudinary.com/test-cloud/image/upload/v1/eventai/avatars/avatar-other-old.png' });
+      await service.saveAvatar('user-1', file);
+      expect(provider.destroy).not.toHaveBeenCalled();
+    });
+
+    it('cleans up a new cloud upload if persistence fails', async () => {
+      prisma.user.update.mockRejectedValue(new Error('database unavailable'));
+      await expect(service.saveAvatar('user-1', file)).rejects.toThrow('database unavailable');
+      expect(provider.destroy).toHaveBeenCalledWith('eventai/avatars/avatar-user-1-new');
+    });
+
+    it('rejects spoofed MIME types before any provider call', async () => {
+      await expect(service.saveAvatar('user-1', { buffer: Buffer.from('not-png'), size: 7, mimetype: 'image/png' })).rejects.toThrow(UnsupportedMediaTypeException);
+      expect(provider.upload).not.toHaveBeenCalled();
+    });
+
+    it('never falls back to disk in production even when local uploads are enabled', async () => {
+      const oldEnv = process.env.NODE_ENV;
+      const oldLocal = process.env.ALLOW_LOCAL_UPLOADS;
+      process.env.NODE_ENV = 'production';
+      process.env.ALLOW_LOCAL_UPLOADS = 'true';
+      jest.mocked(MediaProviderFactory.createProviders).mockReturnValue([]);
+      try {
+        await expect(service.saveAvatar('user-1', file)).rejects.toThrow(ServiceUnavailableException);
+        expect(prisma.user.update).not.toHaveBeenCalled();
+      } finally {
+        process.env.NODE_ENV = oldEnv;
+        if (oldLocal === undefined) delete process.env.ALLOW_LOCAL_UPLOADS;
+        else process.env.ALLOW_LOCAL_UPLOADS = oldLocal;
+      }
+    });
+
     it('rejects non-image mimetypes', async () => {
       await expect(
         service.saveAvatar('user-1', {

@@ -7,7 +7,7 @@ AI-powered Event Discovery and Ticket Booking Platform built as a modular monoli
 | Layer | Technology |
 |-------|-----------|
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS, shadcn/ui-style components |
-| Backend | NestJS, TypeScript, REST APIs |
+| Backend | Express, TypeScript, REST APIs |
 | Database | PostgreSQL 16, Prisma ORM |
 | Cache / Queue | Redis 7 |
 | Background Jobs | BullMQ |
@@ -26,7 +26,7 @@ AI-powered Event Discovery and Ticket Booking Platform built as a modular monoli
 eventai/
 ├── apps/
 │   ├── web/          — Next.js frontend
-│   ├── api/          — NestJS backend API
+│   ├── api/          — Express + TypeScript backend API
 │   └── worker/       — BullMQ background worker
 ├── packages/
 │   ├── config/       — Shared ESLint + TypeScript configs

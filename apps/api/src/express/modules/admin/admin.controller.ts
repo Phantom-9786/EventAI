@@ -180,6 +180,7 @@ export class ExpressAdminController {
         action,
         reason,
       });
+      await this.adminService.invalidateEventCache();
 
       const actionWord = String(action).toUpperCase() === 'APPROVE' ? 'approved' : 'rejected';
       res.status(200).json({

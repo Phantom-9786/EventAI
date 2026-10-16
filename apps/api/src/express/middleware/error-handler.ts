@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
-import * as Sentry from '@sentry/nestjs';
+import * as Sentry from '@sentry/node';
 import { StructuredLogger } from '../../common/logging/structured-logger';
 import { HttpError, type ErrorEnvelope } from '../types';
 
@@ -18,13 +18,8 @@ export function createErrorHandlerMiddleware(logger: StructuredLogger): ErrorReq
     let errors: Record<string, string[] | undefined> | undefined;
     let extraFields: Record<string, unknown> | undefined;
 
-    if (err instanceof HttpError) {
-      statusCode = err.statusCode;
-      message = err.message;
-      error = err.errorName;
-      errors = err.errors;
-    } else if (typeof err === 'object' && err !== null && 'getStatus' in err && typeof (err as { getStatus: unknown }).getStatus === 'function') {
-      // NestJS HttpException compatibility
+    if (typeof err === 'object' && err !== null && 'getStatus' in err && typeof (err as { getStatus: unknown }).getStatus === 'function') {
+      // Express/Nest-compatible HttpException with getStatus/getResponse
       const httpEx = err as { getStatus(): number; getResponse(): unknown; message: string; name: string };
       statusCode = httpEx.getStatus();
       const body = httpEx.getResponse();
@@ -49,6 +44,11 @@ export function createErrorHandlerMiddleware(logger: StructuredLogger): ErrorReq
         message = httpEx.message;
         error = httpEx.name ? httpEx.name.replace(/Exception$/, '') : undefined;
       }
+    } else if (err instanceof HttpError) {
+      statusCode = err.statusCode;
+      message = err.message;
+      error = err.errorName;
+      errors = err.errors;
     } else if (err instanceof SyntaxError && 'status' in err && (err as { status?: number }).status === 400 && 'body' in err) {
       // Malformed JSON from express.json()
       statusCode = 400;

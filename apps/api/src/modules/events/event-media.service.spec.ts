@@ -6,8 +6,8 @@ import {
   PayloadTooLargeException,
   ServiceUnavailableException,
   UnsupportedMediaTypeException,
-} from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+} from '../../common/exceptions';
+import { Test } from '../../common/testing';
 import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventMediaService, eventImageExtension } from './event-media.service';

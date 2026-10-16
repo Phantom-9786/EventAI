@@ -1,8 +1,8 @@
-import { ExecutionContext, HttpException, ServiceUnavailableException } from '@nestjs/common';
+import { ExecutionContext, HttpException, ServiceUnavailableException } from '../../common/exceptions';
 import { createHash } from 'crypto';
 import { AiRequestGuard } from './ai-request.guard';
 import { CacheService } from '../../common/cache/cache.service';
-import { ConfigService } from '@nestjs/config';
+import { ConfigService } from '../../common/config/config.service';
 
 function context(user?: { id: string }, ip = '127.0.0.1') {
   const listeners = new Map<string, () => void>();

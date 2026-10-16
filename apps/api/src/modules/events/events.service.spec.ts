@@ -2,8 +2,8 @@ import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
-} from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+} from '../../common/exceptions';
+import { Test } from '../../common/testing';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';

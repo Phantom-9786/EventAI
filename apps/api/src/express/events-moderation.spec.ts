@@ -12,7 +12,7 @@ import { AdminService } from '../modules/admin/admin.service';
 import { ExpressModerationService } from './services/moderation.service';
 import { UserRole } from '@eventai/types';
 import { StructuredLogger } from '../common/logging/structured-logger';
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '../common/exceptions';
 
 describe('Express Events, Organizers & Moderation Modules', () => {
   let server: Server;
@@ -90,6 +90,7 @@ describe('Express Events, Organizers & Moderation Modules', () => {
       publishEvent: jest.fn(),
       cancelEvent: jest.fn(),
       deleteEvent: jest.fn(),
+      invalidateEventCache: jest.fn().mockResolvedValue(undefined),
     };
 
     mockMediaService = {
@@ -142,6 +143,7 @@ describe('Express Events, Organizers & Moderation Modules', () => {
       listEvents: jest.fn(),
       moderateEvent: jest.fn(),
       listAuditLogs: jest.fn(),
+      invalidateEventCache: jest.fn().mockResolvedValue(undefined),
     };
 
     mockModerationService = {
@@ -705,6 +707,11 @@ describe('Express Events, Organizers & Moderation Modules', () => {
         title: 'AI Summit 2027 (Relocated)',
         status: 'PUBLISHED',
       } as any);
+      mockEventsService.getEventForManage!.mockResolvedValueOnce({
+        id: 'evt-new-1',
+        title: 'AI Summit 2027 (Relocated)',
+        status: 'DRAFT',
+      } as any);
       mockModerationService.handleMaterialEventChange!.mockResolvedValueOnce(undefined);
       mockModerationService.getEventModerationStatus!.mockResolvedValueOnce({
         status: 'PENDING_APPROVAL',
@@ -725,11 +732,30 @@ describe('Express Events, Organizers & Moderation Modules', () => {
       expect(res.status).toBe(200);
       const data = (await res.json()) as any;
       expect(data.event.title).toBe('AI Summit 2027 (Relocated)');
+      expect(data.event.status).toBe('DRAFT');
       expect(data.moderation.status).toBe('PENDING_APPROVAL');
       expect(mockModerationService.handleMaterialEventChange).toHaveBeenCalledWith(
         organizerUser.id,
         'evt-new-1',
         ['title'],
+      );
+    });
+
+    it('Public search excludes events that transitioned to DRAFT after material change', async () => {
+      mockEventsService.searchEvents!.mockResolvedValueOnce({
+        events: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+        pages: 0,
+      });
+
+      const res = await fetch(`${baseUrl}/api/events?query=AI%20Summit`);
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as any;
+      expect(data.events).toHaveLength(0);
+      expect(mockEventsService.searchEvents).toHaveBeenCalledWith(
+        expect.objectContaining({ query: 'AI Summit' }),
       );
     });
 

@@ -199,7 +199,7 @@ describe('Express Notifications Module', () => {
   });
 
   it('returns 404 Not Found when marking non-existent or unowned notification as read', async () => {
-    const { NotFoundException } = await import('@nestjs/common');
+    const { NotFoundException } = await import('../common/exceptions');
     mockNotificationsService.markAsRead.mockRejectedValueOnce(
       new NotFoundException('Notification not found'),
     );

@@ -2,9 +2,9 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
-} from '@nestjs/common';
-import { Logger } from '@nestjs/common';
+} from '../../common/exceptions';
 import { Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import type { CreateEventInput, EventSearchInput, UpdateEventInput } from '@eventai/validation';

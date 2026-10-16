@@ -4,9 +4,9 @@ import {
   Injectable,
   Logger,
   UnauthorizedException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+} from '../../common/exceptions';
+import { ConfigService } from '../../common/config/config.service';
+import { JwtService } from './jwt.service';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'crypto';
 import type { TokenPayload, UserRole } from '@eventai/types';

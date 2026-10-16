@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { Logger } from '../../common/exceptions';
 import { CloudinaryMediaProvider, type CloudinaryProviderConfig } from './cloudinary-media.provider';
 import type { MediaProvider } from './media-provider.types';
 

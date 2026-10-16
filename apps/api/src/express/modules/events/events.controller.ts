@@ -77,13 +77,15 @@ export class ExpressEventsController {
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
       const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
-      const updated = await this.eventsService.updateEvent(organizerId, req.params.idOrSlug, req.body);
+      let updated = await this.eventsService.updateEvent(organizerId, req.params.idOrSlug, req.body);
 
       const materialFields = ['title', 'startDate', 'endDate', 'venueId'].filter(
         (field) => (req.body as Record<string, unknown>)[field] !== undefined,
       );
       if (materialFields.length > 0) {
         await this.moderationService.handleMaterialEventChange(userId, updated.id, materialFields);
+        await this.eventsService.invalidateEventCache();
+        updated = await this.eventsService.getEventForManage(organizerId, updated.id);
       }
 
       const moderation = await this.moderationService.getEventModerationStatus(updated.id);

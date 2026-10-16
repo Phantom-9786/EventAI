@@ -8,7 +8,7 @@ import {
   NotFoundException,
   PayloadTooLargeException,
   UnsupportedMediaTypeException,
-} from '@nestjs/common';
+} from '../common/exceptions';
 import { UserRole } from '@eventai/types';
 import { StructuredLogger } from '../common/logging/structured-logger';
 

@@ -1,6 +1,6 @@
 import type { NotificationsService } from '../src/modules/notifications/notifications.service';
 import type { PaymentsService } from '../src/modules/payments/payments.service';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '../src/common/exceptions';
 import { BookingsService } from '../src/modules/bookings/bookings.service';
 import { createEventFixture, createUser, prepareTestDatabase, uniqueSuffix, type TestPrisma } from './db';
 

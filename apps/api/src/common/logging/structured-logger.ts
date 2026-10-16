@@ -1,4 +1,49 @@
-import { ConsoleLogger, LoggerService } from '@nestjs/common';
+export interface LoggerService {
+  log(message: any, ...optionalParams: any[]): any;
+  error(message: any, ...optionalParams: any[]): any;
+  warn(message: any, ...optionalParams: any[]): any;
+  debug?(message: any, ...optionalParams: any[]): any;
+  verbose?(message: any, ...optionalParams: any[]): any;
+}
+
+export class ConsoleLogger implements LoggerService {
+  public context?: string;
+
+  constructor(context?: string) {
+    this.context = context;
+  }
+
+  log(message: unknown, context?: string): void {
+    const ctx = context ?? this.context;
+    const prefix = ctx ? `[${ctx}] ` : '';
+    process.stdout.write(`${prefix}${String(message)}\n`);
+  }
+
+  error(message: unknown, trace?: string, context?: string): void {
+    const ctx = context ?? this.context;
+    const prefix = ctx ? `[${ctx}] ` : '';
+    const traceStr = trace ? `\n${trace}` : '';
+    process.stderr.write(`${prefix}${String(message)}${traceStr}\n`);
+  }
+
+  warn(message: unknown, context?: string): void {
+    const ctx = context ?? this.context;
+    const prefix = ctx ? `[${ctx}] ` : '';
+    process.stdout.write(`${prefix}${String(message)}\n`);
+  }
+
+  debug(message: unknown, context?: string): void {
+    const ctx = context ?? this.context;
+    const prefix = ctx ? `[${ctx}] ` : '';
+    process.stdout.write(`${prefix}${String(message)}\n`);
+  }
+
+  verbose(message: unknown, context?: string): void {
+    const ctx = context ?? this.context;
+    const prefix = ctx ? `[${ctx}] ` : '';
+    process.stdout.write(`${prefix}${String(message)}\n`);
+  }
+}
 
 // ═══════════════════════════════════════════════════
 // Structured logging — single-line JSON output when

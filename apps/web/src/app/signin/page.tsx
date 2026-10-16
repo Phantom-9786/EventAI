@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { ApiError } from '@/lib/auth';
+import { authReturnPath } from '@/lib/auth-redirect';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Button } from '@/components/ui/button';
 import { GoogleButton } from '@/components/auth/google-button';
@@ -26,16 +27,19 @@ export default function SignInPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [returnPath, setReturnPath] = useState('/events');
 
   // OAuth callback errors arrive as ?error=google_* query params
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    setReturnPath(authReturnPath(params.get('returnUrl')));
     const googleError = params.get('error');
     if (googleError) {
       setError(
         GOOGLE_ERROR_MESSAGES[googleError] ?? 'Google sign-in failed. Please try again.',
       );
-      window.history.replaceState(null, '', window.location.pathname);
+      params.delete('error');
+      window.history.replaceState(null, '', `${window.location.pathname}${params.size ? `?${params}` : ''}`);
     }
   }, []);
 
@@ -45,7 +49,7 @@ export default function SignInPage() {
     setSubmitting(true);
     try {
       await signIn(email, password);
-      router.push('/events');
+      router.push(returnPath);
       router.refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
@@ -110,10 +114,10 @@ export default function SignInPage() {
           <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
           <span className="h-px flex-1 bg-border" />
         </div>
-        <GoogleButton redirectTo="/events" />
+        <GoogleButton redirectTo={returnPath} />
         <p className="text-center text-sm text-muted-foreground">
           New to EventAI?{' '}
-          <Link href="/signup" className="font-medium text-primary hover:underline">
+          <Link href={`/signup?returnUrl=${encodeURIComponent(returnPath)}`} className="font-medium text-primary hover:underline">
             Create an account
           </Link>
         </p>

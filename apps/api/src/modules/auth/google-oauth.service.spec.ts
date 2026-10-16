@@ -1,5 +1,5 @@
-import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { ServiceUnavailableException, UnauthorizedException } from '../../common/exceptions';
+import { ConfigService } from '../../common/config/config.service';
 import { createHmac } from 'crypto';
 import { GoogleOauthService } from './google-oauth.service';
 

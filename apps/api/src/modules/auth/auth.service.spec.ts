@@ -1,7 +1,7 @@
-import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
+import { BadRequestException, ConflictException, UnauthorizedException } from '../../common/exceptions';
+import { Test } from '../../common/testing';
+import { JwtService } from './jwt.service';
+import { ConfigService } from '../../common/config/config.service';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
