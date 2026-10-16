@@ -1,4 +1,4 @@
-import { BadGatewayException, ServiceUnavailableException } from '@nestjs/common';
+import { BadGatewayException, ServiceUnavailableException } from '../../common/exceptions';
 import axios from 'axios';
 import { CloudinaryMediaProvider } from './cloudinary-media.provider';
 

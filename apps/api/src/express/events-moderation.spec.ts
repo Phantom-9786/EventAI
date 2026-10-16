@@ -12,7 +12,7 @@ import { AdminService } from '../modules/admin/admin.service';
 import { ExpressModerationService } from './services/moderation.service';
 import { UserRole } from '@eventai/types';
 import { StructuredLogger } from '../common/logging/structured-logger';
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '../common/exceptions';
 
 describe('Express Events, Organizers & Moderation Modules', () => {
   let server: Server;

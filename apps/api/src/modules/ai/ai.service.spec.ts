@@ -1,5 +1,5 @@
-import { ServiceUnavailableException } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { ServiceUnavailableException } from '../../common/exceptions';
+import { Test } from '../../common/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { AiService } from './ai.service';
@@ -151,7 +151,7 @@ describe('AiService key management', () => {
       );
     const service = await makeService({ keys: `${KEY_A},${KEY_B}` });
 
-    const err = await service.chat([{ role: 'user', content: 'hi' }]).catch((e) => e);
+    const err = await service.chat([{ role: 'user', content: 'hi' }]).catch((e: any) => e);
     expect(err).toBeInstanceOf(ServiceUnavailableException);
     expect(err.response.retryAfterSeconds).toBe(20);
     // Only ONE fetch: the same-org quota means rotation must not happen.

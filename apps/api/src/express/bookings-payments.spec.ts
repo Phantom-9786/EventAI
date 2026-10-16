@@ -14,7 +14,7 @@ import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
-} from '@nestjs/common';
+} from '../common/exceptions';
 
 describe('Express Bookings, Payments, Webhooks and Refunds Modules', () => {
   let server: Server;

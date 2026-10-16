@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
   Optional,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';

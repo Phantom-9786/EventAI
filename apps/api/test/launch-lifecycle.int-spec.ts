@@ -2,7 +2,7 @@ import { Server } from 'http';
 import { AddressInfo } from 'net';
 import { createHmac, randomUUID } from 'crypto';
 import * as argon2 from 'argon2';
-import { ConfigService } from '@nestjs/config';
+import { ConfigService } from '../src/common/config/config.service';
 import { createExpressApp } from '../src/express/app';
 import { CacheService } from '../src/common/cache/cache.service';
 import { NotificationsService } from '../src/modules/notifications/notifications.service';

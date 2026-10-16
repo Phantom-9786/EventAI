@@ -1,4 +1,4 @@
-import { Test } from '@nestjs/testing';
+import { Test } from '../../common/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { VenuesService } from './venues.service';
 

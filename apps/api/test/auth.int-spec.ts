@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
-import { JwtService } from '@nestjs/jwt';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '../src/modules/auth/jwt.service';
+import { ConflictException, UnauthorizedException } from '../src/common/exceptions';
 import type { NotificationsService } from '../src/modules/notifications/notifications.service';
 import { AuthService } from '../src/modules/auth/auth.service';
 import { createEventFixture, createUser, prepareTestDatabase, uniqueSuffix, type TestPrisma } from './db';

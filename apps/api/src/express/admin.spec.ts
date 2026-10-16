@@ -7,7 +7,7 @@ import { PaymentsService } from '../modules/payments/payments.service';
 import { ExpressModerationService } from './services/moderation.service';
 import { UserRole } from '@eventai/types';
 import { StructuredLogger } from '../common/logging/structured-logger';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '../common/exceptions';
 
 describe('Express Admin Module & Authorization Security', () => {
   let server: Server;

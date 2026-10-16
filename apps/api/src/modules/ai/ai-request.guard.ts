@@ -6,8 +6,8 @@ import {
   Injectable,
   Logger,
   ServiceUnavailableException,
-} from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+} from '../../common/exceptions';
+import { ConfigService } from '../../common/config/config.service';
 import { randomUUID, createHash } from 'crypto';
 import type { Request, Response } from 'express';
 import { CacheService } from '../../common/cache/cache.service';

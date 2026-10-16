@@ -3,7 +3,7 @@ import type { AddressInfo } from 'net';
 import jwt from 'jsonwebtoken';
 import { createExpressApp } from './app';
 import { AuthService } from '../modules/auth/auth.service';
-import { UnauthorizedException, ConflictException } from '@nestjs/common';
+import { UnauthorizedException, ConflictException } from '../common/exceptions';
 import { UserRole } from '@eventai/types';
 import { StructuredLogger } from '../common/logging/structured-logger';
 

@@ -9,7 +9,7 @@ import {
   PayloadTooLargeException,
   ServiceUnavailableException,
   UnsupportedMediaTypeException,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { mkdir, unlink, writeFile } from 'fs/promises';

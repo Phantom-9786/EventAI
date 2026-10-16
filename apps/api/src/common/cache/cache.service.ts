@@ -1,7 +1,6 @@
-import { Global, Injectable, Module, OnModuleDestroy } from '@nestjs/common';
-import { Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '../exceptions';
 import Redis from 'ioredis';
-import { ConfigService } from '@nestjs/config';
+import { ConfigService } from '../config/config.service';
 
 export interface AiRateLimitDecision {
   allowed: boolean;
@@ -160,10 +159,3 @@ export class CacheService implements OnModuleDestroy {
     }
   }
 }
-
-@Global()
-@Module({
-  providers: [CacheService],
-  exports: [CacheService],
-})
-export class CacheModule {}

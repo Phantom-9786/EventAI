@@ -2,7 +2,7 @@ import {
   BadGatewayException,
   Logger,
   ServiceUnavailableException,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 import type {
   MediaProvider,
   ProviderRouterConfig,

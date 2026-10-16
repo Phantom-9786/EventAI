@@ -3,7 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 import type {
   CreateTicketTypeInput,
   UpdateTicketTypeInput,

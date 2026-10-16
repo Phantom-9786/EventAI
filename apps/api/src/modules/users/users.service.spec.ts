@@ -5,8 +5,8 @@ import {
   PayloadTooLargeException,
   ServiceUnavailableException,
   UnsupportedMediaTypeException,
-} from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+} from '../../common/exceptions';
+import { Test } from '../../common/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UsersService } from './users.service';
 import { MediaProviderFactory } from '../events/media-provider.factory';

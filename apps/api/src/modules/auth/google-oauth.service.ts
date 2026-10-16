@@ -1,5 +1,5 @@
-import { Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Logger, ServiceUnavailableException, UnauthorizedException } from '../../common/exceptions';
+import { ConfigService } from '../../common/config/config.service';
 import { OAuth2Client } from 'google-auth-library';
 import { createHmac, timingSafeEqual } from 'crypto';
 

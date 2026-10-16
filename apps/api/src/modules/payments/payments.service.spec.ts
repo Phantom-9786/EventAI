@@ -3,8 +3,8 @@ import {
   ForbiddenException,
   NotFoundException,
   ServiceUnavailableException,
-} from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+} from '../../common/exceptions';
+import { Test } from '../../common/testing';
 import { createHmac } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';

@@ -2,7 +2,7 @@ import {
   BadGatewayException,
   Logger,
   ServiceUnavailableException,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 import axios, { type AxiosResponse } from 'axios';
 import FormData from 'form-data';
 import { createHash } from 'crypto';

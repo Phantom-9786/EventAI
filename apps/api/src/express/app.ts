@@ -5,7 +5,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import { JwtService } from '../modules/auth/jwt.service';
-import { ConfigService } from '@nestjs/config';
+import { ConfigService } from '../common/config/config.service';
 import { PrismaClient } from '@eventai/database';
 import { CacheService } from '../common/cache/cache.service';
 import { StructuredLogger, isJsonLogging } from '../common/logging/structured-logger';

@@ -38,7 +38,6 @@
   },
   "packageManager": "npm@10.0.0",
   "allowScripts": {
-    "@nestjs/core@10.4.22": true,
     "@prisma/client@6.19.3": true,
     "@prisma/engines@6.19.3": true,
     "argon2@0.41.1": true,

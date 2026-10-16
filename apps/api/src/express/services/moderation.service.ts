@@ -4,7 +4,7 @@ import {
   ForbiddenException,
   NotFoundException,
   BadRequestException,
-} from '@nestjs/common';
+} from '../../common/exceptions';
 
 export type OrganizerApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type EventModerationStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
