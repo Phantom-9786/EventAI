@@ -450,8 +450,10 @@ export class EventsService {
    * through Prisma with relations and price ranges.
    */
   async searchEvents(input: EventSearchInput) {
-    const offset = (input.page - 1) * input.limit;
-    const query = input.query?.trim();
+    const page = Math.max(1, Number.parseInt(String(input?.page ?? '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(input?.limit ?? '20'), 10) || 20));
+    const offset = (page - 1) * limit;
+    const query = input?.query?.trim();
 
     const conditions: Prisma.Sql[] = [Prisma.sql`e.status = 'PUBLISHED'`];
     if (query) {
@@ -459,28 +461,28 @@ export class EventsService {
         Prisma.sql`e.search_vector @@ websearch_to_tsquery('english', ${query})`,
       );
     }
-    if (input.categoryId) {
+    if (input?.categoryId) {
       conditions.push(Prisma.sql`e.category_id = ${input.categoryId}`);
     }
-    if (input.category) {
+    if (input?.category) {
       conditions.push(
-        Prisma.sql`e.category_id IN (SELECT c.id FROM categories c WHERE c.slug = ${input.category} AND c.is_active = true)`,
+        Prisma.sql`e.category_id IN (SELECT c.id FROM public.categories c WHERE c.slug = ${input.category} AND c.is_active = true)`,
       );
     }
-    if (input.city) {
+    if (input?.city) {
       conditions.push(Prisma.sql`v.city ILIKE ${`%${input.city}%`}`);
     }
-    if (input.dateFrom) {
+    if (input?.dateFrom) {
       conditions.push(Prisma.sql`e.start_date >= ${new Date(input.dateFrom)}`);
     }
-    if (input.dateTo) {
+    if (input?.dateTo) {
       conditions.push(Prisma.sql`e.end_date <= ${new Date(input.dateTo)}`);
     }
-    if (input.isFeatured !== undefined) {
+    if (input?.isFeatured !== undefined) {
       conditions.push(Prisma.sql`e.is_featured = ${input.isFeatured}`);
     }
-    if (input.priceMin !== undefined || input.priceMax !== undefined) {
-      const minPrice = Prisma.sql`(SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id)`;
+    if (input?.priceMin !== undefined || input?.priceMax !== undefined) {
+      const minPrice = Prisma.sql`(SELECT MIN(tt.price) FROM public.ticket_types tt WHERE tt.event_id = e.id)`;
       if (input.priceMin !== undefined) {
         conditions.push(Prisma.sql`${minPrice} >= ${input.priceMin}`);
       }
@@ -490,18 +492,18 @@ export class EventsService {
     }
     const where = Prisma.join(conditions, ' AND ');
 
-    const dir = input.sortDir === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`;
+    const dir = input?.sortDir === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`;
     let orderBy: Prisma.Sql;
     if (query) {
       // Relevance first when searching
       orderBy = Prisma.sql`ts_rank(e.search_vector, websearch_to_tsquery('english', ${query})) DESC, e.start_date ASC`;
     } else {
-      switch (input.sortBy) {
+      switch (input?.sortBy) {
         case 'price':
-          orderBy = Prisma.sql`(SELECT MIN(tt.price) FROM ticket_types tt WHERE tt.event_id = e.id) ${dir} NULLS LAST`;
+          orderBy = Prisma.sql`(SELECT MIN(tt.price) FROM public.ticket_types tt WHERE tt.event_id = e.id) ${dir} NULLS LAST`;
           break;
         case 'popularity':
-          orderBy = Prisma.sql`(SELECT COUNT(*) FROM bookings b WHERE b.event_id = e.id) ${dir}`;
+          orderBy = Prisma.sql`(SELECT COUNT(*) FROM public.bookings b WHERE b.event_id = e.id) ${dir}`;
           break;
         case 'createdAt':
           orderBy = Prisma.sql`e.created_at ${dir}`;
@@ -513,10 +515,10 @@ export class EventsService {
       }
     }
 
-    const table = Prisma.sql`events e JOIN venues v ON v.id = e.venue_id`;
+    const table = Prisma.sql`public.events e JOIN public.venues v ON v.id = e.venue_id`;
     const [rows, countRows] = await this.prisma.$transaction([
       this.prisma.$queryRaw<{ id: string }[]>(
-        Prisma.sql`SELECT e.id FROM ${table} WHERE ${where} ORDER BY ${orderBy} LIMIT ${input.limit} OFFSET ${offset}`,
+        Prisma.sql`SELECT e.id FROM ${table} WHERE ${where} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`,
       ),
       this.prisma.$queryRaw<{ total: number }[]>(
         Prisma.sql`SELECT COUNT(*)::int AS total FROM ${table} WHERE ${where}`,
@@ -525,7 +527,7 @@ export class EventsService {
 
     const total = countRows[0]?.total ?? 0;
     if (rows.length === 0) {
-      return { events: [], total, page: input.page, limit: input.limit, pages: Math.ceil(total / input.limit) };
+      return { events: [], total, page, limit, pages: Math.ceil(total / limit) || 1 };
     }
 
     const hydrated = await this.prisma.event.findMany({
@@ -542,7 +544,7 @@ export class EventsService {
         ticketTypes: undefined,
       }));
 
-    return { events, total, page: input.page, limit: input.limit, pages: Math.ceil(total / input.limit) };
+    return { events, total, page, limit, pages: Math.ceil(total / limit) || 1 };
   }
 
   /** Resolves an event owned by the organizer by id or slug (throws 404). */

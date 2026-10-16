@@ -35,8 +35,11 @@ export class AdminService {
   }
 
   /** Search bookings with explicitly limited customer, event and payment fields. */
-  async listBookings(query: AdminBookingListInput) {
-    const { page, limit, search, status } = query;
+  async listBookings(query: AdminBookingListInput = {} as AdminBookingListInput) {
+    const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
+    const search = query.search?.trim();
+    const status = query.status;
     const where = {
       AND: [
         status ? { status } : {},
@@ -70,7 +73,7 @@ export class AdminService {
       }),
       this.prisma.booking.count({ where }),
     ]);
-    return { bookings, total, page, limit, pages: Math.ceil(total / limit) };
+    return { bookings, total, page, limit, pages: Math.ceil(total / limit) || 1 };
   }
 
   /** Detail view deliberately omits provider signatures, QR data and ticket codes. */
@@ -202,8 +205,15 @@ export class AdminService {
 
   // ── User management ──────────────────────────────
 
-  async listUsers(query: AdminUserListInput) {
-    const { page, limit, search, role, isActive } = query;
+  async listUsers(query: AdminUserListInput = {} as AdminUserListInput) {
+    const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
+    const search = query.search?.trim();
+    const role = query.role;
+    let isActiveFilter: boolean | undefined = undefined;
+    if (query.isActive !== undefined && (query.isActive as unknown) !== '') {
+      isActiveFilter = String(query.isActive) === 'true' || query.isActive === true;
+    }
     const where = {
       AND: [
         search
@@ -216,7 +226,7 @@ export class AdminService {
             }
           : {},
         role ? { role } : {},
-        isActive === undefined ? {} : { isActive },
+        isActiveFilter === undefined ? {} : { isActive: isActiveFilter },
       ],
     };
 
@@ -246,7 +256,7 @@ export class AdminService {
       total,
       page,
       limit,
-      pages: Math.ceil(total / limit),
+      pages: Math.ceil(total / limit) || 1,
     };
   }
 
@@ -300,8 +310,11 @@ export class AdminService {
 
   // ── Event moderation ─────────────────────────────
 
-  async listEvents(query: AdminEventListInput) {
-    const { page, limit, search, status } = query;
+  async listEvents(query: AdminEventListInput = {} as AdminEventListInput) {
+    const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
+    const search = query.search?.trim();
+    const status = query.status;
     const where = {
       AND: [
         search ? { title: { contains: search, mode: 'insensitive' as const } } : {},
@@ -335,13 +348,13 @@ export class AdminService {
     return {
       events: events.map(({ _count, organizer, ...e }) => ({
         ...e,
-        organizerEmail: organizer.user.email,
+        organizerEmail: organizer?.user?.email ?? 'Unknown',
         bookingCount: _count.bookings,
       })),
       total,
       page,
       limit,
-      pages: Math.ceil(total / limit),
+      pages: Math.ceil(total / limit) || 1,
     };
   }
 
@@ -471,8 +484,14 @@ export class AdminService {
 
   // ── Organizer management ─────────────────────────
 
-  async listOrganizers(query: AdminOrganizerListInput) {
-    const { page, limit, search, isVerified } = query;
+  async listOrganizers(query: AdminOrganizerListInput = {} as AdminOrganizerListInput) {
+    const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
+    const search = query.search?.trim();
+    let isVerifiedFilter: boolean | undefined = undefined;
+    if (query.isVerified !== undefined && (query.isVerified as unknown) !== '') {
+      isVerifiedFilter = String(query.isVerified) === 'true' || query.isVerified === true;
+    }
     const where = {
       AND: [
         search
@@ -483,7 +502,7 @@ export class AdminService {
               ],
             }
           : {},
-        isVerified === undefined ? {} : { isVerified },
+        isVerifiedFilter === undefined ? {} : { isVerified: isVerifiedFilter },
       ],
     };
 
@@ -506,15 +525,16 @@ export class AdminService {
     ]);
 
     return {
-      organizers: organizers.map(({ _count, ...o }) => ({
+      organizers: organizers.map(({ _count, user, ...o }) => ({
         ...o,
+        user: user ?? { id: '', email: 'Unknown', isActive: false },
         eventCount: _count.events,
         venueCount: _count.venues,
       })),
       total,
       page,
       limit,
-      pages: Math.ceil(total / limit),
+      pages: Math.ceil(total / limit) || 1,
     };
   }
 
@@ -561,8 +581,12 @@ export class AdminService {
 
   // ── Audit logs ───────────────────────────────────
 
-  async listAuditLogs(query: AdminAuditLogListInput) {
-    const { page, limit, search, entity, action } = query;
+  async listAuditLogs(query: AdminAuditLogListInput = {} as AdminAuditLogListInput) {
+    const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
+    const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
+    const search = query.search?.trim();
+    const entity = query.entity;
+    const action = query.action;
     const where = {
       AND: [
         entity ? { entity } : {},
@@ -610,7 +634,7 @@ export class AdminService {
       total,
       page,
       limit,
-      pages: Math.ceil(total / limit),
+      pages: Math.ceil(total / limit) || 1,
     };
   }
 }

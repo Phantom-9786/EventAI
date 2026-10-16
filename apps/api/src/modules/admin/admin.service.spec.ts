@@ -457,5 +457,44 @@ describe('AdminService', () => {
       expect(result.logs[0].id).toBe('log-1');
       expect(result.total).toBe(1);
     });
+
+    it('safely handles empty query and string parameters for all admin list queries', async () => {
+      prisma.$transaction.mockResolvedValue([[], 0]);
+
+      // listAuditLogs with empty object and string pagination
+      const auditResult = await service.listAuditLogs({ page: '1' as any, limit: '20' as any });
+      expect(auditResult).toMatchObject({ logs: [], total: 0, page: 1, limit: 20, pages: 1 });
+
+      // listBookings with empty object
+      const bookingsResult = await service.listBookings({} as any);
+      expect(bookingsResult).toMatchObject({ bookings: [], total: 0, page: 1, limit: 20, pages: 1 });
+
+      // listUsers with string boolean and empty query
+      const usersResult = await service.listUsers({ page: '1' as any, limit: '20' as any, isActive: 'true' as any });
+      expect(usersResult).toMatchObject({ users: [], total: 0, page: 1, limit: 20, pages: 1 });
+      const userArgs = prisma.user.findMany.mock.calls[prisma.user.findMany.mock.calls.length - 1][0];
+      expect(userArgs.where.AND[2]).toEqual({ isActive: true });
+
+      // listEvents with null organizer and user relations
+      prisma.$transaction.mockResolvedValueOnce([
+        [{ id: 'evt-1', title: 'Test', slug: 'test', status: 'PUBLISHED', startDate: new Date(), endDate: new Date(), createdAt: new Date(), category: null, venue: null, organizer: null, _count: { bookings: 0 } }],
+        1,
+      ]);
+      const eventsResult = await service.listEvents({} as any);
+      expect(eventsResult.events[0].organizerEmail).toBe('Unknown');
+      expect(eventsResult.page).toBe(1);
+      expect(eventsResult.limit).toBe(20);
+
+      // listOrganizers with string boolean and null user
+      prisma.$transaction.mockResolvedValueOnce([
+        [{ id: 'org-1', organizationName: 'Org 1', isVerified: false, createdAt: new Date(), user: null, _count: { events: 0, venues: 0 } }],
+        1,
+      ]);
+      const organizersResult = await service.listOrganizers({ isVerified: 'false' as any });
+      expect(organizersResult.organizers[0].user).toEqual({ id: '', email: 'Unknown', isActive: false });
+      expect(organizersResult.page).toBe(1);
+      expect(organizersResult.limit).toBe(20);
+    });
   });
 });
+

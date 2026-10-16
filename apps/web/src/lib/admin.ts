@@ -52,11 +52,12 @@ export interface AdminBookingDetail extends AdminBookingRow {
   ticketCounts: Record<string, number>;
 }
 
-export async function listAdminBookings(params: { search?: string; status?: string; page?: number; signal?: AbortSignal } = {}) {
+export async function listAdminBookings(params: { search?: string; status?: string; page?: number; limit?: number; signal?: AbortSignal } = {}) {
   const qs = new URLSearchParams();
+  qs.set('page', String(params.page ?? 1));
+  qs.set('limit', String(params.limit ?? 20));
   if (params.search) qs.set('search', params.search);
   if (params.status) qs.set('status', params.status);
-  if (params.page) qs.set('page', String(params.page));
   const res = await authFetch(`/admin/bookings?${qs.toString()}`, { signal: params.signal });
   if (!res.ok) throw new Error(`Failed to load bookings (${res.status})`);
   return res.json() as Promise<{ bookings: AdminBookingRow[]; total: number; page: number; pages: number }>;
@@ -142,13 +143,14 @@ export interface AdminUser {
 }
 
 export async function listAdminUsers(
-  params: { search?: string; role?: string; isActive?: string; page?: number } = {},
+  params: { search?: string; role?: string; isActive?: string; page?: number; limit?: number } = {},
 ): Promise<{ users: AdminUser[]; total: number; page: number; pages: number }> {
   const qs = new URLSearchParams();
+  qs.set('page', String(params.page ?? 1));
+  qs.set('limit', String(params.limit ?? 20));
   if (params.search) qs.set('search', params.search);
   if (params.role) qs.set('role', params.role);
   if (params.isActive) qs.set('isActive', params.isActive);
-  if (params.page) qs.set('page', String(params.page));
   const res = await authFetch(`/admin/users?${qs.toString()}`);
   if (!res.ok) throw new Error(`Failed to load users (${res.status})`);
   return res.json();
@@ -178,12 +180,13 @@ export interface AdminEventRow {
 }
 
 export async function listAdminEvents(
-  params: { search?: string; status?: string; page?: number } = {},
+  params: { search?: string; status?: string; page?: number; limit?: number } = {},
 ): Promise<{ events: AdminEventRow[]; total: number; page: number; pages: number }> {
   const qs = new URLSearchParams();
+  qs.set('page', String(params.page ?? 1));
+  qs.set('limit', String(params.limit ?? 20));
   if (params.search) qs.set('search', params.search);
   if (params.status) qs.set('status', params.status);
-  if (params.page) qs.set('page', String(params.page));
   const res = await authFetch(`/admin/events?${qs.toString()}`);
   if (!res.ok) throw new Error(`Failed to load events (${res.status})`);
   return res.json();
@@ -214,12 +217,13 @@ export interface AdminOrganizerRow {
 }
 
 export async function listAdminOrganizers(
-  params: { search?: string; isVerified?: string; page?: number } = {},
+  params: { search?: string; isVerified?: string; page?: number; limit?: number } = {},
 ): Promise<{ organizers: AdminOrganizerRow[]; total: number; page: number; pages: number }> {
   const qs = new URLSearchParams();
+  qs.set('page', String(params.page ?? 1));
+  qs.set('limit', String(params.limit ?? 20));
   if (params.search) qs.set('search', params.search);
   if (params.isVerified) qs.set('isVerified', params.isVerified);
-  if (params.page) qs.set('page', String(params.page));
   const res = await authFetch(`/admin/organizers?${qs.toString()}`);
   if (!res.ok) throw new Error(`Failed to load organizers (${res.status})`);
   return res.json();
@@ -331,11 +335,11 @@ export async function listAdminAuditLogs(
   } = {},
 ): Promise<{ logs: AdminAuditLogRow[]; total: number; page: number; pages: number }> {
   const qs = new URLSearchParams();
+  qs.set('page', String(params.page ?? 1));
+  qs.set('limit', String(params.limit ?? 20));
   if (params.search) qs.set('search', params.search);
   if (params.entity) qs.set('entity', params.entity);
   if (params.action) qs.set('action', params.action);
-  if (params.page) qs.set('page', String(params.page));
-  if (params.limit) qs.set('limit', String(params.limit));
   const res = await authFetch(`/admin/audit-logs?${qs.toString()}`, { signal: params.signal });
   if (!res.ok) throw new Error(`Failed to load audit logs (${res.status})`);
   return res.json();
