@@ -88,10 +88,11 @@ export default function AdminPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  if (authLoading || (loading && !stats)) {
+  if (authLoading) {
     return (
-      <div className="container flex justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="container flex flex-col items-center gap-3 py-24 text-muted-foreground" role="status">
+        <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
+        <p className="text-sm">Checking sign-in…</p>
       </div>
     );
   }
@@ -112,6 +113,15 @@ export default function AdminPage() {
       <div className="container max-w-md py-24 text-center">
         <h1 className="text-xl font-semibold">Admins only</h1>
         <p className="mt-2 text-sm text-muted-foreground">Your account does not have platform administration rights.</p>
+      </div>
+    );
+  }
+
+  if (loading && !stats) {
+    return (
+      <div className="container flex flex-col items-center gap-3 py-24 text-muted-foreground" role="status">
+        <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
+        <p className="text-sm">Loading admin dashboard…</p>
       </div>
     );
   }

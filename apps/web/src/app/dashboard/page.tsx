@@ -37,10 +37,11 @@ export default function DashboardPage() {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [leaving, setLeaving] = useState(false);
 
-  if (authLoading || (loading && !stats)) {
+  if (authLoading) {
     return (
-      <div className="container flex justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="container flex flex-col items-center gap-3 py-24 text-muted-foreground" role="status">
+        <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
+        <p className="text-sm">Checking sign-in…</p>
       </div>
     );
   }
@@ -52,6 +53,15 @@ export default function DashboardPage() {
         <Link href="/signin" className="mt-6 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
           Sign In
         </Link>
+      </div>
+    );
+  }
+
+  if (loading && !stats) {
+    return (
+      <div className="container flex flex-col items-center gap-3 py-24 text-muted-foreground" role="status">
+        <Loader2 className="h-8 w-8 animate-spin" aria-hidden="true" />
+        <p className="text-sm">Loading organizer dashboard…</p>
       </div>
     );
   }
