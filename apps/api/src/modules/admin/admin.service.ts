@@ -35,7 +35,7 @@ export class AdminService {
   }
 
   /** Search bookings with explicitly limited customer, event and payment fields. */
-  async listBookings(query: AdminBookingListInput = {} as AdminBookingListInput) {
+  async listBookings(query: Partial<AdminBookingListInput> = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
     const search = query.search?.trim();
@@ -205,7 +205,7 @@ export class AdminService {
 
   // ── User management ──────────────────────────────
 
-  async listUsers(query: AdminUserListInput = {} as AdminUserListInput) {
+  async listUsers(query: Partial<AdminUserListInput> = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
     const search = query.search?.trim();
@@ -310,7 +310,7 @@ export class AdminService {
 
   // ── Event moderation ─────────────────────────────
 
-  async listEvents(query: AdminEventListInput = {} as AdminEventListInput) {
+  async listEvents(query: Partial<AdminEventListInput> = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
     const search = query.search?.trim();
@@ -484,7 +484,7 @@ export class AdminService {
 
   // ── Organizer management ─────────────────────────
 
-  async listOrganizers(query: AdminOrganizerListInput = {} as AdminOrganizerListInput) {
+  async listOrganizers(query: Partial<AdminOrganizerListInput> = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
     const search = query.search?.trim();
@@ -581,7 +581,7 @@ export class AdminService {
 
   // ── Audit logs ───────────────────────────────────
 
-  async listAuditLogs(query: AdminAuditLogListInput = {} as AdminAuditLogListInput) {
+  async listAuditLogs(query: Partial<AdminAuditLogListInput> = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
     const search = query.search?.trim();
