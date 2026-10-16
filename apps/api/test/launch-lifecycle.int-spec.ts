@@ -72,6 +72,7 @@ describe('launch lifecycle (isolated PostgreSQL, mocked external providers)', ()
       prisma, cache, notificationsService: notifications, paymentsService: payments,
       jwtSecret: 'isolated-launch-test-jwt-secret-32-characters',
       env: { NODE_ENV: 'test', FRONTEND_URL: 'http://localhost:3100' },
+      rateLimit: false,
     });
     server = app.listen(0, '127.0.0.1');
     await new Promise<void>((resolve) => server.once('listening', resolve));
