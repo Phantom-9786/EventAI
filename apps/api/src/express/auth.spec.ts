@@ -3,7 +3,7 @@ import type { AddressInfo } from 'net';
 import jwt from 'jsonwebtoken';
 import { createExpressApp } from './app';
 import { AuthService } from '../modules/auth/auth.service';
-import { UnauthorizedException, ConflictException } from '../common/exceptions';
+import { UnauthorizedException, ConflictException, ForbiddenException } from '../common/exceptions';
 import { UserRole } from '@eventai/types';
 import { StructuredLogger } from '../common/logging/structured-logger';
 
@@ -24,6 +24,15 @@ describe('Express Authentication Module', () => {
     logWithMeta: jest.fn(),
   } as unknown as StructuredLogger;
 
+  const mockCache = {
+    ping: jest.fn().mockResolvedValue('PONG'),
+    consumeAiRequest: jest.fn().mockResolvedValue({ allowed: true }),
+    releaseAiRequest: jest.fn().mockResolvedValue(undefined),
+    providerCooldownMs: jest.fn().mockResolvedValue(0),
+    setProviderCooldown: jest.fn().mockResolvedValue(undefined),
+    onModuleDestroy: jest.fn().mockResolvedValue(undefined),
+  } as any;
+
   beforeAll((done) => {
     mockAuthService = {
       refreshCookieMaxAge: 30 * 24 * 60 * 60 * 1000,
@@ -36,6 +45,8 @@ describe('Express Authentication Module', () => {
       requestPasswordReset: jest.fn(),
       resetPassword: jest.fn(),
       verifyEmail: jest.fn(),
+      verifyOtp: jest.fn(),
+      resendOtp: jest.fn(),
       resendEmailVerification: jest.fn(),
     };
     (mockAuthService as any).loginWithGoogle = jest.fn();
@@ -68,6 +79,7 @@ describe('Express Authentication Module', () => {
       authService: mockAuthService as unknown as AuthService,
       googleOauthService: mockGoogleOauthService,
       prisma: mockPrisma,
+      cache: mockCache,
       jwtSecret: JWT_SECRET,
       logger: nullLogger,
       rateLimit: false,
@@ -91,14 +103,27 @@ describe('Express Authentication Module', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockPrisma.user.findUnique.mockResolvedValue({
+      id: 'user-123',
+      email: 'user@example.com',
+      role: 'CUSTOMER',
+      isActive: true,
+      isEmailVerified: true,
+    });
   });
 
   describe('POST /api/auth/register', () => {
-    it('registers user, sets refresh cookie, and returns access token', async () => {
-      const mockUser = { id: 'u1', email: 'test@example.com', role: 'CUSTOMER' as UserRole };
+    it('registers user without setting refresh cookie or returning access token', async () => {
+      const mockUser = {
+        id: 'u1',
+        email: 'test@example.com',
+        role: 'CUSTOMER' as UserRole,
+        isEmailVerified: false,
+      };
       (mockAuthService.register as jest.Mock).mockResolvedValue({
         user: mockUser,
-        tokens: { accessToken: 'acc-token-123', refreshToken: 'ref-token-xyz' },
+        message: 'Registration successful. A 6-digit verification code has been sent to your email.',
+        emailDeliveryFailed: false,
       });
 
       const res = await fetch(`${baseUrl}/api/auth/register`, {
@@ -114,16 +139,11 @@ describe('Express Authentication Module', () => {
 
       expect(res.status).toBe(201);
       const data = (await res.json()) as any;
-      expect(data).toEqual({
-        user: mockUser,
-        accessToken: 'acc-token-123',
-      });
+      expect(data.user).toEqual(mockUser);
+      expect(data.accessToken).toBeUndefined();
 
       const setCookie = res.headers.get('set-cookie');
-      expect(setCookie).toBeDefined();
-      expect(setCookie).toContain('eventai_refresh_token=ref-token-xyz');
-      expect(setCookie).toContain('HttpOnly');
-      expect(setCookie).toContain('Path=/api/auth');
+      expect(setCookie).toBeNull();
     });
 
     it('rejects registration with invalid email or weak password (400)', async () => {
@@ -217,6 +237,31 @@ describe('Express Authentication Module', () => {
       expect(data.success).toBe(false);
       expect(data.message).toBe('Invalid email or password');
     });
+
+    it('returns 403 Forbidden when user email is unverified', async () => {
+      (mockAuthService.login as jest.Mock).mockRejectedValue(
+        new ForbiddenException({
+          message: 'Email verification required. Please verify your email before logging in.',
+          error: 'EmailNotVerified',
+          isEmailVerified: false,
+          email: 'unverified@example.com',
+        }),
+      );
+
+      const res = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'unverified@example.com',
+          password: 'Password123!',
+        }),
+      });
+
+      expect(res.status).toBe(403);
+      const data = (await res.json()) as any;
+      expect(data.success).toBe(false);
+      expect(data.message).toContain('Email verification required');
+    });
   });
 
   describe('POST /api/auth/refresh', () => {
@@ -292,6 +337,7 @@ describe('Express Authentication Module', () => {
         email: 'user@example.com',
         role: 'CUSTOMER',
         isActive: true,
+        isEmailVerified: true,
       });
 
       (mockAuthService.getProfile as jest.Mock).mockResolvedValue({
@@ -373,6 +419,33 @@ describe('Express Authentication Module', () => {
       expect(data.message).toBe('User not found or deactivated');
     });
 
+    it('rejects request with 403 when user is unverified', async () => {
+      const validToken = jwt.sign(
+        { sub: 'user-unverified', email: 'unverified@example.com', role: 'CUSTOMER' },
+        JWT_SECRET,
+        { expiresIn: '1h' },
+      );
+
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-unverified',
+        email: 'unverified@example.com',
+        role: 'CUSTOMER',
+        isActive: true,
+        isEmailVerified: false,
+      });
+
+      const res = await fetch(`${baseUrl}/api/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+        },
+      });
+
+      expect(res.status).toBe(403);
+      const data = (await res.json()) as any;
+      expect(data.success).toBe(false);
+      expect(data.message).toBe('Email verification required');
+    });
+
     it('rejects request with 401 when Authorization header does not use Bearer scheme', async () => {
       const res = await fetch(`${baseUrl}/api/auth/me`, {
         headers: {
@@ -438,6 +511,7 @@ describe('Express Authentication Module', () => {
         email: 'u1@example.com',
         role: 'CUSTOMER',
         isActive: true,
+        isEmailVerified: true,
       });
 
       (mockAuthService.changePassword as jest.Mock).mockResolvedValue(undefined);
@@ -499,6 +573,71 @@ describe('Express Authentication Module', () => {
       expect(res.status).toBe(200);
       const data = (await res.json()) as any;
       expect(data.message).toContain('Password has been reset');
+    });
+  });
+
+  describe('POST /api/auth/verify-otp', () => {
+    it('verifies OTP successfully with status 200', async () => {
+      (mockAuthService.verifyOtp as jest.Mock).mockResolvedValue({
+        success: true,
+        message: 'Email verified successfully. You can now log in.',
+      });
+
+      const res = await fetch(`${baseUrl}/api/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'test@example.com', otp: '123456' }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as any;
+      expect(data.success).toBe(true);
+      expect(data.message).toContain('verified successfully');
+    });
+
+    it('rejects invalid OTP format (not 6 digits) with 400', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'test@example.com', otp: '123' }),
+      });
+
+      expect(res.status).toBe(400);
+      const data = (await res.json()) as any;
+      expect(data.success).toBe(false);
+      expect(data.error).toBe('Bad Request');
+    });
+  });
+
+  describe('POST /api/auth/resend-otp', () => {
+    it('resends OTP successfully with status 200', async () => {
+      (mockAuthService.resendOtp as jest.Mock).mockResolvedValue({
+        message: 'A new verification code has been sent to your email.',
+        cooldownSeconds: 60,
+      });
+
+      const res = await fetch(`${baseUrl}/api/auth/resend-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'test@example.com' }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as any;
+      expect(data.message).toContain('verification code has been sent');
+    });
+
+    it('rejects invalid email with 400', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/resend-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'invalid-email' }),
+      });
+
+      expect(res.status).toBe(400);
+      const data = (await res.json()) as any;
+      expect(data.success).toBe(false);
+      expect(data.error).toBe('Bad Request');
     });
   });
 
@@ -668,6 +807,7 @@ describe('Express Authentication Module', () => {
         email: 'cust@example.com',
         role: 'CUSTOMER',
         isActive: true,
+        isEmailVerified: true,
       });
 
       const res = await fetch(`${baseUrl}/api/admin/stats`, {
@@ -695,6 +835,7 @@ describe('Express Authentication Module', () => {
         email: 'admin@example.com',
         role: 'ADMIN',
         isActive: true,
+        isEmailVerified: true,
       });
 
       const res = await fetch(`${baseUrl}/api/admin/stats`, {
@@ -716,6 +857,7 @@ describe('Express Authentication Module', () => {
       const rateLimitedApp = createExpressApp({
         authService: mockAuthService as unknown as AuthService,
         prisma: mockPrisma,
+        cache: mockCache,
         jwtSecret: JWT_SECRET,
         logger: nullLogger,
         rateLimit: { limit: 2, windowMs: 10_000 },

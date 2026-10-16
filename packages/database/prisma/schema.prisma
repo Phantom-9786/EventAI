@@ -59,11 +59,13 @@ model User {
 // ── Session ───────────────────────────────────────
 
 model EmailVerificationToken {
-  id        String   @id @default(uuid())
-  userId    String   @unique @map("user_id")
-  token     String   @unique
-  expiresAt DateTime @map("expires_at")
-  createdAt DateTime @default(now()) @map("created_at")
+  id         String   @id @default(uuid())
+  userId     String   @unique @map("user_id")
+  token      String   @unique
+  attempts   Int      @default(0)
+  expiresAt  DateTime @map("expires_at")
+  lastSentAt DateTime @default(now()) @map("last_sent_at")
+  createdAt  DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

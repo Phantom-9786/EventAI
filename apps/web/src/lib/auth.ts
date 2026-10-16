@@ -119,7 +119,7 @@ export async function register(input: {
   password: string;
   firstName: string;
   lastName: string;
-}): Promise<{ user: AuthUser; accessToken: string }> {
+}): Promise<{ user: AuthUser; message: string; emailDeliveryFailed?: boolean }> {
   const res = await fetchWithTimeout(`${API_URL}/auth/register`, {
     method: 'POST',
     credentials: 'include',
@@ -127,9 +127,32 @@ export async function register(input: {
     body: JSON.stringify(input),
   });
   if (!res.ok) throw await parseError(res);
-  const body = (await res.json()) as { user: AuthUser; accessToken: string };
-  setAccessToken(body.accessToken);
-  return body;
+  return (await res.json()) as { user: AuthUser; message: string; emailDeliveryFailed?: boolean };
+}
+
+export async function verifyOtp(
+  email: string,
+  otp: string,
+): Promise<{ success: boolean; message: string }> {
+  const res = await fetchWithTimeout(`${API_URL}/auth/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, otp }),
+  });
+  if (!res.ok) throw await parseError(res);
+  return (await res.json()) as { success: boolean; message: string };
+}
+
+export async function resendOtp(
+  email: string,
+): Promise<{ message: string; emailDeliveryFailed?: boolean; cooldownSeconds?: number }> {
+  const res = await fetchWithTimeout(`${API_URL}/auth/resend-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  if (!res.ok) throw await parseError(res);
+  return (await res.json()) as { message: string; emailDeliveryFailed?: boolean; cooldownSeconds?: number };
 }
 
 export async function login(email: string, password: string): Promise<AuthUser> {

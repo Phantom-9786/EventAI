@@ -21,11 +21,14 @@ describe('Express End-to-End Live Smoke Test Suite', () => {
     email: 'smoke-organizer@example.com',
     role: 'USER',
     isActive: true,
+    isEmailVerified: true,
     firstName: 'Smoke',
     lastName: 'Organizer',
   };
 
   const users: any[] = [testUser];
+  const verificationTokens: any[] = [];
+  let sentVerificationOtp = '';
   const events: any[] = [
     {
       id: 'smoke-evt-1',
@@ -79,6 +82,44 @@ describe('Express End-to-End Live Smoke Test Suite', () => {
         const u = { id: `smoke-usr-${users.length + 1}`, ...data, isActive: true, role: data.role || 'USER' };
         users.push(u);
         return u;
+      }),
+      update: jest.fn().mockImplementation(async ({ where, data }: any) => {
+        const u = users.find((x) => x.id === where.id || x.email === where.email);
+        if (u) Object.assign(u, data);
+        return u;
+      }),
+    },
+    emailVerificationToken: {
+      upsert: jest.fn().mockImplementation(async ({ create, update, where }: any) => {
+        let t = verificationTokens.find((tok) => tok.userId === where.userId);
+        if (!t) {
+          t = { id: `evt-${verificationTokens.length + 1}`, ...create };
+          verificationTokens.push(t);
+        } else {
+          Object.assign(t, update);
+        }
+        return t;
+      }),
+      findUnique: jest.fn().mockImplementation(async ({ where }: any) => {
+        return verificationTokens.find((tok) => tok.userId === where.userId) ?? null;
+      }),
+      deleteMany: jest.fn().mockImplementation(async ({ where }: any) => {
+        const idx = verificationTokens.findIndex(
+          (tok) =>
+            (!where.id || tok.id === where.id) &&
+            (!where.userId || tok.userId === where.userId) &&
+            (!where.token || tok.token === where.token),
+        );
+        if (idx !== -1) {
+          verificationTokens.splice(idx, 1);
+          return { count: 1 };
+        }
+        return { count: 0 };
+      }),
+      update: jest.fn().mockImplementation(async ({ where, data }: any) => {
+        const t = verificationTokens.find((tok) => tok.id === where.id);
+        if (t) Object.assign(t, data);
+        return t;
       }),
     },
     organizerProfile: {
@@ -220,6 +261,11 @@ describe('Express End-to-End Live Smoke Test Suite', () => {
       },
     });
 
+    jest.spyOn(notificationsService, 'sendEmailVerificationOtp').mockImplementation(async (opts: any) => {
+      sentVerificationOtp = opts.otp;
+      return true;
+    });
+
     server = app.listen(0, () => {
       const addr = server.address() as AddressInfo;
       baseUrl = `http://127.0.0.1:${addr.port}`;
@@ -241,7 +287,7 @@ describe('Express End-to-End Live Smoke Test Suite', () => {
     expect(healthJson.dependencies.redis).toBe('PONG');
   });
 
-  it('2. User registration and JWT issuance', async () => {
+  it('2. User registration, OTP verification, and JWT issuance', async () => {
     const regRes = await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -254,9 +300,36 @@ describe('Express End-to-End Live Smoke Test Suite', () => {
     });
     expect(regRes.status).toBe(201);
     const regJson = (await regRes.json()) as any;
-    authToken = regJson.accessToken || regJson.tokens?.accessToken;
-    expect(authToken).toBeDefined();
     expect(regJson.user.email).toBe('smoke-new-user@example.com');
+    expect(regJson.user.isEmailVerified).toBe(false);
+    expect(sentVerificationOtp).toMatch(/^\d{6}$/);
+
+    // Verify OTP
+    const verifyRes = await fetch(`${baseUrl}/api/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'smoke-new-user@example.com',
+        otp: sentVerificationOtp,
+      }),
+    });
+    expect(verifyRes.status).toBe(200);
+    const verifyJson = (await verifyRes.json()) as any;
+    expect(verifyJson.success).toBe(true);
+
+    // Now log in to obtain JWT access token
+    const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'smoke-new-user@example.com',
+        password: 'Password123!',
+      }),
+    });
+    expect(loginRes.status).toBe(200);
+    const loginJson = (await loginRes.json()) as any;
+    authToken = loginJson.accessToken || loginJson.tokens?.accessToken;
+    expect(authToken).toBeDefined();
   });
 
   it('3. Public catalog event discovery', async () => {

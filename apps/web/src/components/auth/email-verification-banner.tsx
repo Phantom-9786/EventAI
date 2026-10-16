@@ -5,6 +5,8 @@ import { MailWarning } from 'lucide-react';
 import { resendEmailVerification } from '@/lib/auth';
 import { useAuth } from '@/components/auth/auth-provider';
 
+import Link from 'next/link';
+
 // Shown under the header for signed-in users whose email is not yet
 // verified (Google-linked accounts are always verified server-side).
 export function EmailVerificationBanner() {
@@ -34,8 +36,15 @@ export function EmailVerificationBanner() {
         <MailWarning className="h-4 w-4 shrink-0" aria-hidden />
         <span className="flex-1">
           {sent
-            ? 'Verification link sent — check your inbox.'
+            ? 'Verification code sent — check your inbox.'
             : 'Please verify your email address.'}
+          {' '}
+          <Link
+            href={`/verify-otp?email=${encodeURIComponent(user.email)}`}
+            className="font-medium underline underline-offset-2 ml-1"
+          >
+            Enter code
+          </Link>
         </span>
         {!sent && (
           <button

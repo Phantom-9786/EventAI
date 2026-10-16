@@ -32,9 +32,9 @@ export class ExpressAuthController {
 
   register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { user, tokens } = await this.authService.register(req.body);
-      this.setRefreshCookie(res, tokens.refreshToken);
-      res.status(201).json({ user, accessToken: tokens.accessToken });
+      const result = await this.authService.register(req.body);
+      // No refresh cookie or authenticated session is issued before email verification
+      res.status(201).json(result);
     } catch (err) {
       next(err);
     }
@@ -121,9 +121,32 @@ export class ExpressAuthController {
     }
   };
 
+  verifyOtp = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await this.authService.verifyOtp({
+        email: req.body.email,
+        otp: req.body.otp,
+      });
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  resendOtp = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await this.authService.resendOtp({
+        email: req.body.email,
+      });
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
   verifyEmail = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const result = await this.authService.verifyEmail(req.body.token);
+      const result = await this.authService.verifyEmail(req.body);
       res.status(200).json(result);
     } catch (err) {
       next(err);
@@ -132,11 +155,12 @@ export class ExpressAuthController {
 
   resendVerification = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const email = req.body?.email;
       const userId = req.authUser?.id ?? req.user?.id;
-      if (!userId) {
+      if (!userId && !email) {
         throw new UnauthorizedError('Unauthorized');
       }
-      const result = await this.authService.resendEmailVerification(userId);
+      const result = await this.authService.resendEmailVerification(userId ?? email);
       res.status(200).json(result);
     } catch (err) {
       next(err);

@@ -96,8 +96,16 @@ describe('Frontend-to-Express API Contract Verification', () => {
 
     mockAuthService = {
       register: jest.fn().mockResolvedValue({
-        user: { id: customerId, email: 'customer@contract.test', role: UserRole.CUSTOMER },
-        tokens: { accessToken: 'mock-access', refreshToken: 'mock-refresh' },
+        user: { id: customerId, email: 'customer@contract.test', role: UserRole.CUSTOMER, isEmailVerified: false },
+        message: 'Registration successful. Please enter the verification code sent to your email.',
+        emailDeliveryFailed: false,
+      }),
+      verifyOtp: jest.fn().mockResolvedValue({
+        message: 'Email successfully verified. You can now log in.',
+        success: true,
+      }),
+      resendOtp: jest.fn().mockResolvedValue({
+        message: 'A new verification code has been sent to your email.',
       }),
       login: jest.fn().mockResolvedValue({
         user: { id: customerId, email: 'customer@contract.test', role: UserRole.CUSTOMER },
@@ -402,10 +410,39 @@ describe('Frontend-to-Express API Contract Verification', () => {
       expect(res.status).toBe(201);
       const data = (await res.json()) as any;
       expect(data.user).toBeDefined();
-      expect(data.accessToken).toBe('mock-access');
+      expect(data.user.isEmailVerified).toBe(false);
+      expect(data.message).toBeDefined();
+      expect(data.accessToken).toBeUndefined();
       const cookie = res.headers.get('set-cookie');
-      expect(cookie).toContain('eventai_refresh_token=');
-      expect(cookie).toContain('HttpOnly');
+      expect(cookie).toBeNull();
+    });
+
+    it('matches verify-otp response shape: { message, success }', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'customer@contract.test',
+          otp: '123456',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as any;
+      expect(data.message).toContain('verified');
+      expect(data.success).toBe(true);
+    });
+
+    it('matches resend-otp response shape: { message }', async () => {
+      const res = await fetch(`${baseUrl}/api/auth/resend-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'customer@contract.test',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as any;
+      expect(data.message).toContain('verification code');
     });
 
     it('matches login response shape: { user, accessToken }', async () => {

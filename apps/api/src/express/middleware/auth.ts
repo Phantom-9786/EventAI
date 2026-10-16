@@ -44,11 +44,15 @@ export function createAuthMiddleware(config: AuthMiddlewareConfig) {
     try {
       const user = await config.prisma.user.findUnique({
         where: { id: payload.sub },
-        select: { id: true, email: true, role: true, isActive: true },
+        select: { id: true, email: true, role: true, isActive: true, isEmailVerified: true },
       });
 
       if (!user || !user.isActive) {
         return next(new UnauthorizedError('User not found or deactivated'));
+      }
+
+      if (user.isEmailVerified === false && !req.path.includes('resend-verification')) {
+        return next(new ForbiddenError('Email verification required'));
       }
 
       const authUser: ExpressAuthUser = {
@@ -100,9 +104,9 @@ export function createAuthMiddleware(config: AuthMiddlewareConfig) {
 
       const user = await config.prisma.user.findUnique({
         where: { id: payload.sub },
-        select: { id: true, email: true, role: true, isActive: true },
+        select: { id: true, email: true, role: true, isActive: true, isEmailVerified: true },
       });
-      if (user && user.isActive) {
+      if (user && user.isActive && user.isEmailVerified !== false) {
         const authUser: ExpressAuthUser = {
           id: user.id,
           email: user.email,

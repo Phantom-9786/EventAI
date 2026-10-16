@@ -20,7 +20,7 @@ interface AuthContextValue {
     password: string;
     firstName: string;
     lastName: string;
-  }) => Promise<AuthUser>;
+  }) => Promise<{ user: AuthUser; message: string; emailDeliveryFailed?: boolean }>;
   signOut: () => Promise<void>;
   completeSignIn: (user: AuthUser) => void;
 }
@@ -64,9 +64,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = useCallback(
     async (input: { email: string; password: string; firstName: string; lastName: string }) => {
-      const { user: me } = await register(input);
-      setUser(me);
-      return me;
+      const result = await register(input);
+      // Unverified users do not receive an active session
+      return result;
     },
     [],
   );

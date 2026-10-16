@@ -41,9 +41,12 @@ function VerifyEmailPanel() {
     return (
       <div className="flex flex-col items-center gap-3 text-center">
         <p role="alert" className="text-sm text-muted-foreground">
-          This verification link is missing its token. Please use the link from your email.
+          This verification link is missing its token. Please use the 6-digit code sent to your email.
         </p>
-        <Link href="/signin" className="text-sm font-medium text-primary hover:underline">
+        <Link href="/verify-otp" className="text-sm font-medium text-primary hover:underline">
+          Verify with 6-digit code &rarr;
+        </Link>
+        <Link href="/signin" className="text-xs text-muted-foreground hover:underline">
           Back to sign in
         </Link>
       </div>
@@ -63,8 +66,8 @@ function VerifyEmailPanel() {
     return (
       <div className="flex flex-col items-center gap-3 text-center" role="status">
         <p className="text-sm">Your email has been verified. Everything is ready to go.</p>
-        <Link href="/events" className="text-sm font-medium text-primary hover:underline">
-          Browse events
+        <Link href="/signin" className="text-sm font-medium text-primary hover:underline">
+          Sign in to your account
         </Link>
       </div>
     );
@@ -74,9 +77,12 @@ function VerifyEmailPanel() {
     <div className="flex flex-col items-center gap-3 text-center">
       <p role="alert" className="text-sm text-destructive">{message}</p>
       <p className="text-sm text-muted-foreground">
-        You can request a fresh link after signing in.
+        You can request or enter a fresh verification code.
       </p>
-      <Link href="/signin" className="text-sm font-medium text-primary hover:underline">
+      <Link href="/verify-otp" className="text-sm font-medium text-primary hover:underline">
+        Verify with 6-digit code &rarr;
+      </Link>
+      <Link href="/signin" className="text-xs text-muted-foreground hover:underline">
         Back to sign in
       </Link>
     </div>

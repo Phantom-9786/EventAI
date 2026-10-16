@@ -26,6 +26,7 @@ export default function SignInPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [returnPath, setReturnPath] = useState('/events');
 
@@ -46,12 +47,17 @@ export default function SignInPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNeedsVerification(false);
     setSubmitting(true);
     try {
       await signIn(email, password);
       router.push(returnPath);
       router.refresh();
     } catch (err) {
+      const isUnverified =
+        err instanceof ApiError &&
+        (err.statusCode === 403 || err.message.toLowerCase().includes('verification'));
+      setNeedsVerification(isUnverified);
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
     } finally {
       setSubmitting(false);
@@ -72,9 +78,19 @@ export default function SignInPage() {
 
       <form onSubmit={onSubmit} className="flex flex-col gap-4 rounded-lg border bg-card p-6 shadow-sm">
         {error && (
-          <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
-          </p>
+          <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <p>{error}</p>
+            {needsVerification && (
+              <div className="mt-2">
+                <Link
+                  href={`/verify-otp?email=${encodeURIComponent(email)}`}
+                  className="font-medium underline hover:text-destructive/80"
+                >
+                  Verify your email with code &rarr;
+                </Link>
+              </div>
+            )}
+          </div>
         )}
         <div className="flex flex-col gap-1.5">
           <label htmlFor="email" className="text-sm font-medium">Email</label>

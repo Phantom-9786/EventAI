@@ -43,9 +43,23 @@ export const forgotPasswordSchema = z.object({
   email: z.string().email('Invalid email address'),
 });
 
-export const verifyEmailSchema = z.object({
-  token: z.string().min(1, 'Token is required'),
+export const verifyOtpSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  otp: z.string().regex(/^\d{6}$/, 'Verification code must be exactly 6 digits'),
 });
+
+export const resendOtpSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1, 'Token is required').optional(),
+  email: z.string().email('Invalid email address').optional(),
+  otp: z.string().regex(/^\d{6}$/, 'Verification code must be exactly 6 digits').optional(),
+}).refine(
+  (data) => Boolean(data.token || (data.email && data.otp)),
+  { message: 'Either a token or email and 6-digit verification code is required' },
+);
 
 export const resetPasswordSchema = z.object({
   token: z.string().min(1, 'Token is required'),
@@ -64,4 +78,7 @@ export type LoginInput = z.infer<typeof loginSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
+export type ResendOtpInput = z.infer<typeof resendOtpSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+

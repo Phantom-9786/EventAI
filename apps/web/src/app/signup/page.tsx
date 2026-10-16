@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { ApiError } from '@/lib/auth';
-import { authReturnPath } from '@/lib/auth-redirect';
 import { useAuth } from '@/components/auth/auth-provider';
 import { Button } from '@/components/ui/button';
 import { GoogleButton } from '@/components/auth/google-button';
@@ -48,14 +47,19 @@ export default function SignUpPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await signUp({
+      const res = await signUp({
         email: form.email,
         password: form.password,
         firstName: form.firstName,
         lastName: form.lastName,
       });
-      router.push(authReturnPath(new URLSearchParams(window.location.search).get('returnUrl')));
-      router.refresh();
+      const returnUrl = new URLSearchParams(window.location.search).get('returnUrl');
+      const params = new URLSearchParams({
+        email: form.email,
+        ...(res.emailDeliveryFailed ? { deliveryFailed: 'true' } : {}),
+        ...(returnUrl ? { returnUrl } : {}),
+      });
+      router.push(`/verify-otp?${params.toString()}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
     } finally {

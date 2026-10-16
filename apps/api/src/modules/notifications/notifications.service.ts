@@ -234,6 +234,38 @@ export class NotificationsService {
     });
   }
 
+  async sendEmailVerificationOtp(input: {
+    to: string;
+    holderName: string;
+    otp: string;
+  }): Promise<boolean> {
+    return this.sendEmail({
+      to: input.to,
+      subject: 'Your EventAI verification code',
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #18181b;">
+          <h2 style="font-size: 20px; font-weight: 700; color: #09090b; margin-bottom: 12px;">Verify your EventAI email</h2>
+          <p style="font-size: 15px; line-height: 1.5; color: #3f3f46; margin: 0 0 16px;">Hi ${input.holderName},</p>
+          <p style="font-size: 15px; line-height: 1.5; color: #3f3f46; margin: 0 0 20px;">
+            Thank you for creating an account with EventAI. Use the 6-digit verification code below to verify your email address:
+          </p>
+          <div style="background-color: #f4f4f5; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
+            <span style="font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #09090b;">
+              ${input.otp}
+            </span>
+          </div>
+          <p style="font-size: 14px; line-height: 1.5; color: #71717a; margin: 0 0 8px;">
+            This verification code expires in 10 minutes and can only be used once.
+          </p>
+          <p style="font-size: 14px; line-height: 1.5; color: #71717a; margin: 0 0 24px;">
+            If you did not request this verification code, please ignore this email.
+          </p>
+          <p style="font-size: 14px; color: #a1a1aa; margin: 0;">— The EventAI Team</p>
+        </div>
+      `,
+    });
+  }
+
   async sendEmailVerificationEmail(input: {
     to: string;
     holderName: string;
