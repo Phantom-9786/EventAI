@@ -92,6 +92,7 @@ declare global {
       rawBody?: Buffer;
       requestId?: string;
       authUser?: ExpressAuthUser;
+      user?: ExpressAuthUser;
     }
   }
 }
