@@ -65,7 +65,7 @@ describe('AuthService (integration)', () => {
 
       const tokenRow = await prisma.emailVerificationToken.findFirst({ where: { userId: row.id } });
       expect(tokenRow).not.toBeNull();
-      expect(notifications.sendEmailVerificationEmail).toHaveBeenCalled();
+      expect(notifications.sendEmailVerificationOtp).toHaveBeenCalled();
 
       // No session is created until verified
       const sessions = await prisma.session.findMany({ where: { userId: row.id } });
