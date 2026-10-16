@@ -172,7 +172,7 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
   if (!token) token = await refreshAccessToken();
   if (!token) return null;
 
-  const res = await fetch(`${API_URL}/auth/me`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/me`, {
     cache: 'no-store',
     credentials: 'include',
     headers: { Authorization: `Bearer ${token}` },
@@ -180,7 +180,7 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
   if (res.status === 401) {
     const refreshed = await refreshAccessToken();
     if (!refreshed) return null;
-    const retry = await fetch(`${API_URL}/auth/me`, {
+    const retry = await fetchWithTimeout(`${API_URL}/auth/me`, {
       cache: 'no-store',
       credentials: 'include',
       headers: { Authorization: `Bearer ${refreshed}` },
