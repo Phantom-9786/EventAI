@@ -198,7 +198,7 @@ export function Header() {
                 </Link>
               )}
 
-              <span className="hidden 2xl:inline max-w-[120px] truncate text-xs font-medium text-muted-foreground">
+              <span className="inline max-w-[120px] truncate text-xs font-medium text-muted-foreground">
                 Hi, {user.firstName ?? user.email}
               </span>
 

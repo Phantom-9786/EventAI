@@ -108,7 +108,7 @@ export default function AdminPage() {
     return (
       <div className="container flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground" role="status">
         <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
-        <p className="text-sm font-medium">Checking authorization…</p>
+        <p className="text-sm font-medium">Checking sign-in…</p>
       </div>
     );
   }
@@ -119,7 +119,7 @@ export default function AdminPage() {
         <div className="rounded-full bg-primary/10 p-3 text-primary">
           <ShieldAlert className="h-8 w-8" />
         </div>
-        <h1 className="mt-4 text-2xl font-bold tracking-tight">Admin Sign In Required</h1>
+        <h1 className="mt-4 text-2xl font-bold tracking-tight">Sign in as an admin to continue</h1>
         <p className="mt-2 text-sm text-muted-foreground">Please sign in with administrator credentials to view this area.</p>
         <Link href="/signin" className="mt-6 rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow transition hover:bg-primary/90">
           Sign In
@@ -134,7 +134,7 @@ export default function AdminPage() {
         <div className="rounded-full bg-destructive/10 p-3 text-destructive inline-block">
           <ShieldAlert className="h-8 w-8" />
         </div>
-        <h1 className="mt-4 text-2xl font-bold tracking-tight">Access Restricted</h1>
+        <h1 className="mt-4 text-2xl font-bold tracking-tight">Admins only</h1>
         <p className="mt-2 text-sm text-muted-foreground">Your account does not have platform administration rights.</p>
         <Link href="/" className="mt-6 inline-block rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-accent">
           Return to Home
@@ -147,7 +147,7 @@ export default function AdminPage() {
     return (
       <div className="container flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground" role="status">
         <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
-        <p className="text-sm font-medium">Loading platform dashboard…</p>
+        <p className="text-sm font-medium">Loading admin dashboard…</p>
       </div>
     );
   }
@@ -169,7 +169,7 @@ export default function AdminPage() {
     <div className="container py-8 sm:py-10">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-foreground">Platform Administration</h1>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-foreground">Platform admin</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Platform metrics, user governance, event review, organizer approvals, and payment oversight.
           </p>

@@ -21,6 +21,9 @@ test('Google callback validates the bearer token and updates application auth st
     meAuthorization = headers.authorization;
     await route.fulfill({ status: 200, json: { user: googleUser } });
   });
+  await page.route('**/api/notifications*', async (route) => {
+    await route.fulfill({ status: 200, json: { notifications: [], unreadCount: 0 } });
+  });
 
   await page.goto('/auth/callback#access_token=google-access-token&redirect=%2Fevents');
 
