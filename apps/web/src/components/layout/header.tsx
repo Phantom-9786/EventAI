@@ -13,6 +13,7 @@ import {
   Menu,
   QrCode,
   RotateCcw,
+  ShieldCheck,
   Sparkles,
   Ticket,
   User,
@@ -182,8 +183,18 @@ export function Header() {
               )}
 
               {user.role === 'ADMIN' && (
-                <Link href="/admin" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'h-8 px-2 text-xs')}>
-                  Admin
+                <Link
+                  href="/admin"
+                  className={cn(
+                    buttonVariants({
+                      variant: pathname.startsWith('/admin') ? 'default' : 'ghost',
+                      size: 'sm',
+                    }),
+                    'gap-1.5 h-8 px-2.5 text-xs font-semibold shrink-0',
+                  )}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  <span>Admin</span>
                 </Link>
               )}
 
@@ -356,10 +367,16 @@ export function Header() {
           {user?.role === 'ADMIN' && (
             <Link
               href="/admin"
-              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-accent"
+              className={cn(
+                'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                pathname.startsWith('/admin')
+                  ? 'bg-primary/10 text-primary font-bold'
+                  : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+              )}
               onClick={() => setMobileOpen(false)}
             >
-              Admin
+              <ShieldCheck className="h-4 w-4" />
+              Platform Admin
             </Link>
           )}
 
