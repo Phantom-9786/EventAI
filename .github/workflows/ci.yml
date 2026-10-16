@@ -54,6 +54,7 @@ jobs:
         run: npm run test:integration
         env:
           TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eventai_test
+          TEST_DATABASE_RESET_ALLOWED: '1'
           JWT_SECRET: integration-test-secret
 
       - name: Build

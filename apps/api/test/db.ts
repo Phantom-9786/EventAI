@@ -19,16 +19,20 @@ export type TestPrisma = PrismaClient;
 
 /** Returns the test DATABASE_URL and points process.env at it. */
 export function resolveTestDatabaseUrl(): string {
-  const url = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL ?? '';
+  const url = process.env.TEST_DATABASE_URL ?? '';
   if (!url) {
     throw new Error(
       'Integration tests need a database: set TEST_DATABASE_URL (e.g. postgresql://user:pass@localhost:5432/eventai_test)',
     );
   }
-  const dbName = url.split('/').pop()?.split('?')[0] ?? '';
-  if (!/test/i.test(dbName)) {
+  const parsed = new URL(url);
+  const dbName = parsed.pathname.slice(1);
+  if (!['postgresql:', 'postgres:'].includes(parsed.protocol) ||
+      !['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname) ||
+      !/^[a-z0-9_]*_test$/i.test(dbName) || parsed.searchParams.has('host') ||
+      parsed.searchParams.has('schema') || process.env.TEST_DATABASE_RESET_ALLOWED !== '1') {
     throw new Error(
-      `Refusing to run integration tests against non-test database "${dbName}" — the URL must point at a database whose name contains "test"`,
+      'Refusing database reset: use an explicitly verified disposable loopback database ending in _test and set TEST_DATABASE_RESET_ALLOWED=1',
     );
   }
   return url;

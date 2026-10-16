@@ -30,6 +30,10 @@ export class AdminService {
     @Optional() private readonly notifications?: NotificationsService,
   ) {}
 
+  async invalidateEventCache(): Promise<void> {
+    await this.eventsService?.invalidateEventCache();
+  }
+
   /** Search bookings with explicitly limited customer, event and payment fields. */
   async listBookings(query: AdminBookingListInput) {
     const { page, limit, search, status } = query;

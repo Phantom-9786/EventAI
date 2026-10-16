@@ -120,8 +120,9 @@ export async function register(input: {
   firstName: string;
   lastName: string;
 }): Promise<{ user: AuthUser; accessToken: string }> {
-  const res = await fetch(`${API_URL}/auth/register`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/register`, {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
@@ -132,7 +133,7 @@ export async function register(input: {
 }
 
 export async function login(email: string, password: string): Promise<AuthUser> {
-  const res = await fetch(`${API_URL}/auth/login`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -146,7 +147,7 @@ export async function login(email: string, password: string): Promise<AuthUser> 
 
 export async function logout(): Promise<void> {
   try {
-    await fetch(`${API_URL}/auth/logout`, {
+    await fetchWithTimeout(`${API_URL}/auth/logout`, {
       method: 'POST',
       credentials: 'include',
       headers: { Authorization: `Bearer ${getAccessToken() ?? ''}` },
@@ -159,7 +160,7 @@ export async function logout(): Promise<void> {
 export async function resendEmailVerification(): Promise<boolean> {
   const token = getAccessToken();
   if (!token) return false;
-  const res = await fetch(`${API_URL}/auth/resend-verification`, {
+  const res = await fetchWithTimeout(`${API_URL}/auth/resend-verification`, {
     method: 'POST',
     credentials: 'include',
     headers: { Authorization: `Bearer ${token}` },

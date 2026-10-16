@@ -80,6 +80,7 @@ describe('Express Admin Module & Authorization Security', () => {
 
     mockAdminService = {
       platformStats: jest.fn().mockResolvedValue({ users: 42, revenue: 100000 }),
+      invalidateEventCache: jest.fn().mockResolvedValue(undefined),
       listUsers: jest.fn().mockResolvedValue({ users: [], total: 0 }),
       setUserStatus: jest.fn().mockImplementation((adminUserId, targetUserId, input) => {
         if (adminUserId === targetUserId && !input.isActive) {
