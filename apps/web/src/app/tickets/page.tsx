@@ -76,8 +76,10 @@ export default function TicketsPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const load = useCallback(async () => {
+    setIsRefreshing(true);
     setError(null);
     try {
       const data = await listBookings();
@@ -85,6 +87,8 @@ export default function TicketsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load your tickets');
       setBookings([]);
+    } finally {
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -147,11 +151,15 @@ export default function TicketsPage() {
           variant="outline"
           size="sm"
           onClick={() => void load()}
-          disabled={bookings === null}
+          disabled={bookings === null || isRefreshing}
           className="self-start sm:self-auto"
+          aria-label={isRefreshing ? 'Refreshing ticket details…' : 'Refresh tickets'}
         >
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
+          <RefreshCw
+            className={cn('mr-2 h-4 w-4', isRefreshing && 'animate-spin')}
+            aria-hidden="true"
+          />
+          {isRefreshing ? 'Refreshing…' : 'Refresh'}
         </Button>
       </div>
 

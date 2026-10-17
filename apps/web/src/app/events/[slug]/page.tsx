@@ -67,6 +67,15 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
   const endDate = new Date(event.endDate);
   const sameDay = startDate.toDateString() === endDate.toDateString();
 
+  const coverImage =
+    event.coverImage || (event.images && event.images.length > 0 ? event.images[0] : null);
+  const galleryImages = (event.images ?? []).filter((img, idx) => {
+    if (event.coverImage) {
+      return img !== event.coverImage;
+    }
+    return idx > 0;
+  });
+
   return (
     <div className="container py-10">
       <Link
@@ -81,10 +90,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         {/* Main column */}
         <div>
           <div className="flex h-56 items-center justify-center overflow-hidden rounded-xl border bg-muted lg:h-72">
-            {event.images[0] ? (
+            {coverImage ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={event.images[0]}
+                src={coverImage}
                 alt={event.title}
                 className="h-full w-full object-cover"
               />
@@ -162,6 +171,29 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
               {event.description}
             </div>
           </section>
+
+          {/* Gallery Images */}
+          {galleryImages.length > 0 && (
+            <section className="mt-10" aria-label="Event gallery">
+              <h2 className="text-xl font-semibold">Event gallery</h2>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                {galleryImages.map((imgUrl, index) => (
+                  <div
+                    key={`${imgUrl}-${index}`}
+                    className="group relative aspect-video overflow-hidden rounded-xl border bg-muted shadow-sm transition-all hover:border-primary/50"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={imgUrl}
+                      alt={`${event.title} gallery photo ${index + 1}`}
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      loading="lazy"
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Ticket types */}
           {event.ticketTypes.length > 0 && (

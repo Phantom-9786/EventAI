@@ -7,14 +7,18 @@ import {
   Check,
   CheckCheck,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import {
+  clearAllNotifications,
+  clearNotification,
   getNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
   type InAppNotification,
 } from '@/lib/notifications';
 import { useAuth } from '@/components/auth/auth-provider';
+import { Modal } from '@/components/ui/modal';
 import { cn } from '@/lib/utils';
 
 function timeAgo(dateString: string): string {
@@ -35,6 +39,10 @@ export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearingId, setClearingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   const fetchItems = useCallback(async () => {
@@ -93,6 +101,39 @@ export function NotificationBell() {
     }
   };
 
+  const handleClearAll = async () => {
+    setIsClearing(true);
+    setActionError(null);
+    try {
+      await clearAllNotifications();
+      setNotifications([]);
+      setUnreadCount(0);
+      setClearDialogOpen(false);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to clear notifications');
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
+  const handleClearSingle = async (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setClearingId(id);
+    setActionError(null);
+    try {
+      await clearNotification(id);
+      const target = notifications.find((n) => n.id === id);
+      setNotifications((curr) => curr.filter((n) => n.id !== id));
+      if (target && !target.isRead) {
+        setUnreadCount((count) => Math.max(0, count - 1));
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to clear notification');
+    } finally {
+      setClearingId(null);
+    }
+  };
+
   return (
     <div className="relative" ref={panelRef}>
       <button
@@ -124,17 +165,42 @@ export function NotificationBell() {
                 </span>
               )}
             </div>
-            {unreadCount > 0 && (
+            <div className="flex items-center gap-3">
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => void handleMarkAllRead()}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-medium transition-colors"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Mark all read
+                </button>
+              )}
+              {notifications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setClearDialogOpen(true)}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive font-medium transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Clear notifications
+                </button>
+              )}
+            </div>
+          </div>
+
+          {actionError && (
+            <div className="bg-destructive/10 text-destructive border-b border-destructive/20 px-4 py-2 text-xs flex items-center justify-between">
+              <span>{actionError}</span>
               <button
                 type="button"
-                onClick={() => void handleMarkAllRead()}
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground font-medium"
+                onClick={() => setActionError(null)}
+                className="ml-2 font-semibold hover:underline"
               >
-                <CheckCheck className="h-3.5 w-3.5" />
-                Mark all read
+                Dismiss
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="max-h-[380px] overflow-y-auto divide-y divide-border/50">
             {notifications.length === 0 ? (
@@ -173,26 +239,38 @@ export function NotificationBell() {
                         </span>
                       </div>
                       <p className="text-muted-foreground leading-relaxed">{n.message}</p>
-                      <div className="flex items-center gap-3 pt-1">
-                        <Link
-                          href={targetLink}
-                          onClick={() => {
-                            if (!n.isRead) void handleMarkAsRead(n.id);
-                            setOpen(false);
-                          }}
-                          className="inline-flex items-center gap-1 font-semibold text-primary hover:underline text-[11px]"
-                        >
-                          View details <ExternalLink className="h-3 w-3" />
-                        </Link>
-                        {!n.isRead && (
-                          <button
-                            type="button"
-                            onClick={(e) => void handleMarkAsRead(n.id, e)}
-                            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="flex items-center gap-3">
+                          <Link
+                            href={targetLink}
+                            onClick={() => {
+                              if (!n.isRead) void handleMarkAsRead(n.id);
+                              setOpen(false);
+                            }}
+                            className="inline-flex items-center gap-1 font-semibold text-primary hover:underline text-[11px]"
                           >
-                            <Check className="h-3 w-3" /> Mark read
-                          </button>
-                        )}
+                            View details <ExternalLink className="h-3 w-3" />
+                          </Link>
+                          {!n.isRead && (
+                            <button
+                              type="button"
+                              onClick={(e) => void handleMarkAsRead(n.id, e)}
+                              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                            >
+                              <Check className="h-3 w-3" /> Mark read
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => void handleClearSingle(n.id, e)}
+                          disabled={clearingId === n.id}
+                          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+                          title="Clear notification"
+                          aria-label={`Clear notification ${n.title}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -202,6 +280,21 @@ export function NotificationBell() {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={clearDialogOpen}
+        onClose={() => !isClearing && setClearDialogOpen(false)}
+        title="Clear all notifications?"
+        description={
+          unreadCount > 0
+            ? `You have ${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}. Clearing all will permanently remove all notifications from your panel.`
+            : 'This will permanently remove all notifications from your panel. This action cannot be undone.'
+        }
+        confirmLabel={isClearing ? 'Clearing…' : 'Clear all'}
+        confirmVariant="destructive"
+        isLoading={isClearing}
+        onConfirm={handleClearAll}
+      />
     </div>
   );
 }

@@ -56,4 +56,37 @@ export class ExpressNotificationsController {
       next(err);
     }
   };
+
+  clearAll = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.authUser?.id ?? req.user?.id;
+      if (!userId) {
+        throw new UnauthorizedError('Unauthorized');
+      }
+
+      const result = await this.notificationsService.clearAll(userId);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  clearNotification = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.authUser?.id ?? req.user?.id;
+      if (!userId) {
+        throw new UnauthorizedError('Unauthorized');
+      }
+
+      const { id } = req.params;
+      if (!id || typeof id !== 'string') {
+        throw new BadRequestError('Invalid notification ID');
+      }
+
+      const result = await this.notificationsService.clearNotification(userId, id);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
 }

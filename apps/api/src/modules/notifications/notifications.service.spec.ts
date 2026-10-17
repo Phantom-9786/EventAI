@@ -621,6 +621,8 @@ describe('NotificationsService (Brevo)', () => {
           findMany: jest.fn().mockResolvedValue([mockNotification]),
           count: jest.fn().mockResolvedValue(1),
           updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          delete: jest.fn().mockResolvedValue(mockNotification),
+          deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
         },
       } as any;
 
@@ -634,6 +636,17 @@ describe('NotificationsService (Brevo)', () => {
 
       const markAll = await service.markAllAsRead('usr-1');
       expect(markAll).toEqual({ success: true });
+
+      const clearOne = await service.clearNotification('usr-1', 'notif-1');
+      expect(clearOne).toEqual({ success: true });
+      expect(mockPrisma.notification.delete).toHaveBeenCalledWith({ where: { id: 'notif-1' } });
+
+      const clearAll = await service.clearAll('usr-1');
+      expect(clearAll).toEqual({ success: true, count: 1 });
+      expect(mockPrisma.notification.deleteMany).toHaveBeenCalledWith({ where: { userId: 'usr-1' } });
+
+      mockPrisma.notification.findUnique.mockResolvedValueOnce({ ...mockNotification, userId: 'other-user' });
+      await expect(service.clearNotification('usr-1', 'notif-1')).rejects.toThrow();
     });
 
     it('does not let refund approved and refund settled notifications for the same booking suppress each other', async () => {

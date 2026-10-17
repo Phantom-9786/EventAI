@@ -308,6 +308,8 @@ describe('Frontend-to-Express API Contract Verification', () => {
       }),
       markAsRead: jest.fn().mockResolvedValue({ id: 'notif-1', isRead: true }),
       markAllAsRead: jest.fn().mockResolvedValue({ count: 1 }),
+      clearAll: jest.fn().mockResolvedValue({ success: true, count: 1 }),
+      clearNotification: jest.fn().mockResolvedValue({ success: true }),
     };
 
     const mockCache = {

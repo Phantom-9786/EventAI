@@ -39,3 +39,14 @@ export async function markAllNotificationsAsRead(): Promise<void> {
   const res = await authFetch('/notifications/read-all', { method: 'POST' });
   if (!res.ok) throw new Error(`Failed to mark all notifications as read (${res.status})`);
 }
+
+export async function clearAllNotifications(): Promise<void> {
+  const res = await authFetch('/notifications', { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Failed to clear notifications (${res.status})`);
+}
+
+export async function clearNotification(id: string): Promise<void> {
+  const res = await authFetch(`/notifications/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Failed to clear notification (${res.status})`);
+}
+

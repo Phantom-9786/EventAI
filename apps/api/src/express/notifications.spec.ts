@@ -58,6 +58,8 @@ describe('Express Notifications Module', () => {
     getUserNotifications: jest.Mock;
     markAsRead: jest.Mock;
     markAllAsRead: jest.Mock;
+    clearAll: jest.Mock;
+    clearNotification: jest.Mock;
   };
 
   beforeAll((done) => {
@@ -83,6 +85,8 @@ describe('Express Notifications Module', () => {
         readAt: new Date().toISOString(),
       }),
       markAllAsRead: jest.fn().mockResolvedValue({ success: true }),
+      clearAll: jest.fn().mockResolvedValue({ success: true, count: 1 }),
+      clearNotification: jest.fn().mockResolvedValue({ success: true }),
     };
 
     const app = createExpressApp({
@@ -206,6 +210,54 @@ describe('Express Notifications Module', () => {
 
     const res = await fetch(`${baseUrl}/api/notifications/notif-missing/read`, {
       method: 'PATCH',
+      headers: { Authorization: `Bearer ${userToken}` },
+    });
+
+    expect(res.status).toBe(404);
+    const json = (await res.json()) as any;
+    expect(json.message).toBe('Notification not found');
+  });
+
+  it('DELETE /api/notifications clears all notifications for the authenticated user', async () => {
+    const res = await fetch(`${baseUrl}/api/notifications`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${userToken}` },
+    });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.success).toBe(true);
+    expect(mockNotificationsService.clearAll).toHaveBeenCalledWith(testUser.id);
+  });
+
+  it('DELETE /api/notifications requires authentication', async () => {
+    const res = await fetch(`${baseUrl}/api/notifications`, {
+      method: 'DELETE',
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('DELETE /api/notifications/:id clears a specific notification for the authenticated user', async () => {
+    const res = await fetch(`${baseUrl}/api/notifications/notif-1`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${userToken}` },
+    });
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as any;
+    expect(json.success).toBe(true);
+    expect(mockNotificationsService.clearNotification).toHaveBeenCalledWith(testUser.id, 'notif-1');
+  });
+
+  it('DELETE /api/notifications/:id returns 404 when notification not found or belongs to another user', async () => {
+    const { NotFoundException } = await import('../common/exceptions');
+    mockNotificationsService.clearNotification.mockRejectedValueOnce(
+      new NotFoundException('Notification not found'),
+    );
+
+    const res = await fetch(`${baseUrl}/api/notifications/notif-other`, {
+      method: 'DELETE',
       headers: { Authorization: `Bearer ${userToken}` },
     });
 

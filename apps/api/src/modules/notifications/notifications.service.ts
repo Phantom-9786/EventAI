@@ -199,6 +199,24 @@ export class NotificationsService {
     return { success: true };
   }
 
+  async clearAll(userId: string) {
+    if (!this.prisma) return { success: true, count: 0 };
+    const result = await this.prisma.notification.deleteMany({
+      where: { userId },
+    });
+    return { success: true, count: result.count };
+  }
+
+  async clearNotification(userId: string, id: string) {
+    if (!this.prisma) return { success: true };
+    const notification = await this.prisma.notification.findUnique({ where: { id } });
+    if (!notification || notification.userId !== userId) {
+      throw new NotFoundException('Notification not found');
+    }
+    await this.prisma.notification.delete({ where: { id } });
+    return { success: true };
+  }
+
   async sendEmail(input: SendEmailInput, retries = 2, backoffMs = 100): Promise<boolean> {
     const apiKey = process.env.BREVO_API_KEY;
     const sender = parseEmailSender(

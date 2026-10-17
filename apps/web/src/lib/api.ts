@@ -23,6 +23,7 @@ export interface EventSummary {
   startDate: string;
   endDate: string;
   images: string[];
+  coverImage?: string | null;
   isFeatured: boolean;
   minPrice: number | null;
   maxPrice: number | null;
