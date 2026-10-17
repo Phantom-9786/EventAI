@@ -847,6 +847,86 @@ describe('Express Authentication Module', () => {
       expect(res.status).not.toBe(401);
       expect(res.status).not.toBe(403);
     });
+
+    it('allows ADMIN to access organizer-gated endpoints', async () => {
+      const adminToken = jwt.sign(
+        { sub: 'u-admin', email: 'admin@example.com', role: 'ADMIN' },
+        JWT_SECRET,
+        { expiresIn: '1h' },
+      );
+
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u-admin',
+        email: 'admin@example.com',
+        role: 'ADMIN',
+        isActive: true,
+        isEmailVerified: true,
+      });
+
+      // GET /api/organizers/venues is gated by requireRoles(UserRole.ORGANIZER)
+      const res = await fetch(`${baseUrl}/api/organizers/venues`, {
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+        },
+      });
+
+      // Must not be forbidden on role middleware level
+      expect(res.status).not.toBe(403);
+    });
+
+    it('denies ORGANIZER from accessing ADMIN-only endpoints with 403 Forbidden', async () => {
+      const organizerToken = jwt.sign(
+        { sub: 'u-org', email: 'org@example.com', role: 'ORGANIZER' },
+        JWT_SECRET,
+        { expiresIn: '1h' },
+      );
+
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u-org',
+        email: 'org@example.com',
+        role: 'ORGANIZER',
+        isActive: true,
+        isEmailVerified: true,
+      });
+
+      const res = await fetch(`${baseUrl}/api/admin/stats`, {
+        headers: {
+          Authorization: `Bearer ${organizerToken}`,
+        },
+      });
+
+      expect(res.status).toBe(403);
+      const data = (await res.json()) as any;
+      expect(data.error).toBe('Forbidden');
+      expect(data.message).toBe('You do not have permission to access this resource');
+    });
+
+    it('denies CUSTOMER from accessing organizer-gated endpoints with 403 Forbidden', async () => {
+      const customerToken = jwt.sign(
+        { sub: 'u-cust', email: 'cust@example.com', role: 'CUSTOMER' },
+        JWT_SECRET,
+        { expiresIn: '1h' },
+      );
+
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'u-cust',
+        email: 'cust@example.com',
+        role: 'CUSTOMER',
+        isActive: true,
+        isEmailVerified: true,
+      });
+
+      const res = await fetch(`${baseUrl}/api/organizers/venues`, {
+        headers: {
+          Authorization: `Bearer ${customerToken}`,
+        },
+      });
+
+      expect(res.status).toBe(403);
+      const data = (await res.json()) as any;
+      expect(data.error).toBe('Forbidden');
+      expect(data.message).toBe('You do not have permission to access this resource');
+    });
   });
 
   describe('Rate Limiting on Auth Endpoints', () => {

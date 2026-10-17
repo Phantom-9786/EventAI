@@ -76,7 +76,10 @@ export function createAuthMiddleware(config: AuthMiddlewareConfig) {
         return next(new UnauthorizedError('Unauthorized'));
       }
 
-      if (!allowedRoles.includes(user.role)) {
+      // ADMIN has platform-wide access, including organizer management features,
+      // while non-admin users must strictly match one of the allowed roles.
+      const hasPermission = user.role === 'ADMIN' || allowedRoles.includes(user.role);
+      if (!hasPermission) {
         return next(
           new ForbiddenError('You do not have permission to access this resource'),
         );

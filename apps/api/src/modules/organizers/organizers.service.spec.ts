@@ -162,16 +162,21 @@ describe('OrganizersService venue operations', () => {
 describe('OrganizersService exit', () => {
   let service: OrganizersService;
   let prisma: {
-    organizer: { findUnique: jest.Mock; delete: jest.Mock };
-    user: { update: jest.Mock };
+    organizer: { findUnique: jest.Mock; create: jest.Mock; delete: jest.Mock };
+    user: { update: jest.Mock; findUnique: jest.Mock };
     $transaction: jest.Mock;
   };
 
   beforeEach(async () => {
     prisma = {
-      organizer: { findUnique: jest.fn(), delete: jest.fn() },
-      user: { update: jest.fn() },
-      $transaction: jest.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+      organizer: { findUnique: jest.fn(), create: jest.fn(), delete: jest.fn() },
+      user: { update: jest.fn(), findUnique: jest.fn().mockResolvedValue({ role: 'CUSTOMER' }) },
+      $transaction: jest.fn(async (arg: unknown) => {
+        if (typeof arg === 'function') {
+          return arg(prisma);
+        }
+        return Promise.all(arg as Promise<unknown>[]);
+      }),
     };
     const moduleRef = await Test.createTestingModule({
       providers: [OrganizersService, { provide: PrismaService, useValue: prisma }],
@@ -179,38 +184,91 @@ describe('OrganizersService exit', () => {
     service = moduleRef.get(OrganizersService);
   });
 
-  it('removes an empty profile and returns the user to customer role', async () => {
-    prisma.organizer.findUnique.mockResolvedValue({
-      id: 'org-1',
-      _count: { events: 0, venues: 0 },
-    });
-    prisma.organizer.delete.mockResolvedValue({});
-    prisma.user.update.mockResolvedValue({});
+  describe('becomeOrganizer', () => {
+    it('creates organizer profile and updates customer to ORGANIZER role', async () => {
+      prisma.organizer.findUnique.mockResolvedValue(null);
+      prisma.organizer.create.mockResolvedValue({ id: 'org-1', userId: 'user-1' });
+      prisma.user.findUnique.mockResolvedValue({ role: 'CUSTOMER' });
+      prisma.user.update.mockResolvedValue({});
 
-    await expect(service.leaveOrganizer('user-1')).resolves.toEqual({
-      message: 'Organizer profile removed',
+      const result = await service.becomeOrganizer('user-1', { organizationName: 'My Org' });
+      expect(result).toEqual({ id: 'org-1', userId: 'user-1' });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { role: 'ORGANIZER' },
+      });
     });
-    expect(prisma.organizer.delete).toHaveBeenCalledWith({ where: { id: 'org-1' } });
-    expect(prisma.user.update).toHaveBeenCalledWith({
-      where: { id: 'user-1' },
-      data: { role: 'CUSTOMER' },
+
+    it('creates organizer profile but preserves ADMIN role without downgrading', async () => {
+      prisma.organizer.findUnique.mockResolvedValue(null);
+      prisma.organizer.create.mockResolvedValue({ id: 'org-admin', userId: 'admin-1' });
+      prisma.user.findUnique.mockResolvedValue({ role: 'ADMIN' });
+      prisma.user.update.mockResolvedValue({});
+
+      const result = await service.becomeOrganizer('admin-1', { organizationName: 'Admin Org' });
+      expect(result).toEqual({ id: 'org-admin', userId: 'admin-1' });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('throws ConflictException if organizer profile already exists', async () => {
+      prisma.organizer.findUnique.mockResolvedValue({ id: 'org-1' });
+      await expect(
+        service.becomeOrganizer('user-1', { organizationName: 'Duplicate' }),
+      ).rejects.toThrow(ConflictException);
     });
   });
 
-  it('preserves profiles that own events or venues', async () => {
-    prisma.organizer.findUnique.mockResolvedValue({
-      id: 'org-1',
-      _count: { events: 1, venues: 0 },
+  describe('leaveOrganizer', () => {
+    it('removes an empty profile and returns the user to customer role', async () => {
+      prisma.organizer.findUnique.mockResolvedValue({
+        id: 'org-1',
+        _count: { events: 0, venues: 0 },
+      });
+      prisma.organizer.delete.mockResolvedValue({});
+      prisma.user.findUnique.mockResolvedValue({ role: 'ORGANIZER' });
+      prisma.user.update.mockResolvedValue({});
+
+      await expect(service.leaveOrganizer('user-1')).resolves.toEqual({
+        message: 'Organizer profile removed',
+      });
+      expect(prisma.organizer.delete).toHaveBeenCalledWith({ where: { id: 'org-1' } });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        data: { role: 'CUSTOMER' },
+      });
     });
 
-    await expect(service.leaveOrganizer('user-1')).rejects.toThrow(ConflictException);
-    expect(prisma.organizer.delete).not.toHaveBeenCalled();
-    expect(prisma.user.update).not.toHaveBeenCalled();
-  });
+    it('removes profile but preserves ADMIN role when user is ADMIN', async () => {
+      prisma.organizer.findUnique.mockResolvedValue({
+        id: 'org-admin',
+        _count: { events: 0, venues: 0 },
+      });
+      prisma.organizer.delete.mockResolvedValue({});
+      prisma.user.findUnique.mockResolvedValue({ role: 'ADMIN' });
+      prisma.user.update.mockResolvedValue({});
 
-  it('returns not found when no profile exists', async () => {
-    prisma.organizer.findUnique.mockResolvedValue(null);
-    await expect(service.leaveOrganizer('user-1')).rejects.toThrow(NotFoundException);
+      await expect(service.leaveOrganizer('admin-1')).resolves.toEqual({
+        message: 'Organizer profile removed',
+      });
+      expect(prisma.organizer.delete).toHaveBeenCalledWith({ where: { id: 'org-admin' } });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('preserves profiles that own events or venues', async () => {
+      prisma.organizer.findUnique.mockResolvedValue({
+        id: 'org-1',
+        _count: { events: 1, venues: 0 },
+      });
+
+      await expect(service.leaveOrganizer('user-1')).rejects.toThrow(ConflictException);
+      expect(prisma.organizer.delete).not.toHaveBeenCalled();
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('returns not found when no profile exists', async () => {
+      prisma.organizer.findUnique.mockResolvedValue(null);
+      await expect(service.leaveOrganizer('user-1')).rejects.toThrow(NotFoundException);
+    });
   });
 });
 

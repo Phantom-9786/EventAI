@@ -35,7 +35,7 @@ export function OrganizerGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (user.role !== 'ORGANIZER') {
+  if (user.role !== 'ORGANIZER' && user.role !== 'ADMIN') {
     return (
       <div className="container flex max-w-lg flex-col items-center py-20 text-center">
         <h1 className="text-2xl font-semibold">Organizer access required</h1>

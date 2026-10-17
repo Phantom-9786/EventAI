@@ -222,15 +222,25 @@ export class ExpressModerationService {
       throw new NotFoundException('Organizer application not found');
     }
 
-    await this.prisma.$transaction([
+    const userRole = organizer.user?.role;
+    const txOps: any[] = [
       this.prisma.organizer.update({
         where: { id: organizerId },
         data: { isVerified: true },
       }),
-      this.prisma.user.update({
-        where: { id: organizer.userId },
-        data: { role: 'ORGANIZER' },
-      }),
+    ];
+
+    // Only transition role to ORGANIZER if the user is not an ADMIN
+    if (userRole !== 'ADMIN') {
+      txOps.push(
+        this.prisma.user.update({
+          where: { id: organizer.userId },
+          data: { role: 'ORGANIZER' },
+        }),
+      );
+    }
+
+    txOps.push(
       this.prisma.auditLog.create({
         data: {
           userId: adminUserId,
@@ -242,7 +252,9 @@ export class ExpressModerationService {
           },
         },
       }),
-    ]);
+    );
+
+    await this.prisma.$transaction(txOps);
 
     try {
       await this.notificationsService?.createInAppNotification({
@@ -287,20 +299,31 @@ export class ExpressModerationService {
 
     const organizer = await this.prisma.organizer.findUnique({
       where: { id: organizerId },
+      include: { user: { select: { id: true, role: true } } },
     });
     if (!organizer) {
       throw new NotFoundException('Organizer application not found');
     }
 
-    await this.prisma.$transaction([
+    const userRole = organizer.user?.role;
+    const txOps: any[] = [
       this.prisma.organizer.update({
         where: { id: organizerId },
         data: { isVerified: false },
       }),
-      this.prisma.user.update({
-        where: { id: organizer.userId },
-        data: { role: 'CUSTOMER' },
-      }),
+    ];
+
+    // Only downgrade role to CUSTOMER if user is not an ADMIN
+    if (userRole !== 'ADMIN') {
+      txOps.push(
+        this.prisma.user.update({
+          where: { id: organizer.userId },
+          data: { role: 'CUSTOMER' },
+        }),
+      );
+    }
+
+    txOps.push(
       this.prisma.auditLog.create({
         data: {
           userId: adminUserId,
@@ -313,7 +336,9 @@ export class ExpressModerationService {
           },
         },
       }),
-    ]);
+    );
+
+    await this.prisma.$transaction(txOps);
 
     try {
       await this.notificationsService?.createInAppNotification({

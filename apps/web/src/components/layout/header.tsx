@@ -160,7 +160,7 @@ export function Header() {
                     <span>My Tickets</span>
                   </Link>
 
-                  {user.role === 'ORGANIZER' ? (
+                  {user.role === 'ORGANIZER' || user.role === 'ADMIN' ? (
                     <Link
                       href="/dashboard"
                       className={cn(
@@ -329,7 +329,7 @@ export function Header() {
                     <Ticket className="h-4 w-4 text-primary" />
                     My Tickets
                   </Link>
-                  {user.role === 'ORGANIZER' ? (
+                  {user.role === 'ORGANIZER' || user.role === 'ADMIN' ? (
                     <Link
                       href="/dashboard"
                       className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-primary hover:bg-accent"

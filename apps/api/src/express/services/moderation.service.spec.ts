@@ -242,6 +242,30 @@ describe('ExpressModerationService Unit Tests', () => {
       });
     });
 
+    it('approves organizer application for an ADMIN without downgrading their ADMIN role', async () => {
+      mockPrisma.organizer.findUnique.mockResolvedValue({
+        id: 'org-admin',
+        userId: 'admin-usr-1',
+        organizationName: 'Admin Events',
+        description: null,
+        phone: null,
+        website: null,
+        logo: null,
+        user: { id: 'admin-usr-1', role: 'ADMIN' },
+      });
+      mockPrisma.organizer.update.mockResolvedValue({ id: 'org-admin', isVerified: true });
+      mockPrisma.auditLog.create.mockResolvedValue({ id: 'audit-approve-admin' });
+
+      const res = await service.approveOrganizerApplication('admin-reviewer', 'org-admin');
+      expect(res.organizer.status).toBe('APPROVED');
+      expect(res.organizer.isVerified).toBe(true);
+      expect(mockPrisma.organizer.update).toHaveBeenCalledWith({
+        where: { id: 'org-admin' },
+        data: { isVerified: true },
+      });
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+
     it('rejects organizer application with reason, keeping isVerified=false and user.role=CUSTOMER', async () => {
       mockPrisma.organizer.findUnique.mockResolvedValue({
         id: 'org-1',
@@ -251,6 +275,7 @@ describe('ExpressModerationService Unit Tests', () => {
         phone: null,
         website: null,
         logo: null,
+        user: { id: 'usr-1', role: 'CUSTOMER' },
       });
       mockPrisma.organizer.update.mockResolvedValue({ id: 'org-1', isVerified: false });
       mockPrisma.user.update.mockResolvedValue({ id: 'usr-1', role: 'CUSTOMER' });
@@ -268,6 +293,31 @@ describe('ExpressModerationService Unit Tests', () => {
         where: { id: 'usr-1' },
         data: { role: 'CUSTOMER' },
       });
+    });
+
+    it('rejects organizer application for an ADMIN without downgrading their ADMIN role', async () => {
+      mockPrisma.organizer.findUnique.mockResolvedValue({
+        id: 'org-admin',
+        userId: 'admin-usr-1',
+        organizationName: 'Admin Events',
+        description: null,
+        phone: null,
+        website: null,
+        logo: null,
+        user: { id: 'admin-usr-1', role: 'ADMIN' },
+      });
+      mockPrisma.organizer.update.mockResolvedValue({ id: 'org-admin', isVerified: false });
+      mockPrisma.auditLog.create.mockResolvedValue({ id: 'audit-reject-admin' });
+
+      const res = await service.rejectOrganizerApplication('admin-reviewer', 'org-admin', 'Incomplete profile details');
+      expect(res.organizer.status).toBe('REJECTED');
+      expect(res.organizer.rejectionReason).toBe('Incomplete profile details');
+      expect(res.organizer.isVerified).toBe(false);
+      expect(mockPrisma.organizer.update).toHaveBeenCalledWith({
+        where: { id: 'org-admin' },
+        data: { isVerified: false },
+      });
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
     });
 
     it('rejects empty or whitespace reason on rejection with BadRequestException', async () => {

@@ -56,10 +56,16 @@ export class OrganizersService {
           phone: input.phone,
         },
       });
-      await tx.user.update({
+      const user = await tx.user.findUnique({
         where: { id: userId },
-        data: { role: 'ORGANIZER' },
+        select: { role: true },
       });
+      if (user?.role !== 'ADMIN') {
+        await tx.user.update({
+          where: { id: userId },
+          data: { role: 'ORGANIZER' },
+        });
+      }
       return created;
     });
 
@@ -84,10 +90,21 @@ export class OrganizersService {
       );
     }
 
-    await this.prisma.$transaction([
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    const txOps: any[] = [
       this.prisma.organizer.delete({ where: { id: organizer.id } }),
-      this.prisma.user.update({ where: { id: userId }, data: { role: 'CUSTOMER' } }),
-    ]);
+    ];
+    if (user?.role !== 'ADMIN') {
+      txOps.push(
+        this.prisma.user.update({ where: { id: userId }, data: { role: 'CUSTOMER' } }),
+      );
+    }
+
+    await this.prisma.$transaction(txOps);
     return { message: 'Organizer profile removed' };
   }
 
