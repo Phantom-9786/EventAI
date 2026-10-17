@@ -125,7 +125,8 @@ describe('launch lifecycle (isolated PostgreSQL, mocked external providers)', ()
     const application = await request('/organizers/apply', token, 'POST', { organizationName: 'Isolated Launch Organizer' }, 201);
     expect(application.organizer.status).toBe('PENDING');
     const organizerId = application.organizer.id;
-    await request('/organizers/me/events', token, 'GET', undefined, 403);
+    const pendingEvents = await request('/organizers/me/events', token, 'GET', undefined, 200);
+    expect(pendingEvents.events).toEqual([]);
     await request(`/admin/organizers/${organizerId}/approve`, token, 'POST', {}, 403);
     await request(`/admin/organizers/${organizerId}/reject`, admin, 'POST', { reason: 'Add organization details' });
     expect((await request('/organizers/me', token)).organizer.applicationStatus).toBe('REJECTED');
