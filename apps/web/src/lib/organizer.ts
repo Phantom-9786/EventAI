@@ -537,3 +537,36 @@ export async function deleteOrganizerMedia(eventId: string, mediaUrl: string): P
   }
 }
 
+export interface UploadConfig {
+  configured: boolean;
+  uploadsEnabled: boolean;
+  maxFileSizeBytes: number;
+  allowedMimeTypes: string[];
+  providers: string[];
+}
+
+export async function getUploadConfig(): Promise<UploadConfig> {
+  try {
+    const res = await authFetch('/events/upload-config');
+    if (!res.ok) {
+      return {
+        configured: false,
+        uploadsEnabled: true,
+        maxFileSizeBytes: 5 * 1024 * 1024,
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        providers: [],
+      };
+    }
+    return (await res.json()) as UploadConfig;
+  } catch {
+    return {
+      configured: false,
+      uploadsEnabled: true,
+      maxFileSizeBytes: 5 * 1024 * 1024,
+      allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+      providers: [],
+    };
+  }
+}
+
+

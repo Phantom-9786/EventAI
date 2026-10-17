@@ -45,12 +45,11 @@ describe('EventMediaService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     process.env = { ...originalEnv };
-    delete process.env.CLOUDINARY_PROVIDERS;
-    delete process.env.CLOUDINARY_PRIMARY_CLOUD_NAME;
-    delete process.env.CLOUDINARY_SECONDARY_CLOUD_NAME;
-    delete process.env.CLOUDINARY_CLOUD_NAME;
-    delete process.env.CLOUDINARY_API_KEY;
-    delete process.env.CLOUDINARY_API_SECRET;
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith('CLOUDINARY_')) {
+        delete process.env[key];
+      }
+    }
 
     mockedAxios.get.mockResolvedValue({
       data: {

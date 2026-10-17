@@ -31,7 +31,7 @@ export function createEventsRouter({
     limits: { fileSize: MAX_EVENT_IMAGE_BYTES, files: 1 },
   });
 
-  // 1. Generic upload route (before dynamic params)
+  // 1. Generic upload route & upload configuration (before dynamic params)
   router.post(
     '/upload-image',
     authenticateJwt,
@@ -39,6 +39,7 @@ export function createEventsRouter({
     upload.single('file'),
     controller.uploadGenericImage,
   );
+  router.get('/upload-config', controller.getUploadConfig);
 
   // 2. Public browse and search
   router.get('/', validateQuery(eventSearchSchema), controller.search);

@@ -113,6 +113,53 @@ describe('MediaProviderFactory', () => {
       expect(providers[0].cloudName).toBe('my_cloud');
     });
 
+    it('strips surrounding quotes from environment variables', () => {
+      process.env.CLOUDINARY_CLOUD_NAME = '"bawrmf0r"';
+      process.env.CLOUDINARY_API_KEY = '\'key-legacy\'';
+      process.env.CLOUDINARY_API_SECRET = '"sec-legacy"';
+
+      const providers = MediaProviderFactory.createProviders();
+
+      expect(providers).toHaveLength(1);
+      expect(providers[0].cloudName).toBe('bawrmf0r');
+      expect(providers[0].id).toBe(LEGACY_PROVIDER_ID);
+    });
+
+    it('auto-discovers unlisted provider when explicit API_KEY/API_SECRET variables exist', () => {
+      process.env.CLOUDINARY_CUSTOMCLOUD_CLOUD_NAME = 'customcloud';
+      process.env.CLOUDINARY_CUSTOMCLOUD_API_KEY = 'k-custom';
+      process.env.CLOUDINARY_CUSTOMCLOUD_API_SECRET = 's-custom';
+
+      const providers = MediaProviderFactory.createProviders();
+
+      expect(providers).toHaveLength(1);
+      expect(providers[0].id).toBe('customcloud');
+      expect(providers[0].cloudName).toBe('customcloud');
+    });
+
+    it('matches provider in CLOUDINARY_PROVIDERS with standard CLOUDINARY_CLOUD_NAME credentials', () => {
+      process.env.CLOUDINARY_PROVIDERS = 'bawrmf0r';
+      process.env.CLOUDINARY_CLOUD_NAME = 'bawrmf0r';
+      process.env.CLOUDINARY_API_KEY = 'key-bawr';
+      process.env.CLOUDINARY_API_SECRET = 'sec-bawr';
+
+      const providers = MediaProviderFactory.createProviders();
+
+      expect(providers).toHaveLength(1);
+      expect(providers[0].id).toBe('bawrmf0r');
+      expect(providers[0].cloudName).toBe('bawrmf0r');
+    });
+
+    it('parses CLOUDINARY_URL with quotes and query parameters', () => {
+      process.env.CLOUDINARY_URL = '"cloudinary://my_key:my_secret@my_cloud?secure=true"';
+
+      const providers = MediaProviderFactory.createProviders();
+
+      expect(providers).toHaveLength(1);
+      expect(providers[0].id).toBe('default');
+      expect(providers[0].cloudName).toBe('my_cloud');
+    });
+
     it('returns empty list if neither multi-provider nor legacy credentials are set', () => {
       const providers = MediaProviderFactory.createProviders();
       expect(providers).toEqual([]);

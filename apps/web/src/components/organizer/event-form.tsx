@@ -29,6 +29,7 @@ import {
   deleteOrganizerTicketType,
   getOrganizerCategories,
   getOrganizerVenues,
+  getUploadConfig,
   publishOrganizerEvent,
   submitOrganizerEventForReview,
   updateOrganizerEvent,
@@ -41,6 +42,7 @@ import {
   type OrganizerTicketType,
   type OrganizerTicketTypeInput,
   type OrganizerVenue,
+  type UploadConfig,
 } from '@/lib/organizer';
 import { cn } from '@/lib/utils';
 
@@ -254,6 +256,7 @@ export function EventForm({
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [uploadConfig, setUploadConfig] = useState<UploadConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [categoryLoadError, setCategoryLoadError] = useState<string | null>(null);
@@ -302,11 +305,11 @@ export function EventForm({
 
   useEffect(() => {
     let active = true;
-    Promise.allSettled([getOrganizerCategories(), getOrganizerVenues()])
-      .then(([categoryResult, venueResult]) => {
+    Promise.allSettled([getOrganizerCategories(), getOrganizerVenues(), getUploadConfig()])
+      .then(([categoryResult, venueResult, uploadConfigResult]) => {
         if (!active) return;
         if (categoryResult.status === 'fulfilled') {
-          setCategories(categoryResult.value);
+          setCategories(categoryResult.status === 'fulfilled' ? categoryResult.value : []);
         } else {
           setCategoryLoadError(
             categoryResult.reason instanceof Error
@@ -316,6 +319,9 @@ export function EventForm({
         }
         if (venueResult.status === 'fulfilled') {
           setVenues(venueResult.value);
+        }
+        if (uploadConfigResult.status === 'fulfilled') {
+          setUploadConfig(uploadConfigResult.value);
         }
       })
       .finally(() => {
@@ -373,6 +379,11 @@ export function EventForm({
   async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (uploadConfig !== null && !uploadConfig.configured) {
+      setError('Cloudinary media storage is not configured on this server.');
+      e.target.value = '';
+      return;
+    }
     const validationError = validateImageFile(file);
     if (validationError) {
       setError(validationError);
@@ -396,6 +407,11 @@ export function EventForm({
   async function handleGalleryUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
+    if (uploadConfig !== null && !uploadConfig.configured) {
+      setError('Cloudinary media storage is not configured on this server.');
+      e.target.value = '';
+      return;
+    }
     for (const file of files) {
       const validationError = validateImageFile(file);
       if (validationError) {
@@ -964,6 +980,23 @@ export function EventForm({
       {/* STEP 3: Media & Policies */}
       {step === 3 && (
         <section className="space-y-6" aria-label="Event media and policies">
+          {uploadConfig && !uploadConfig.configured && (
+            <div
+              role="status"
+              className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-200"
+            >
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-semibold">Media storage is not configured on this server</p>
+                  <p className="text-xs text-muted-foreground">
+                    Image uploads require Cloudinary credentials to be configured on the server. You can still save and submit events without images.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Cover Image Upload */}
           <div className="space-y-3">
             <div>
@@ -994,7 +1027,7 @@ export function EventForm({
                       className={cn(
                         buttonVariants({ variant: 'outline', size: 'sm' }),
                         'cursor-pointer gap-1.5 text-xs h-8',
-                        uploadingCover && 'pointer-events-none opacity-50',
+                        (uploadingCover || uploadConfig?.configured === false) && 'pointer-events-none opacity-50',
                       )}
                     >
                       {uploadingCover ? (
@@ -1010,7 +1043,7 @@ export function EventForm({
                         type="file"
                         accept="image/jpeg,image/png,image/webp"
                         className="sr-only"
-                        disabled={uploadingCover}
+                        disabled={uploadingCover || uploadConfig?.configured === false}
                         onChange={(e) => void handleCoverUpload(e)}
                       />
                     </label>
@@ -1036,7 +1069,7 @@ export function EventForm({
               <label
                 className={cn(
                   'flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-input p-8 text-center transition-colors cursor-pointer max-w-xl hover:border-primary/50 hover:bg-accent/40',
-                  uploadingCover && 'pointer-events-none opacity-60 bg-muted/40',
+                  (uploadingCover || uploadConfig?.configured === false) && 'pointer-events-none opacity-60 bg-muted/40',
                 )}
               >
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
@@ -1047,16 +1080,22 @@ export function EventForm({
                   )}
                 </div>
                 <span className="text-sm font-semibold text-foreground">
-                  {uploadingCover ? 'Uploading cover image…' : 'Upload cover image'}
+                  {uploadingCover
+                    ? 'Uploading cover image…'
+                    : uploadConfig?.configured === false
+                      ? 'Image upload not configured'
+                      : 'Upload cover image'}
                 </span>
                 <span className="mt-1 text-xs text-muted-foreground">
-                  JPEG, PNG, or WebP up to 5 MB
+                  {uploadConfig?.configured === false
+                    ? 'Storage environment variables missing on server'
+                    : 'JPEG, PNG, or WebP up to 5 MB'}
                 </span>
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   className="sr-only"
-                  disabled={uploadingCover}
+                  disabled={uploadingCover || uploadConfig?.configured === false}
                   onChange={(e) => void handleCoverUpload(e)}
                 />
               </label>
@@ -1078,7 +1117,7 @@ export function EventForm({
                 className={cn(
                   buttonVariants({ variant: 'outline', size: 'sm' }),
                   'cursor-pointer gap-1.5 text-xs shrink-0 self-start sm:self-auto',
-                  uploadingGallery && 'pointer-events-none opacity-50',
+                  (uploadingGallery || uploadConfig?.configured === false) && 'pointer-events-none opacity-50',
                 )}
               >
                 {uploadingGallery ? (
@@ -1097,7 +1136,7 @@ export function EventForm({
                   multiple
                   accept="image/jpeg,image/png,image/webp"
                   className="sr-only"
-                  disabled={uploadingGallery}
+                  disabled={uploadingGallery || uploadConfig?.configured === false}
                   onChange={(e) => void handleGalleryUpload(e)}
                 />
               </label>

@@ -201,4 +201,54 @@ export class ExpressEventsController {
       next(err);
     }
   };
+
+  getUploadConfig = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const configured = this.mediaService.isCloudinaryConfigured();
+      const providers = this.mediaService.getConfiguredProviderIds();
+      const maxBytes = this.mediaService.getMaxFileSizeBytes();
+      const uploadsEnabled = this.mediaService.isUploadsEnabled();
+
+      const envKeys = [
+        'CLOUDINARY_PROVIDERS',
+        'CLOUDINARY_URL',
+        'CLOUDINARY_CLOUD_NAME',
+        'CLOUDINARY_API_KEY',
+        'CLOUDINARY_API_SECRET',
+        'CLOUDINARY_PRIMARY_CLOUD_NAME',
+        'CLOUDINARY_PRIMARY_API_KEY',
+        'CLOUDINARY_PRIMARY_API_SECRET',
+        'CLOUDINARY_BAWRMF0R_CLOUD_NAME',
+        'CLOUDINARY_BAWRMF0R_API_KEY',
+        'CLOUDINARY_BAWRMF0R_API_SECRET',
+        'CLOUDINARY_HY5DKFMO_CLOUD_NAME',
+        'CLOUDINARY_HY5DKFMO_API_KEY',
+        'CLOUDINARY_HY5DKFMO_API_SECRET',
+        'CLOUDINARY_VDUGSOME_CLOUD_NAME',
+        'CLOUDINARY_VDUGSOME_API_KEY',
+        'CLOUDINARY_VDUGSOME_API_SECRET',
+      ];
+
+      const envPresence: Record<string, boolean> = {};
+      for (const k of envKeys) {
+        envPresence[k] = Boolean(process.env[k] && process.env[k]!.trim().length > 0);
+      }
+
+      const allCloudinaryEnvNames = Object.keys(process.env)
+        .filter((k) => k.startsWith('CLOUDINARY_'))
+        .sort();
+
+      res.status(200).json({
+        configured,
+        uploadsEnabled,
+        maxFileSizeBytes: maxBytes,
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        providers,
+        envPresence,
+        allCloudinaryEnvNames,
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
