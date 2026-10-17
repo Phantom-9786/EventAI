@@ -8,10 +8,13 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
+  ChevronRight,
   Clock,
   ExternalLink,
+  Eye,
   IndianRupee,
   Loader2,
+  MapPin,
   Phone,
   Search,
   ShieldAlert,
@@ -27,6 +30,7 @@ import {
   createAdminCategory,
   deactivateAdminCategory,
   listAdminEvents,
+  getAdminEventDetail,
   getAdminBooking,
   listAdminBookings,
   reconcileAdminRefund,
@@ -44,6 +48,7 @@ import {
   useAdminData,
   type AdminAuditLogRow,
   type AdminEventRow,
+  type AdminEventDetail,
   type AdminBookingDetail,
   type AdminBookingRow,
   type AdminOrganizerRow,
@@ -71,15 +76,48 @@ const STATUS_COLORS: Record<string, string> = {
   SOLDOUT: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
 };
 
-function StatCard({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+function StatCard({
+  label,
+  value,
+  icon,
+  onClick,
+  targetTabName,
+}: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  onClick?: () => void;
+  targetTabName?: string;
+}) {
+  const isClickable = Boolean(onClick);
   return (
-    <div className="rounded-xl border bg-card p-5 shadow-sm transition-all hover:shadow-md">
-      <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        {icon}
-        {label}
-      </p>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!isClickable}
+      aria-label={targetTabName ? `${label}: ${value}. Click to view ${targetTabName}` : `${label}: ${value}`}
+      className={`group relative w-full text-left rounded-xl border bg-card p-5 shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+        isClickable
+          ? 'cursor-pointer hover:border-primary/50 hover:bg-accent/40 hover:shadow-md active:scale-[0.99]'
+          : 'cursor-default'
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground group-hover:text-primary transition-colors">
+          {icon}
+          {label}
+        </p>
+        {isClickable && (
+          <ChevronRight className="h-4 w-4 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
+        )}
+      </div>
       <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">{value}</p>
-    </div>
+      {targetTabName && (
+        <span className="mt-1 block text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+          View {targetTabName} →
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -103,6 +141,15 @@ export default function AdminPage() {
   const [color, setColor] = useState('#6366F1');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab') as Tab | null;
+    if (tabParam && ['overview', 'users', 'events', 'organizers', 'bookings', 'audit-logs'].includes(tabParam)) {
+      setTab(tabParam);
+    }
+  }, []);
 
   if (authLoading) {
     return (
@@ -218,15 +265,57 @@ export default function AdminPage() {
           {stats && (
             <>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard label="Total Users" value={stats.users.toLocaleString()} icon={<Users className="h-4 w-4" />} />
-                <StatCard label="Organizers" value={`${stats.organizers.verified} / ${stats.organizers.total} verified`} icon={<Building2 className="h-4 w-4" />} />
-                <StatCard label="Total Events" value={stats.events.total.toLocaleString()} icon={<CalendarDays className="h-4 w-4" />} />
-                <StatCard label="Net Revenue" value={formatPrice(stats.revenue.net)} icon={<IndianRupee className="h-4 w-4" />} />
+                <StatCard
+                  label="Total Users"
+                  value={stats.users.toLocaleString()}
+                  icon={<Users className="h-4 w-4" />}
+                  onClick={() => setTab('users')}
+                  targetTabName="Users tab"
+                />
+                <StatCard
+                  label="Organizers"
+                  value={`${stats.organizers.verified} / ${stats.organizers.total} verified`}
+                  icon={<Building2 className="h-4 w-4" />}
+                  onClick={() => setTab('organizers')}
+                  targetTabName="Organizers & Applications"
+                />
+                <StatCard
+                  label="Total Events"
+                  value={stats.events.total.toLocaleString()}
+                  icon={<CalendarDays className="h-4 w-4" />}
+                  onClick={() => setTab('events')}
+                  targetTabName="Events tab"
+                />
+                <StatCard
+                  label="Net Revenue"
+                  value={formatPrice(stats.revenue.net)}
+                  icon={<IndianRupee className="h-4 w-4" />}
+                  onClick={() => setTab('bookings')}
+                  targetTabName="Bookings & Payments"
+                />
               </div>
               <div className="grid gap-4 sm:grid-cols-3">
-                <StatCard label="Tickets Issued" value={stats.tickets.issued.toLocaleString()} icon={<Ticket className="h-4 w-4" />} />
-                <StatCard label="Checked In" value={stats.tickets.checkedIn.toLocaleString()} icon={<Ticket className="h-4 w-4" />} />
-                <StatCard label="Confirmed Bookings" value={String(stats.bookings.CONFIRMED ?? 0)} icon={<CalendarDays className="h-4 w-4" />} />
+                <StatCard
+                  label="Tickets Issued"
+                  value={stats.tickets.issued.toLocaleString()}
+                  icon={<Ticket className="h-4 w-4" />}
+                  onClick={() => setTab('bookings')}
+                  targetTabName="Bookings & Payments"
+                />
+                <StatCard
+                  label="Checked In"
+                  value={stats.tickets.checkedIn.toLocaleString()}
+                  icon={<Ticket className="h-4 w-4" />}
+                  onClick={() => setTab('bookings')}
+                  targetTabName="Bookings & Payments"
+                />
+                <StatCard
+                  label="Confirmed Bookings"
+                  value={String(stats.bookings.CONFIRMED ?? 0)}
+                  icon={<CalendarDays className="h-4 w-4" />}
+                  onClick={() => setTab('bookings')}
+                  targetTabName="Bookings & Payments"
+                />
               </div>
             </>
           )}
@@ -328,6 +417,7 @@ function UsersTab({
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -348,6 +438,7 @@ function UsersTab({
       const body = await listAdminUsers({
         search: search || undefined,
         role: role || undefined,
+        status: statusFilter || undefined,
         page,
       });
       setUsers(body.users);
@@ -358,7 +449,7 @@ function UsersTab({
     } finally {
       setLoading(false);
     }
-  }, [search, role, page]);
+  }, [search, role, statusFilter, page]);
 
   useEffect(() => {
     void load();
@@ -406,6 +497,21 @@ function UsersTab({
           <option value="ORGANIZER">Organizer</option>
           <option value="ADMIN">Admin</option>
         </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
+          aria-label="Filter by account status"
+          className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+        >
+          <option value="">All account statuses</option>
+          <option value="ACTIVE">Active</option>
+          <option value="DEACTIVATED">Deactivated</option>
+          <option value="DELETED">Deleted</option>
+          <option value="UNVERIFIED">Unverified</option>
+        </select>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
       </div>
 
@@ -423,53 +529,69 @@ function UsersTab({
             </tr>
           </thead>
           <tbody className="divide-y">
-            {(users ?? []).map((u) => (
-              <tr key={u.id} className="transition-colors hover:bg-muted/30">
-                <td className="px-4 py-3">
-                  <p className="font-medium text-foreground">
-                    {u.firstName} {u.lastName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{u.email}</p>
-                </td>
-                <td className="px-4 py-3">
-                  <span className="inline-block rounded-md bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground">
-                    {u.role}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{u.bookingCount}</td>
-                <td className="px-4 py-3">
-                  {!u.isActive ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
-                      <UserX className="h-3 w-3" /> Deactivated
+            {(users ?? []).map((u) => {
+              const isDeleted =
+                u.isDeleted ??
+                (u.email.endsWith('@anonymized.eventai.local') ||
+                  (u.firstName === 'Deleted' && u.lastName === 'User' && !u.isActive));
+              return (
+                <tr key={u.id} className="transition-colors hover:bg-muted/30">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-foreground">
+                      {u.firstName} {u.lastName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{u.email}</p>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-block rounded-md bg-secondary px-2 py-0.5 text-xs font-semibold text-secondary-foreground">
+                      {u.role}
                     </span>
-                  ) : u.isEmailVerified ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                      <UserCheck className="h-3 w-3" /> Active
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
-                      <Clock className="h-3 w-3" /> Unverified Email
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() =>
-                      setStatusModal({
-                        isOpen: true,
-                        user: u,
-                        targetActive: !u.isActive,
-                      })
-                    }
-                  >
-                    {u.isActive ? 'Deactivate' : 'Activate'}
-                  </Button>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-4 py-3">{u.bookingCount}</td>
+                  <td className="px-4 py-3">
+                    {isDeleted ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground border">
+                        <UserX className="h-3 w-3" /> Deleted
+                      </span>
+                    ) : !u.isActive ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
+                        <UserX className="h-3 w-3" /> Deactivated
+                      </span>
+                    ) : u.isEmailVerified ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        <UserCheck className="h-3 w-3" /> Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                        <Clock className="h-3 w-3" /> Unverified Email
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {isDeleted ? (
+                      <span className="text-xs text-muted-foreground italic select-none">
+                        Permanently deleted
+                      </span>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() =>
+                          setStatusModal({
+                            isOpen: true,
+                            user: u,
+                            targetActive: !u.isActive,
+                          })
+                        }
+                      >
+                        {u.isActive ? 'Deactivate' : 'Activate'}
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {!loading && (users ?? []).length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
@@ -514,6 +636,360 @@ function UsersTab({
   );
 }
 
+// ── Event Preview Modal ──────────────────────────────
+
+function EventPreviewModal({
+  eventId,
+  onClose,
+  onApprove,
+  onReject,
+  onCancel,
+  busy,
+}: {
+  eventId: string | null;
+  onClose: () => void;
+  onApprove: (event: AdminEventDetail) => void;
+  onReject: (event: AdminEventDetail) => void;
+  onCancel: (event: AdminEventDetail) => void;
+  busy: boolean;
+}) {
+  const [detail, setDetail] = useState<AdminEventDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!eventId) {
+      setDetail(null);
+      return;
+    }
+    let isCancelled = false;
+    setLoading(true);
+    setError(null);
+
+    getAdminEventDetail(eventId)
+      .then((data) => {
+        if (!isCancelled) setDetail(data);
+      })
+      .catch((err) => {
+        if (!isCancelled) setError(err instanceof Error ? err.message : 'Failed to load event details');
+      })
+      .finally(() => {
+        if (!isCancelled) setLoading(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [eventId]);
+
+  if (!eventId) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="preview-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150"
+    >
+      <div className="relative w-full max-w-3xl max-h-[90vh] flex flex-col rounded-xl border bg-card shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-start justify-between border-b px-6 py-4 bg-muted/20">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Event Inspection & Moderation
+              </span>
+              {detail && (
+                <span
+                  className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                    detail.moderation?.status === 'PENDING_APPROVAL'
+                      ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                      : detail.moderation?.status === 'APPROVED'
+                        ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                        : detail.moderation?.status === 'REJECTED'
+                          ? 'bg-destructive/20 text-destructive'
+                          : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {detail.moderation?.status === 'PENDING_APPROVAL'
+                    ? 'Pending Review'
+                    : detail.moderation?.status ?? 'No Moderation'}
+                </span>
+              )}
+              {detail && <StatusBadge status={detail.status} />}
+            </div>
+            <h2 id="preview-title" className="mt-1 text-xl font-bold tracking-tight text-foreground">
+              {detail ? detail.title : 'Loading event preview…'}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            aria-label="Close modal"
+          >
+            <span className="text-lg leading-none">&times;</span>
+          </button>
+        </div>
+
+        {/* Content body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 text-sm">
+          {loading && (
+            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm font-medium">Fetching event details & ticket inventory…</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-destructive text-sm">
+              {error}
+            </div>
+          )}
+
+          {detail && (
+            <>
+              {/* Cover Image banner if present */}
+              {detail.coverImage && (
+                <div className="relative h-48 w-full overflow-hidden rounded-lg border bg-muted">
+                  <img
+                    src={detail.coverImage}
+                    alt={detail.title}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              )}
+
+              {/* Meta Grid */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                {/* Organizer Info */}
+                <div className="rounded-lg border p-3.5 space-y-1.5 bg-card">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5" /> Organizer Details
+                  </p>
+                  <p className="font-semibold text-foreground flex items-center gap-1.5">
+                    {detail.organizer.organizationName}
+                    {detail.organizer.isVerified && (
+                      <span title="Verified Organizer">
+                        <BadgeCheck className="h-4 w-4 text-primary" />
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Contact: {detail.organizer.user.firstName} {detail.organizer.user.lastName} ({detail.organizer.user.email})
+                  </p>
+                  {detail.organizer.phone && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Phone className="h-3 w-3" /> {detail.organizer.phone}
+                    </p>
+                  )}
+                </div>
+
+                {/* Venue & Location */}
+                <div className="rounded-lg border p-3.5 space-y-1.5 bg-card">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5" /> Venue & Schedule
+                  </p>
+                  <p className="font-semibold text-foreground">
+                    {detail.venue ? `${detail.venue.name} (${detail.venue.city}, ${detail.venue.state})` : 'No venue configured'}
+                  </p>
+                  {detail.venue && (
+                    <p className="text-xs text-muted-foreground">
+                      {detail.venue.address}
+                      {detail.venue.capacity != null ? ` · Capacity: ${detail.venue.capacity.toLocaleString()}` : ''}
+                    </p>
+                  )}
+                  <p className="text-xs font-medium text-primary flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    {new Date(detail.startDate).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                    {' – '}
+                    {new Date(detail.endDate).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Category & Tags */}
+              <div className="flex flex-wrap items-center gap-2">
+                {detail.category && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold"
+                    style={{
+                      borderColor: `${detail.category.color ?? '#6366F1'}40`,
+                      backgroundColor: `${detail.category.color ?? '#6366F1'}15`,
+                      color: detail.category.color ?? '#6366F1',
+                    }}
+                  >
+                    Category: {detail.category.name}
+                  </span>
+                )}
+                {detail.tags.map((tag) => (
+                  <span key={tag} className="rounded-md border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground font-mono">
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+
+              {/* Descriptions */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Event Description</p>
+                {detail.shortDescription && (
+                  <p className="text-sm font-medium text-foreground italic">{detail.shortDescription}</p>
+                )}
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed rounded-lg border p-3 bg-muted/10">
+                  {detail.description}
+                </p>
+              </div>
+
+              {/* Gallery Images if present */}
+              {detail.images && detail.images.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Gallery Media ({detail.images.length})</p>
+                  <div className="flex flex-wrap gap-2">
+                    {detail.images.map((img, i) => (
+                      <a key={i} href={img} target="_blank" rel="noopener noreferrer" className="group relative h-20 w-28 overflow-hidden rounded-md border bg-muted">
+                        <img src={img} alt={`Gallery ${i + 1}`} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Ticket Inventory Table */}
+              <div className="space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Ticket Tiers & Inventory ({detail.ticketTypes.length})
+                </p>
+                {detail.ticketTypes.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">No ticket tiers configured.</p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border">
+                    <table className="w-full text-xs">
+                      <thead className="border-b bg-muted/30 text-left uppercase text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2 font-semibold">Tier Name</th>
+                          <th className="px-3 py-2 font-semibold">Price</th>
+                          <th className="px-3 py-2 font-semibold">Total Qty</th>
+                          <th className="px-3 py-2 font-semibold">Available</th>
+                          <th className="px-3 py-2 font-semibold">Max / Booking</th>
+                          <th className="px-3 py-2 font-semibold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {detail.ticketTypes.map((t) => (
+                          <tr key={t.id} className="hover:bg-muted/20">
+                            <td className="px-3 py-2 font-medium text-foreground">
+                              {t.name}
+                              {t.description && <p className="text-[10px] text-muted-foreground">{t.description}</p>}
+                            </td>
+                            <td className="px-3 py-2 font-semibold text-primary">{formatPrice(t.price)}</td>
+                            <td className="px-3 py-2">{t.totalQuantity}</td>
+                            <td className="px-3 py-2">{t.availableQuantity}</td>
+                            <td className="px-3 py-2">{t.maxPerBooking}</td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                  t.isActive ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'
+                                }`}
+                              >
+                                {t.isActive ? 'Active' : 'Disabled'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              {/* Policies if present */}
+              {(detail.policies || detail.cancellationPolicy) && (
+                <div className="grid gap-3 sm:grid-cols-2 text-xs">
+                  {detail.policies && (
+                    <div className="rounded-lg border p-3 space-y-1">
+                      <p className="font-semibold text-foreground">Event Policies</p>
+                      <p className="text-muted-foreground whitespace-pre-wrap">{detail.policies}</p>
+                    </div>
+                  )}
+                  {detail.cancellationPolicy && (
+                    <div className="rounded-lg border p-3 space-y-1">
+                      <p className="font-semibold text-foreground">Cancellation & Refund Policy</p>
+                      <p className="text-muted-foreground whitespace-pre-wrap">{detail.cancellationPolicy}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Moderation History & Rejection notes */}
+              {detail.moderation?.rejectionReason && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 space-y-1">
+                  <p className="text-xs font-semibold text-destructive">Previous Rejection Reason:</p>
+                  <p className="text-xs text-muted-foreground">{detail.moderation.rejectionReason}</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-6 py-3.5 bg-muted/20">
+          <Button variant="outline" size="sm" onClick={onClose} disabled={busy}>
+            Close Preview
+          </Button>
+
+          {detail && (
+            <div className="flex flex-wrap items-center gap-2">
+              {detail.status === 'PUBLISHED' && (
+                <Link
+                  href={`/events/${encodeURIComponent(detail.slug)}`}
+                  target="_blank"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> View Live Page
+                </Link>
+              )}
+
+              {detail.moderation?.status === 'PENDING_APPROVAL' && (
+                <>
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    disabled={busy}
+                    onClick={() => onApprove(detail)}
+                  >
+                    <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Approve Event
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                    disabled={busy}
+                    onClick={() => onReject(detail)}
+                  >
+                    Reject Event…
+                  </Button>
+                </>
+              )}
+
+              {detail.status === 'PUBLISHED' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10"
+                  disabled={busy}
+                  onClick={() => onCancel(detail)}
+                >
+                  Cancel Event
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Events tab ──────────────────────────────────────
 
 function EventsTab({
@@ -530,6 +1006,16 @@ function EventsTab({
   const [status, setStatus] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [previewEventId, setPreviewEventId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const eventIdParam = params.get('eventId');
+    if (eventIdParam) {
+      setPreviewEventId(eventIdParam);
+    }
+  }, []);
 
   // In-UI modal for event approval, rejection, and cancellation
   const [modModal, setModModal] = useState<{
@@ -635,7 +1121,13 @@ function EventsTab({
             {(events ?? []).map((ev) => (
               <tr key={ev.id} className="transition-colors hover:bg-muted/30">
                 <td className="px-4 py-3">
-                  <p className="font-semibold text-foreground">{ev.title}</p>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewEventId(ev.id)}
+                    className="text-left font-semibold text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:underline"
+                  >
+                    {ev.title}
+                  </button>
                   <p className="text-xs text-muted-foreground">
                     {ev.venue ? `${ev.venue.name}, ${ev.venue.city}` : 'No venue configured'}
                   </p>
@@ -663,7 +1155,16 @@ function EventsTab({
                 </td>
                 <td className="px-4 py-3 font-medium">{ev.bookingCount}</td>
                 <td className="px-4 py-3 text-right">
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPreviewEventId(ev.id)}
+                      className="gap-1 text-xs"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      Preview
+                    </Button>
                     {ev.moderation?.status === 'PENDING_APPROVAL' && (
                       <>
                         <Button
@@ -795,6 +1296,40 @@ function EventsTab({
           </div>
         )}
       </Modal>
+
+      {/* Event Preview Modal */}
+      <EventPreviewModal
+        eventId={previewEventId}
+        onClose={() => setPreviewEventId(null)}
+        onApprove={(detail) => {
+          setPreviewEventId(null);
+          setModModal({
+            isOpen: true,
+            type: 'APPROVE',
+            event: detail,
+            reason: '',
+          });
+        }}
+        onReject={(detail) => {
+          setPreviewEventId(null);
+          setModModal({
+            isOpen: true,
+            type: 'REJECT',
+            event: detail,
+            reason: '',
+          });
+        }}
+        onCancel={(detail) => {
+          setPreviewEventId(null);
+          setModModal({
+            isOpen: true,
+            type: 'CANCEL',
+            event: detail,
+            reason: '',
+          });
+        }}
+        busy={busy}
+      />
     </div>
   );
 }
@@ -862,6 +1397,24 @@ function OrganizersTab({
     void loadPending();
     void loadOrganizers();
   }, [loadPending, loadOrganizers]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !applications) return;
+    const params = new URLSearchParams(window.location.search);
+    const orgId = params.get('organizerId');
+    if (orgId) {
+      const match = applications.find((a) => a.id === orgId);
+      if (match) {
+        setSubTab('pending');
+        setModalState({
+          isOpen: true,
+          type: 'approve_app',
+          app: match,
+          reason: '',
+        });
+      }
+    }
+  }, [applications]);
 
   const handleModalConfirm = async () => {
     const { type, app, org, reason } = modalState;

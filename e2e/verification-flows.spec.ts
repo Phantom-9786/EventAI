@@ -533,3 +533,151 @@ test.describe('Verification: Theme Transitions & Persistence', () => {
     await expect(page.locator('html')).not.toHaveClass(/dark/);
   });
 });
+
+test.describe('Verification: Admin Metric Cards Navigation & Event Moderation Preview', () => {
+  const adminUser = {
+    id: 'e2e-admin',
+    email: 'admin@example.test',
+    firstName: 'System',
+    lastName: 'Admin',
+    role: 'ADMIN',
+  };
+
+  test('verifies admin stat cards switch tabs and event preview modal opens with details', async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem('eventai_access_token', 'e2e-admin-token');
+    });
+    await page.route('**/api/auth/me', (route) =>
+      route.fulfill({ status: 200, json: { user: adminUser } }),
+    );
+    await page.route('**/api/admin/stats', (route) =>
+      route.fulfill({
+        status: 200,
+        json: {
+          users: 150,
+          organizers: 12,
+          verifiedOrganizers: 8,
+          publishedEvents: 25,
+          draftEvents: 5,
+          totalBookings: 320,
+          totalRevenue: 45000000,
+        },
+      }),
+    );
+    await page.route('**/api/admin/users*', (route) =>
+      route.fulfill({
+        status: 200,
+        json: {
+          users: [
+            {
+              id: 'u-1',
+              email: 'attendee@example.com',
+              firstName: 'Test',
+              lastName: 'User',
+              role: 'CUSTOMER',
+              isActive: true,
+              isEmailVerified: true,
+              createdAt: new Date().toISOString(),
+              bookingCount: 3,
+            },
+          ],
+          total: 1,
+          page: 1,
+          pages: 1,
+        },
+      }),
+    );
+    await page.route('**/api/admin/events/evt-preview-1', (route) =>
+      route.fulfill({
+        status: 200,
+        json: {
+          event: {
+            id: 'evt-preview-1',
+            title: 'Electric Music Festival 2027',
+            description: 'Massive outdoor electronic music festival with international artists.',
+            shortDescription: 'Electronic festival in Goa',
+            status: 'DRAFT',
+            startDate: new Date(Date.now() + 86400000 * 30).toISOString(),
+            endDate: new Date(Date.now() + 86400000 * 32).toISOString(),
+            coverImage: 'https://images.example.test/cover.jpg',
+            images: [],
+            tags: ['electronic', 'music'],
+            category: { id: 'c-1', name: 'Music' },
+            venue: { id: 'v-1', name: 'Goa Arena', address: 'Beach Road', city: 'Goa', state: 'GA' },
+            ticketTypes: [
+              {
+                id: 'tt-1',
+                name: 'General Admission',
+                price: 150000,
+                currency: 'INR',
+                totalQuantity: 500,
+                availableQuantity: 500,
+                maxPerBooking: 5,
+                isActive: true,
+              },
+            ],
+            organizer: {
+              id: 'org-1',
+              organizationName: 'Sun Events',
+              user: { id: 'u-org', email: 'org@example.com', firstName: 'Sun', lastName: 'Organizer' },
+            },
+            moderation: { status: 'PENDING_APPROVAL' },
+          },
+        },
+      }),
+    );
+    await page.route('**/api/admin/events*', (route) =>
+      route.fulfill({
+        status: 200,
+        json: {
+          events: [
+            {
+              id: 'evt-preview-1',
+              title: 'Electric Music Festival 2027',
+              slug: 'electric-music-festival-2027',
+              status: 'DRAFT',
+              startDate: new Date(Date.now() + 86400000 * 30).toISOString(),
+              bookingCount: 0,
+              organizer: { organizationName: 'Sun Events' },
+              moderation: { status: 'PENDING_APPROVAL' },
+            },
+          ],
+          total: 1,
+          page: 1,
+          pages: 1,
+        },
+      }),
+    );
+
+    await page.goto('/admin');
+
+    // 1. Verify metric cards load and clicking switches to target tab
+    const usersCard = page.getByRole('button', { name: /Active Users/i });
+    await expect(usersCard).toBeVisible();
+    await usersCard.click();
+
+    // Verify Users tab is active and attendee table row is visible
+    await expect(page.getByText('attendee@example.com')).toBeVisible();
+
+    // Click Events stat card
+    const eventsCard = page.getByRole('button', { name: /Published Events/i });
+    await expect(eventsCard).toBeVisible();
+    await eventsCard.click();
+
+    // Verify Events tab is active and electric music festival is visible
+    await expect(page.getByText('Electric Music Festival 2027')).toBeVisible();
+
+    // 2. Click Preview button to open EventPreviewModal
+    const previewButton = page.getByRole('button', { name: /Preview/i }).first();
+    await expect(previewButton).toBeVisible();
+    await previewButton.click();
+
+    // Verify Modal opens with event details, venue, ticket tiers, and action buttons
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByText('Electric Music Festival 2027').first()).toBeVisible();
+    await expect(page.getByText('Goa Arena')).toBeVisible();
+    await expect(page.getByText('General Admission')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Approve Event' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Reject Event' })).toBeVisible();
+  });
+});

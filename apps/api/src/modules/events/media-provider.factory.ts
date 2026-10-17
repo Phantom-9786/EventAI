@@ -23,7 +23,15 @@ export class MediaProviderFactory {
       }
     }
 
-    // Backward-compatible fallback: a single provider from the legacy env vars.
+    // Fallback: check standard primary alias if CLOUDINARY_PROVIDERS was not explicitly defined
+    if (providers.length === 0) {
+      const primaryConfig = this.readProviderConfig('primary');
+      if (primaryConfig) {
+        providers.push(CloudinaryMediaProvider.create(primaryConfig));
+      }
+    }
+
+    // Backward-compatible fallback: a single provider from legacy env vars.
     if (providers.length === 0) {
       const legacy = this.readLegacyConfig();
       if (legacy) {
@@ -31,7 +39,27 @@ export class MediaProviderFactory {
       }
     }
 
+    // Standard integration fallback: CLOUDINARY_URL (cloudinary://api_key:api_secret@cloud_name)
+    if (providers.length === 0) {
+      const urlConfig = this.parseCloudinaryUrl(process.env.CLOUDINARY_URL);
+      if (urlConfig) {
+        providers.push(CloudinaryMediaProvider.create(urlConfig));
+      }
+    }
+
     return providers;
+  }
+
+  static parseCloudinaryUrl(url: string | undefined): CloudinaryProviderConfig | null {
+    if (!url || typeof url !== 'string') return null;
+    const match = url.trim().match(/^cloudinary:\/\/([^:]+):([^@]+)@([^/?#]+)/i);
+    if (!match) return null;
+    return {
+      id: 'default',
+      apiKey: match[1],
+      apiSecret: match[2],
+      cloudName: match[3],
+    };
   }
 
   static parseProviderList(value: string | undefined): string[] {

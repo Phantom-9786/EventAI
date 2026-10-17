@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { DateTimePicker } from '@/components/ui/date-time-picker';
 import {
   createOrganizerTicketType,
   deleteOrganizerTicketType,
@@ -93,8 +94,20 @@ function TicketTypeForm({
         <label className="text-sm font-medium">Price (INR)<input required type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={inputClass} /></label>
         <label className="text-sm font-medium">Total inventory<input required type="number" min={Math.max(1, sold)} step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} className={inputClass} /></label>
         <label className="text-sm font-medium">Maximum per booking<input required type="number" min="1" max="10" step="1" value={maxPerBooking} onChange={(e) => setMaxPerBooking(e.target.value)} className={inputClass} /></label>
-        <label className="text-sm font-medium">Sale starts (optional)<input type="datetime-local" value={saleStart} onChange={(e) => setSaleStart(e.target.value)} className={inputClass} /></label>
-        <label className="text-sm font-medium">Sale ends (optional)<input type="datetime-local" value={saleEnd} onChange={(e) => setSaleEnd(e.target.value)} className={inputClass} /></label>
+        <div className="col-span-full grid gap-4 sm:grid-cols-2">
+          <DateTimePicker
+            label="Sale starts (optional)"
+            value={saleStart}
+            onChange={setSaleStart}
+            showQuickChips={false}
+          />
+          <DateTimePicker
+            label="Sale ends (optional)"
+            value={saleEnd}
+            onChange={setSaleEnd}
+            showQuickChips={false}
+          />
+        </div>
       </div>
       <label className="block text-sm font-medium">Description (optional)<textarea maxLength={500} value={description} onChange={(e) => setDescription(e.target.value)} className="mt-1 min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></label>
       {ticket && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} />Available for sale</label>}

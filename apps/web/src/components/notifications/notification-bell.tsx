@@ -146,7 +146,12 @@ export function NotificationBell() {
             ) : (
               notifications.map((n) => {
                 const targetLink =
-                  n.data?.link ?? (user.role === 'ORGANIZER' ? '/organizer/events' : '/tickets');
+                  n.data?.link ??
+                  (user.role === 'ADMIN'
+                    ? '/admin'
+                    : user.role === 'ORGANIZER'
+                    ? '/organizer/events'
+                    : '/tickets');
                 return (
                   <div
                     key={n.id}

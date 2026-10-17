@@ -1,10 +1,12 @@
 import type { PrismaClient } from '@eventai/database';
+import { NotificationType } from '@prisma/client';
 import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
   BadRequestException,
 } from '../../common/exceptions';
+import type { NotificationsService } from '../../modules/notifications/notifications.service';
 
 export type OrganizerApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type EventModerationStatus = 'DRAFT' | 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
@@ -33,7 +35,10 @@ export interface EventModerationDetails {
 }
 
 export class ExpressModerationService {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly notificationsService?: NotificationsService,
+  ) {}
 
   // ═══════════════════════════════════════════════════
   // Organizer Application Workflow
@@ -124,6 +129,28 @@ export class ExpressModerationService {
         },
       });
 
+      try {
+        const admins = await this.prisma.user.findMany({
+          where: { role: 'ADMIN', isActive: true },
+          select: { id: true },
+        });
+        for (const admin of admins) {
+          await this.notificationsService?.createInAppNotification({
+            userId: admin.id,
+            type: NotificationType.SYSTEM,
+            title: 'Organizer Application Submitted',
+            message: `Updated organizer application received. Review ${input.organizationName}.`,
+            data: {
+              action: 'ORGANIZER_APPLICATION_SUBMITTED',
+              organizerId: updated.id,
+              link: `/admin?tab=organizers&organizerId=${updated.id}`,
+            },
+          });
+        }
+      } catch {
+        // Notification delivery is non-blocking
+      }
+
       return {
         ...updated,
         status: 'PENDING',
@@ -154,6 +181,28 @@ export class ExpressModerationService {
         },
       },
     });
+
+    try {
+      const admins = await this.prisma.user.findMany({
+        where: { role: 'ADMIN', isActive: true },
+        select: { id: true },
+      });
+      for (const admin of admins) {
+        await this.notificationsService?.createInAppNotification({
+          userId: admin.id,
+          type: NotificationType.SYSTEM,
+          title: 'New Organizer Application',
+          message: `New organizer application received. Review ${input.organizationName}.`,
+          data: {
+            action: 'ORGANIZER_APPLICATION_SUBMITTED',
+            organizerId: created.id,
+            link: `/admin?tab=organizers&organizerId=${created.id}`,
+          },
+        });
+      }
+    } catch {
+      // Notification delivery is non-blocking
+    }
 
     return {
       ...created,
@@ -194,6 +243,22 @@ export class ExpressModerationService {
         },
       }),
     ]);
+
+    try {
+      await this.notificationsService?.createInAppNotification({
+        userId: organizer.userId,
+        type: NotificationType.SYSTEM,
+        title: 'Organizer Profile Approved',
+        message: 'Congratulations! Your organizer application has been approved. You can now create and manage events.',
+        data: {
+          action: 'ORGANIZER_APPLICATION_APPROVED',
+          organizerId,
+          link: '/dashboard',
+        },
+      });
+    } catch {
+      // Non-blocking
+    }
 
     return {
       organizer: {
@@ -249,6 +314,22 @@ export class ExpressModerationService {
         },
       }),
     ]);
+
+    try {
+      await this.notificationsService?.createInAppNotification({
+        userId: organizer.userId,
+        type: NotificationType.SYSTEM,
+        title: 'Organizer Application Update',
+        message: `Your organizer application was reviewed: ${reason.trim()}`,
+        data: {
+          action: 'ORGANIZER_APPLICATION_REJECTED',
+          organizerId,
+          link: '/dashboard',
+        },
+      });
+    } catch {
+      // Non-blocking
+    }
 
     return {
       organizer: {
@@ -412,6 +493,28 @@ export class ExpressModerationService {
       },
     });
 
+    try {
+      const admins = await this.prisma.user.findMany({
+        where: { role: 'ADMIN', isActive: true },
+        select: { id: true },
+      });
+      for (const admin of admins) {
+        await this.notificationsService?.createInAppNotification({
+          userId: admin.id,
+          type: NotificationType.SYSTEM,
+          title: 'Event Submitted for Approval',
+          message: `New event submitted for approval. Review "${event.title}".`,
+          data: {
+            action: 'EVENT_SUBMITTED',
+            eventId: event.id,
+            link: `/admin?tab=events&eventId=${event.id}`,
+          },
+        });
+      }
+    } catch {
+      // Non-blocking
+    }
+
     return {
       status: 'PENDING_APPROVAL',
       submittedAt: new Date().toISOString(),
@@ -456,6 +559,28 @@ export class ExpressModerationService {
         data: { status: 'DRAFT' },
       })]);
 
+      try {
+        const eventWithOrg = await this.prisma.event.findUnique({
+          where: { id: eventId },
+          select: { title: true, organizer: { select: { userId: true } } },
+        });
+        if (eventWithOrg?.organizer?.userId) {
+          await this.notificationsService?.createInAppNotification({
+            userId: eventWithOrg.organizer.userId,
+            type: NotificationType.SYSTEM,
+            title: 'Event Revision Requested',
+            message: `Your event "${eventWithOrg.title}" was not approved: ${input.reason.trim()}`,
+            data: {
+              action: 'EVENT_REJECTED',
+              eventId,
+              link: `/organizer/events/${eventId}`,
+            },
+          });
+        }
+      } catch {
+        // Non-blocking
+      }
+
       return {
         status: 'REJECTED',
         rejectionReason: input.reason.trim(),
@@ -476,6 +601,28 @@ export class ExpressModerationService {
         },
       },
     });
+
+    try {
+      const eventWithOrg = await this.prisma.event.findUnique({
+        where: { id: eventId },
+        select: { title: true, organizer: { select: { userId: true } } },
+      });
+      if (eventWithOrg?.organizer?.userId) {
+        await this.notificationsService?.createInAppNotification({
+          userId: eventWithOrg.organizer.userId,
+          type: NotificationType.SYSTEM,
+          title: 'Event Approved',
+          message: `Your event "${eventWithOrg.title}" has been approved! You can now publish it to attendees.`,
+          data: {
+            action: 'EVENT_APPROVED',
+            eventId,
+            link: `/organizer/events/${eventId}`,
+          },
+        });
+      }
+    } catch {
+      // Non-blocking
+    }
 
     return {
       status: 'APPROVED',

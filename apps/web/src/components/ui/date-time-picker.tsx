@@ -1,6 +1,7 @@
 'use client';
 
 import { useId } from 'react';
+import { Calendar, Clock, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface DateTimePickerProps {
@@ -13,6 +14,7 @@ export interface DateTimePickerProps {
   disabled?: boolean;
   required?: boolean;
   id?: string;
+  showQuickChips?: boolean;
 }
 
 const COMMON_TIMES = [
@@ -34,7 +36,6 @@ const COMMON_TIMES = [
 
 function parseValue(value: string) {
   if (!value) return { date: '', time: '18:00' };
-  // value might be "2026-10-25T19:00" or ISO string
   const [datePart, timePart] = value.split('T');
   const time = timePart ? timePart.slice(0, 5) : '18:00';
   return { date: datePart ?? '', time };
@@ -61,6 +62,20 @@ function formatPreview(dateStr: string, timeStr: string): string {
   }
 }
 
+function getQuickDate(offsetDays: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function getUpcomingWeekend(): string {
+  const d = new Date();
+  const day = d.getDay(); // 0 is Sun, 6 is Sat
+  const daysUntilSaturday = day === 6 ? 7 : (6 - day);
+  d.setDate(d.getDate() + daysUntilSaturday);
+  return d.toISOString().slice(0, 10);
+}
+
 export function DateTimePicker({
   label,
   value,
@@ -71,6 +86,7 @@ export function DateTimePicker({
   disabled = false,
   required = false,
   id: customId,
+  showQuickChips = true,
 }: DateTimePickerProps) {
   const generatedId = useId();
   const id = customId ?? generatedId;
@@ -86,7 +102,6 @@ export function DateTimePicker({
 
   const handleTimeChange = (newTime: string) => {
     if (!date) {
-      // default to today's date if date not yet selected
       const today = new Date().toISOString().slice(0, 10);
       onChange(`${today}T${newTime}`);
       return;
@@ -96,22 +111,31 @@ export function DateTimePicker({
 
   const formattedPreview = date && time ? formatPreview(date, time) : '';
 
+  const quickChips = [
+    { label: 'Today', getDate: () => getQuickDate(0) },
+    { label: 'Tomorrow', getDate: () => getQuickDate(1) },
+    { label: 'This Weekend', getDate: () => getUpcomingWeekend() },
+    { label: '+1 Week', getDate: () => getQuickDate(7) },
+  ];
+
   return (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between">
-        <label htmlFor={`${id}-date`} className="block text-sm font-medium">
+      <div className="flex flex-wrap items-center justify-between gap-1">
+        <label htmlFor={`${id}-date`} className="block text-sm font-medium text-foreground">
           {label} {required && <span className="text-destructive">*</span>}
         </label>
         {formattedPreview && (
-          <span className="text-xs font-medium text-primary">
+          <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">
+            <Clock className="h-3 w-3" aria-hidden="true" />
             {formattedPreview}
           </span>
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        {/* Date input */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {/* Date input with icon */}
         <div className="relative">
+          <Calendar className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
           <input
             id={`${id}-date`}
             type="date"
@@ -121,26 +145,29 @@ export function DateTimePicker({
             value={date}
             onChange={(e) => handleDateChange(e.target.value)}
             className={cn(
-              'h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+              'h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
               error && 'border-destructive focus-visible:ring-destructive',
             )}
           />
         </div>
 
-        {/* Time input + select */}
+        {/* Time input + select presets */}
         <div className="flex gap-1.5">
-          <input
-            id={`${id}-time`}
-            type="time"
-            required={required}
-            disabled={disabled}
-            value={time}
-            onChange={(e) => handleTimeChange(e.target.value)}
-            className={cn(
-              'h-10 flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
-              error && 'border-destructive focus-visible:ring-destructive',
-            )}
-          />
+          <div className="relative flex-1">
+            <Clock className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <input
+              id={`${id}-time`}
+              type="time"
+              required={required}
+              disabled={disabled}
+              value={time}
+              onChange={(e) => handleTimeChange(e.target.value)}
+              className={cn(
+                'h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+                error && 'border-destructive focus-visible:ring-destructive',
+              )}
+            />
+          </div>
           <select
             aria-label="Preset times"
             disabled={disabled}
@@ -159,6 +186,36 @@ export function DateTimePicker({
           </select>
         </div>
       </div>
+
+      {/* Quick date chips */}
+      {showQuickChips && !disabled && (
+        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Sparkles className="h-2.5 w-2.5" aria-hidden="true" /> Quick:
+          </span>
+          {quickChips.map((chip) => {
+            const chipDate = chip.getDate();
+            const isSelected = date === chipDate;
+            const isBeforeMin = minDate ? chipDate < minDate : false;
+            if (isBeforeMin) return null;
+            return (
+              <button
+                key={chip.label}
+                type="button"
+                onClick={() => handleDateChange(chipDate)}
+                className={cn(
+                  'rounded border px-2 py-0.5 text-[11px] transition-colors',
+                  isSelected
+                    ? 'border-primary bg-primary text-primary-foreground font-medium'
+                    : 'border-input bg-muted/30 text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {error ? (
         <p role="alert" className="text-xs text-destructive font-medium">

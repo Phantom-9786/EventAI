@@ -315,7 +315,7 @@ export class BookingsService {
           type: 'BOOKING_CANCELLED',
           title: 'Reservation cancelled',
           message: `Your reservation for "${booking.event.title}" has been cancelled.`,
-          data: { bookingId: booking.id, link: '/tickets' },
+          data: { action: 'BOOKING_CANCELLED', bookingId: booking.id, link: '/tickets' },
         })
         ?.catch?.(() => undefined);
     }
@@ -327,7 +327,7 @@ export class BookingsService {
           type: 'BOOKING_CANCELLED',
           title: 'Reservation cancelled by attendee',
           message: `A reservation for "${booking.event.title}" was cancelled by the attendee.`,
-          data: { bookingId: booking.id, link: '/organizer/events' },
+          data: { action: 'BOOKING_CANCELLED', bookingId: booking.id, link: '/organizer/events' },
         })
         ?.catch?.(() => undefined);
     }

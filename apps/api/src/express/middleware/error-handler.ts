@@ -44,16 +44,20 @@ export function createErrorHandlerMiddleware(logger: StructuredLogger): ErrorReq
         message = httpEx.message;
         error = httpEx.name ? httpEx.name.replace(/Exception$/, '') : undefined;
       }
-    } else if (err instanceof HttpError) {
-      statusCode = err.statusCode;
-      message = err.message;
-      error = err.errorName;
-      errors = err.errors;
-    } else if (err instanceof SyntaxError && 'status' in err && (err as { status?: number }).status === 400 && 'body' in err) {
+    } else if (err instanceof SyntaxError && ('status' in err || 'statusCode' in err) && 'body' in err) {
       // Malformed JSON from express.json()
       statusCode = 400;
       message = 'Malformed JSON in request body';
       error = 'Bad Request';
+    } else if (
+      err instanceof HttpError ||
+      (typeof err === 'object' && err !== null && 'statusCode' in err && typeof (err as { statusCode: unknown }).statusCode === 'number')
+    ) {
+      const httpErr = err as HttpError;
+      statusCode = httpErr.statusCode;
+      message = httpErr.message;
+      error = httpErr.errorName ?? (httpErr.name !== 'Error' && httpErr.name !== 'HttpError' ? httpErr.name : undefined);
+      errors = httpErr.errors;
     } else if (typeof err === 'object' && err !== null && 'name' in err && (err as { name?: string }).name === 'MulterError') {
       const multerErr = err as { code?: string; message?: string };
       if (multerErr.code === 'LIMIT_FILE_SIZE') {

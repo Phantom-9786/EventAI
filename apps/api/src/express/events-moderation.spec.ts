@@ -160,8 +160,18 @@ describe('Express Events, Organizers & Moderation Modules', () => {
       handleMaterialEventChange: jest.fn(),
     };
 
+    const mockCache = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue(undefined),
+      del: jest.fn().mockResolvedValue(undefined),
+      delPattern: jest.fn().mockResolvedValue(undefined),
+      reset: jest.fn().mockResolvedValue(undefined),
+      wrap: jest.fn().mockImplementation((_k: string, fn: () => any) => fn()),
+    };
+
     const app = createExpressApp({
       prisma: mockPrisma,
+      cache: mockCache as any,
       eventsService: mockEventsService as unknown as EventsService,
       mediaService: mockMediaService as unknown as EventMediaService,
       categoriesService: mockCategoriesService as unknown as CategoriesService,
@@ -454,8 +464,19 @@ describe('Express Events, Organizers & Moderation Modules', () => {
       );
 
       const token = createToken(organizerUser);
-      const res = await fetch(`${baseUrl}/api/organizers/me/events`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch(`${baseUrl}/api/organizers/venues`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: 'Grand Arena',
+          address: '123 Tech Blvd',
+          city: 'San Francisco',
+          state: 'California',
+          capacity: 500,
+        }),
       });
 
       expect(res.status).toBe(403);
@@ -868,7 +889,10 @@ describe('Express Events, Organizers & Moderation Modules', () => {
     });
 
     it('GET /api/organizers/me/events returns list with attached moderation details for each event', async () => {
-      mockModerationService.requireApprovedOrganizer!.mockResolvedValueOnce('org-verified-1');
+      mockOrganizersService.getOwnOrganizerProfile!.mockResolvedValueOnce({
+        id: 'org-verified-1',
+        isVerified: true,
+      });
       mockOrganizersService.listOwnEvents!.mockResolvedValueOnce({
         events: [
           { id: 'evt-draft-1', title: 'Draft Event', status: 'DRAFT' },

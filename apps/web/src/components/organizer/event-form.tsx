@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
+  AlertCircle,
   ArrowLeft,
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  Clock,
   ExternalLink,
   FileText,
   Image as ImageIcon,
@@ -28,6 +30,7 @@ import {
   getOrganizerCategories,
   getOrganizerVenues,
   publishOrganizerEvent,
+  submitOrganizerEventForReview,
   updateOrganizerEvent,
   updateOrganizerTicketType,
   uploadOrganizerMedia,
@@ -171,14 +174,20 @@ function TicketInlineForm({
           Max per booking (1–10) <span className="text-destructive">*</span>
           <input required type="number" min="1" max="10" step="1" value={maxPerBooking} onChange={(e) => setMaxPerBooking(e.target.value)} className={inputClass} />
         </label>
-        <label className="text-xs font-medium">
-          Sale window start (optional)
-          <input type="datetime-local" value={saleStart} onChange={(e) => setSaleStart(e.target.value)} className={inputClass} />
-        </label>
-        <label className="text-xs font-medium">
-          Sale window end (optional)
-          <input type="datetime-local" value={saleEnd} onChange={(e) => setSaleEnd(e.target.value)} className={inputClass} />
-        </label>
+        <div className="col-span-full grid gap-3 sm:grid-cols-2">
+          <DateTimePicker
+            label="Sale window start (optional)"
+            value={saleStart}
+            onChange={setSaleStart}
+            showQuickChips={false}
+          />
+          <DateTimePicker
+            label="Sale window end (optional)"
+            value={saleEnd}
+            onChange={setSaleEnd}
+            showQuickChips={false}
+          />
+        </div>
       </div>
       <label className="block text-xs font-medium">
         Description (optional)
@@ -240,6 +249,7 @@ export function EventForm({
   });
   const [loadingOptions, setLoadingOptions] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [submittingForReview, setSubmittingForReview] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingGallery, setUploadingGallery] = useState(false);
@@ -269,7 +279,7 @@ export function EventForm({
     { label: 'Schedule', icon: CalendarDays },
     { label: 'Media & Policies', icon: ImageIcon },
     { label: 'Tickets & Inventory', icon: Ticket },
-    { label: 'Review & Publish', icon: CheckCircle2 },
+    { label: 'Review & Submit', icon: CheckCircle2 },
   ];
 
   useEffect(() => {
@@ -579,16 +589,15 @@ export function EventForm({
     await goToStep(Math.min(step + 1, steps.length - 1));
   }
 
-  async function handlePublish() {
+  async function handleSubmitForReview() {
     setError(null);
     setNotice(null);
 
     if (uploadingCover || uploadingGallery) {
-      setError('Please wait for media uploads to finish before publishing.');
+      setError('Please wait for media uploads to finish before submitting.');
       return;
     }
 
-    // Thorough validation of all required fields before publish
     if (values.title.trim().length < 3) {
       setError('Event title must be at least 3 characters.');
       setStep(0);
@@ -617,29 +626,60 @@ export function EventForm({
       return;
     }
 
-    if (!eventState) {
-      setPublishing(true);
-      try {
-        const saved = await saveDraftEvent();
-        if (!saved) return;
-        if (tickets.length === 0) {
-          setError('Please add at least one ticket tier in Tickets & Inventory before publishing.');
+    setSubmittingForReview(true);
+    try {
+      const saved = await saveDraftEvent();
+      if (!saved) return;
+
+      if (tickets.length === 0) {
+        setError('Please add at least one ticket tier in Tickets & Inventory before submitting for review.');
+        setStep(4);
+        return;
+      }
+      for (const t of tickets) {
+        if (t.totalQuantity < 1) {
+          setError(`Ticket "${t.name}" has invalid inventory.`);
           setStep(4);
           return;
         }
-        const published = await publishOrganizerEvent(saved.id);
-        setEventState(published);
-        onSaved?.(published);
-        setNotice('Event published successfully!');
-        return;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Publish failed.');
-        return;
-      } finally {
-        setPublishing(false);
       }
+
+      await submitOrganizerEventForReview(saved.id);
+      setEventState({
+        ...saved,
+        moderation: {
+          status: 'PENDING_APPROVAL',
+          submittedAt: new Date().toISOString(),
+        },
+      });
+      setNotice('Event submitted for administrator approval! You will receive an in-app notification once reviewed.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit event for review.');
+    } finally {
+      setSubmittingForReview(false);
+    }
+  }
+
+  async function handlePublish() {
+    setError(null);
+    setNotice(null);
+
+    if (uploadingCover || uploadingGallery) {
+      setError('Please wait for media uploads to finish before publishing.');
+      return;
     }
 
+    if (!eventState) {
+      setError('Please save and submit your event for administrator approval before publishing.');
+      return;
+    }
+
+    if (eventState.moderation?.status !== 'APPROVED') {
+      setError('Event must be approved by an administrator before it can be published.');
+      return;
+    }
+
+    const start = new Date(values.startDate);
     if (start.getTime() <= Date.now()) {
       setError('Cannot publish an event whose start date has passed.');
       setStep(2);
@@ -665,7 +705,7 @@ export function EventForm({
       const published = await publishOrganizerEvent(eventState.id);
       setEventState(published);
       onSaved?.(published);
-      setNotice('Event published successfully!');
+      setNotice('Event published successfully! It is now live for attendees.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Publish failed.');
     } finally {
@@ -1323,18 +1363,63 @@ export function EventForm({
             </div>
           </div>
 
-          <div className="rounded-lg border bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <p className="font-semibold text-sm">Ready to make this event visible?</p>
+          {/* Moderation status banner if rejected */}
+          {eventState?.moderation?.status === 'REJECTED' && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 space-y-1">
+              <div className="flex items-center gap-2 text-destructive font-semibold text-sm">
+                <AlertCircle className="h-4 w-4" />
+                <span>Event rejected by administrator</span>
+              </div>
               <p className="text-xs text-muted-foreground">
-                Published events immediately appear in attendee discovery and ticket booking.
+                Reason: {eventState.moderation.rejectionReason || 'No specific reason provided.'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Please make the necessary changes to your event details or ticket tiers, then resubmit for review.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+          )}
+
+          <div className="rounded-lg border bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              {eventState?.status === 'PUBLISHED' ? (
+                <>
+                  <p className="font-semibold text-sm text-foreground">Event is Live & Published</p>
+                  <p className="text-xs text-muted-foreground">
+                    This event is visible to attendees and open for ticket bookings.
+                  </p>
+                </>
+              ) : eventState?.moderation?.status === 'APPROVED' ? (
+                <>
+                  <p className="font-semibold text-sm text-emerald-600 dark:text-emerald-400">
+                    Event Approved by Administrator
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Your event has been approved! Ready to make it live for attendees?
+                  </p>
+                </>
+              ) : eventState?.moderation?.status === 'PENDING_APPROVAL' ? (
+                <>
+                  <p className="font-semibold text-sm text-amber-600 dark:text-amber-400">
+                    Under Administrator Review
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Your event is in the moderation queue. You will receive an in-app notification once a decision is made.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-sm text-foreground">Ready to submit for approval?</p>
+                  <p className="text-xs text-muted-foreground">
+                    Events must be reviewed and approved by an administrator before they can be published live.
+                  </p>
+                </>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
-                disabled={submitting || uploadingCover || uploadingGallery}
+                disabled={submitting || publishing || submittingForReview || uploadingCover || uploadingGallery}
                 onClick={() => void saveDraftEvent()}
               >
                 {submitting ? 'Saving…' : 'Save draft changes'}
@@ -1346,10 +1431,10 @@ export function EventForm({
                 >
                   <ExternalLink className="h-4 w-4" /> View live page
                 </Link>
-              ) : (
+              ) : eventState?.moderation?.status === 'APPROVED' ? (
                 <Button
                   type="button"
-                  disabled={publishing || uploadingCover || uploadingGallery}
+                  disabled={publishing || submitting || submittingForReview || uploadingCover || uploadingGallery}
                   onClick={() => void handlePublish()}
                 >
                   {publishing ? (
@@ -1359,6 +1444,28 @@ export function EventForm({
                     </>
                   ) : (
                     'Publish event now'
+                  )}
+                </Button>
+              ) : eventState?.moderation?.status === 'PENDING_APPROVAL' ? (
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                  <Clock className="h-3.5 w-3.5" />
+                  Awaiting Approval
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  disabled={submittingForReview || submitting || publishing || uploadingCover || uploadingGallery}
+                  onClick={() => void handleSubmitForReview()}
+                >
+                  {submittingForReview ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting…
+                    </>
+                  ) : eventState?.moderation?.status === 'REJECTED' ? (
+                    'Resubmit for admin approval'
+                  ) : (
+                    'Submit for admin approval'
                   )}
                 </Button>
               )}
@@ -1372,7 +1479,7 @@ export function EventForm({
         <Button
           type="button"
           variant="outline"
-          disabled={step === 0 || submitting || publishing || uploadingCover || uploadingGallery}
+          disabled={step === 0 || submitting || publishing || submittingForReview || uploadingCover || uploadingGallery}
           onClick={() => setStep((curr) => Math.max(0, curr - 1))}
         >
           Previous step

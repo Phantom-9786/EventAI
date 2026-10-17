@@ -151,7 +151,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
   const notificationsService =
     options.notificationsService ?? new NotificationsService(prisma as never);
   const moderationService =
-    options.moderationService ?? new ExpressModerationService(prisma);
+    options.moderationService ?? new ExpressModerationService(prisma, notificationsService);
   const authService =
     options.authService ??
     new AuthService(

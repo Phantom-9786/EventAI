@@ -133,10 +133,12 @@ export default function DashboardPage() {
       <h1 className="text-3xl font-bold tracking-tight">{profile.organizationName}</h1>
       <p className="mt-1 text-sm text-muted-foreground">Organizer dashboard</p>
       {profile.phone && <p className="mt-1 text-sm text-muted-foreground">Organizer contact: {profile.phone}</p>}
-      <div className="mt-4 flex flex-wrap gap-2">
-        <Link href="/organizer/events" className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm font-medium hover:bg-accent">Manage events</Link>
-        <Link href="/organizer/events/new" className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90">Create event</Link>
-      </div>
+      {profile.isVerified && profile.applicationStatus === 'APPROVED' && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link href="/organizer/events" className="inline-flex h-9 items-center rounded-md border border-input px-3 text-sm font-medium hover:bg-accent">Manage events</Link>
+          <Link href="/organizer/events/new" className="inline-flex h-9 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90">Create event</Link>
+        </div>
+      )}
 
       {profile.applicationStatus === 'PENDING' && (
         <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-800 dark:text-amber-300" role="status">
@@ -228,48 +230,52 @@ export default function DashboardPage() {
         {joinError && <p role="alert" className="mt-3 text-sm text-destructive">{joinError}</p>}
       </section>
 
-      {stats && (
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="Revenue (confirmed)" value={formatPrice(stats.revenue)} icon={<IndianRupee className="h-3.5 w-3.5" />} />
-          <StatCard label="Confirmed bookings" value={String(stats.confirmedBookings)} icon={<CalendarDays className="h-3.5 w-3.5" />} />
-          <StatCard label="Tickets issued" value={String(stats.ticketsIssued)} icon={<Ticket className="h-3.5 w-3.5" />} />
-          <StatCard label="Checked in" value={`${stats.checkedIn}/${stats.ticketsIssued}`} icon={<CheckCircle2 className="h-3.5 w-3.5" />} />
-        </div>
-      )}
-
-      <h2 className="mt-10 text-xl font-semibold">Your events</h2>
-      {!events || events.length === 0 ? (
-        <p className="mt-3 rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-          No events yet — create your first event to start selling.
-        </p>
-      ) : (
-        <div className="mt-3 divide-y rounded-lg border">
-          {events.map((event) => (
-            <div key={event.id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-medium">{event.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {event.category.name} · {event.venue.name}, {event.venue.city} ·{' '}
-                  {formatEventDate(event.startDate)}
-                </p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`w-fit rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[event.status] ?? 'bg-muted text-muted-foreground'}`}
-                >
-                  {event.status}
-                </span>
-                <Link
-                  href={`/dashboard/scan?event=${event.id}`}
-                  className="text-sm font-medium text-primary hover:underline"
-                >
-                  Door scan
-                </Link>
-                <Link href={`/organizer/events/${encodeURIComponent(event.id)}`} className="text-sm font-medium text-primary hover:underline">Manage</Link>
-              </div>
+      {profile.isVerified && profile.applicationStatus === 'APPROVED' && (
+        <>
+          {stats && (
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard label="Revenue (confirmed)" value={formatPrice(stats.revenue)} icon={<IndianRupee className="h-3.5 w-3.5" />} />
+              <StatCard label="Confirmed bookings" value={String(stats.confirmedBookings)} icon={<CalendarDays className="h-3.5 w-3.5" />} />
+              <StatCard label="Tickets issued" value={String(stats.ticketsIssued)} icon={<Ticket className="h-3.5 w-3.5" />} />
+              <StatCard label="Checked in" value={`${stats.checkedIn}/${stats.ticketsIssued}`} icon={<CheckCircle2 className="h-3.5 w-3.5" />} />
             </div>
-          ))}
-        </div>
+          )}
+
+          <h2 className="mt-10 text-xl font-semibold">Your events</h2>
+          {!events || events.length === 0 ? (
+            <p className="mt-3 rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+              No events yet — create your first event to start selling.
+            </p>
+          ) : (
+            <div className="mt-3 divide-y rounded-lg border">
+              {events.map((event) => (
+                <div key={event.id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium">{event.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {event.category.name} · {event.venue.name}, {event.venue.city} ·{' '}
+                      {formatEventDate(event.startDate)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`w-fit rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[event.status] ?? 'bg-muted text-muted-foreground'}`}
+                    >
+                      {event.status}
+                    </span>
+                    <Link
+                      href={`/dashboard/scan?event=${event.id}`}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      Door scan
+                    </Link>
+                    <Link href={`/organizer/events/${encodeURIComponent(event.id)}`} className="text-sm font-medium text-primary hover:underline">Manage</Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -57,6 +57,8 @@ export class NotificationsService {
 
   constructor(@Optional() private readonly prisma?: PrismaService) {}
 
+  private readonly inFlightCreation = new Map<string, Promise<any>>();
+
   async createInAppNotification(input: {
     userId: string;
     type: NotificationType;
@@ -64,47 +66,100 @@ export class NotificationsService {
     message: string;
     data?: Record<string, unknown>;
   }) {
-    if (!this.prisma) {
+    const prisma = this.prisma;
+    if (!prisma) {
       this.logger.debug('In-app notification skipped: Prisma not injected');
       return null;
     }
-    try {
-      const dedupeKey = input.data?.bookingId ?? input.data?.key ?? input.data?.eventId;
-      if (dedupeKey) {
-        const recent = await this.prisma.notification.findMany({
-          where: {
+
+    const data = input.data ?? {};
+    const action = data.action as string | undefined;
+    const hasIdentifiers = Boolean(
+      data.bookingId || data.key || data.eventId || data.organizerId,
+    );
+
+    const concurrencyKey = hasIdentifiers
+      ? `${input.userId}:${input.type}:${action ?? ''}:${String(data.bookingId ?? '')}:${String(data.eventId ?? '')}:${String(data.organizerId ?? '')}:${String(data.key ?? '')}`
+      : null;
+
+    if (concurrencyKey) {
+      const active = this.inFlightCreation.get(concurrencyKey);
+      if (active) {
+        return await active;
+      }
+    }
+
+    const task = (async () => {
+      try {
+        if (hasIdentifiers) {
+          const recent = await prisma.notification.findMany({
+            where: {
+              userId: input.userId,
+              type: input.type,
+              isRead: false,
+              createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+            },
+            take: 20,
+          });
+
+          const match = recent.find((n) => {
+            if (!n.data || typeof n.data !== 'object') return false;
+            const d = n.data as Record<string, unknown>;
+
+            // When an action is supplied, the existing notification action must match
+            if (action !== undefined && d.action !== action) {
+              return false;
+            }
+
+            let hasSharedIdentifier = false;
+
+            // Compare all supported identifiers. Any identifier present in both must match exactly;
+            // conflicting values between incoming and existing notifications prevent a match.
+            for (const idKey of ['bookingId', 'key', 'eventId', 'organizerId'] as const) {
+              const incomingVal = data[idKey];
+              const existingVal = d[idKey];
+
+              if (incomingVal !== undefined && existingVal !== undefined) {
+                if (existingVal !== incomingVal) {
+                  return false;
+                }
+                hasSharedIdentifier = true;
+              }
+            }
+
+            return hasSharedIdentifier;
+          });
+
+          if (match) return match;
+        }
+
+        return await prisma.notification.create({
+          data: {
             userId: input.userId,
             type: input.type,
-            createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+            title: input.title,
+            message: input.message,
+            data: input.data ? JSON.parse(JSON.stringify(input.data)) : undefined,
           },
-          take: 10,
         });
-        const match = recent.find((n) => {
-          if (!n.data || typeof n.data !== 'object') return false;
-          const d = n.data as Record<string, unknown>;
-          return (
-            d.bookingId === dedupeKey ||
-            d.key === dedupeKey ||
-            (input.data?.action && d.action === input.data.action && d.eventId === dedupeKey)
-          );
-        });
-        if (match) return match;
+      } catch (err) {
+        this.logger.warn(
+          `Failed to persist in-app notification: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return null;
       }
+    })();
 
-      return await this.prisma.notification.create({
-        data: {
-          userId: input.userId,
-          type: input.type,
-          title: input.title,
-          message: input.message,
-          data: input.data ? JSON.parse(JSON.stringify(input.data)) : undefined,
-        },
-      });
-    } catch (err) {
-      this.logger.warn(
-        `Failed to persist in-app notification: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return null;
+    if (concurrencyKey) {
+      this.inFlightCreation.set(concurrencyKey, task);
+    }
+
+    try {
+      return await task;
+    } finally {
+      if (concurrencyKey) {
+        this.inFlightCreation.delete(concurrencyKey);
+      }
     }
   }
 

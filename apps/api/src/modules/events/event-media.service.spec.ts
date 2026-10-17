@@ -115,6 +115,11 @@ describe('EventMediaService', () => {
       delete process.env.CLOUDINARY_CLOUD_NAME;
       delete process.env.CLOUDINARY_API_KEY;
       delete process.env.CLOUDINARY_API_SECRET;
+      delete process.env.CLOUDINARY_URL;
+      delete process.env.CLOUDINARY_PROVIDERS;
+      delete process.env.CLOUDINARY_PRIMARY_CLOUD_NAME;
+      delete process.env.CLOUDINARY_PRIMARY_API_KEY;
+      delete process.env.CLOUDINARY_PRIMARY_API_SECRET;
       expect(service.isCloudinaryConfigured()).toBe(false);
     });
 
@@ -146,6 +151,11 @@ describe('EventMediaService', () => {
     const slug = 'mumbai-indie-night-02c73b12';
 
     beforeEach(() => {
+      delete process.env.CLOUDINARY_URL;
+      delete process.env.CLOUDINARY_PROVIDERS;
+      delete process.env.CLOUDINARY_PRIMARY_CLOUD_NAME;
+      delete process.env.CLOUDINARY_PRIMARY_API_KEY;
+      delete process.env.CLOUDINARY_PRIMARY_API_SECRET;
       process.env.CLOUDINARY_CLOUD_NAME = 'demo-cloud';
       process.env.CLOUDINARY_API_KEY = '123456';
       process.env.CLOUDINARY_API_SECRET = 'secret123';
@@ -205,6 +215,11 @@ describe('EventMediaService', () => {
       delete process.env.CLOUDINARY_CLOUD_NAME;
       delete process.env.CLOUDINARY_API_KEY;
       delete process.env.CLOUDINARY_API_SECRET;
+      delete process.env.CLOUDINARY_URL;
+      delete process.env.CLOUDINARY_PROVIDERS;
+      delete process.env.CLOUDINARY_PRIMARY_CLOUD_NAME;
+      delete process.env.CLOUDINARY_PRIMARY_API_KEY;
+      delete process.env.CLOUDINARY_PRIMARY_API_SECRET;
       delete process.env.ALLOW_LOCAL_UPLOADS;
       service.isCloudinaryConfigured();
 
@@ -229,6 +244,11 @@ describe('EventMediaService', () => {
       delete process.env.CLOUDINARY_CLOUD_NAME;
       delete process.env.CLOUDINARY_API_KEY;
       delete process.env.CLOUDINARY_API_SECRET;
+      delete process.env.CLOUDINARY_URL;
+      delete process.env.CLOUDINARY_PROVIDERS;
+      delete process.env.CLOUDINARY_PRIMARY_CLOUD_NAME;
+      delete process.env.CLOUDINARY_PRIMARY_API_KEY;
+      delete process.env.CLOUDINARY_PRIMARY_API_SECRET;
       process.env.ALLOW_LOCAL_UPLOADS = 'true';
       process.env.NODE_ENV = 'development';
       service.isCloudinaryConfigured();

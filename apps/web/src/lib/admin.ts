@@ -140,10 +140,12 @@ export interface AdminUser {
   isEmailVerified: boolean;
   createdAt: string;
   bookingCount: number;
+  isDeleted?: boolean;
+  lifecycleStatus?: 'ACTIVE' | 'DEACTIVATED' | 'DELETED' | 'UNVERIFIED';
 }
 
 export async function listAdminUsers(
-  params: { search?: string; role?: string; isActive?: string; page?: number; limit?: number } = {},
+  params: { search?: string; role?: string; isActive?: string; status?: string; page?: number; limit?: number } = {},
 ): Promise<{ users: AdminUser[]; total: number; page: number; pages: number }> {
   const qs = new URLSearchParams();
   qs.set('page', String(params.page ?? 1));
@@ -151,6 +153,7 @@ export async function listAdminUsers(
   if (params.search) qs.set('search', params.search);
   if (params.role) qs.set('role', params.role);
   if (params.isActive) qs.set('isActive', params.isActive);
+  if (params.status) qs.set('status', params.status);
   const res = await authFetch(`/admin/users?${qs.toString()}`);
   if (!res.ok) throw new Error(`Failed to load users (${res.status})`);
   return res.json();
@@ -179,6 +182,39 @@ export interface AdminEventRow {
   };
 }
 
+export interface AdminEventDetail extends AdminEventRow {
+  description: string;
+  shortDescription: string | null;
+  endDate: string;
+  coverImage: string | null;
+  images: string[];
+  tags: string[];
+  policies: string | null;
+  cancellationPolicy: string | null;
+  category: { id: string; name: string; slug?: string; color?: string | null; icon?: string | null };
+  venue: { id: string; name: string; address: string; city: string; state: string; capacity?: number } | null;
+  ticketTypes: {
+    id: string;
+    name: string;
+    description: string | null;
+    price: number;
+    currency: string;
+    totalQuantity: number;
+    availableQuantity: number;
+    maxPerBooking: number;
+    isActive: boolean;
+  }[];
+  organizer: {
+    id: string;
+    organizationName: string;
+    description: string | null;
+    phone: string | null;
+    website: string | null;
+    isVerified?: boolean;
+    user: { id: string; email: string; firstName: string; lastName: string };
+  };
+}
+
 export async function listAdminEvents(
   params: { search?: string; status?: string; page?: number; limit?: number } = {},
 ): Promise<{ events: AdminEventRow[]; total: number; page: number; pages: number }> {
@@ -190,6 +226,13 @@ export async function listAdminEvents(
   const res = await authFetch(`/admin/events?${qs.toString()}`);
   if (!res.ok) throw new Error(`Failed to load events (${res.status})`);
   return res.json();
+}
+
+export async function getAdminEventDetail(id: string): Promise<AdminEventDetail> {
+  const res = await authFetch(`/admin/events/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(`Failed to load event details (${res.status})`);
+  const data = (await res.json()) as { event: AdminEventDetail };
+  return data.event;
 }
 
 export const moderateAdminEvent = (id: string, reason?: string) =>

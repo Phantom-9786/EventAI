@@ -311,6 +311,16 @@ export class PaymentsService {
           },
         });
       });
+      const attendeeId = payment.booking?.userId ?? payment.userId;
+      if (attendeeId) {
+        void this.notifications.createInAppNotification({
+          userId: attendeeId,
+          type: 'PAYMENT_FAILED',
+          title: 'Payment failed',
+          message: `Your payment for "${payment.booking?.event?.title ?? 'booking'}" could not be completed: ${entity.error_description ?? 'Payment failed'}.`,
+          data: { action: 'PAYMENT_FAILED', bookingId: payment.bookingId, link: '/tickets' },
+        });
+      }
       this.logger.warn(`Payment for booking ${payment.bookingId} failed`);
       return { received: true, handled: true };
     }
@@ -405,7 +415,7 @@ export class PaymentsService {
         type: 'SYSTEM',
         title: 'New refund request',
         message: `An attendee requested a refund for "${booking.event.title}".`,
-        data: { bookingId, eventId: booking.event.id, link: '/organizer/refunds' },
+        data: { action: 'REFUND_REQUESTED', bookingId, eventId: booking.event.id, link: '/organizer/refunds' },
       });
     }
 
@@ -602,7 +612,7 @@ export class PaymentsService {
         type: 'REFUND_PROCESSED',
         title: 'Refund approved',
         message: `Your refund for "${payment.booking.event.title}" was approved and settlement is being processed.`,
-        data: { bookingId, link: '/tickets' },
+        data: { action: 'REFUND_APPROVED', bookingId, link: '/tickets' },
       });
     }
 
@@ -656,7 +666,7 @@ export class PaymentsService {
         type: 'SYSTEM',
         title: 'Refund request declined',
         message: `Your refund request for "${payment.booking.event.title}" was declined by the organizer.`,
-        data: { bookingId, link: '/tickets' },
+        data: { action: 'REFUND_REJECTED', bookingId, link: '/tickets' },
       });
     }
 
@@ -1457,7 +1467,7 @@ export class PaymentsService {
         type: 'REFUND_PROCESSED',
         title: 'Refund settled',
         message: `Your refund of ₹${(refundAmount / 100).toLocaleString('en-IN')} for "${booking.event.title}" has been settled.`,
-        data: { bookingId: booking.id, refundId, link: '/tickets' },
+        data: { action: 'REFUND_SETTLED', bookingId: booking.id, refundId, link: '/tickets' },
       });
     }
   }
@@ -1688,7 +1698,7 @@ export class PaymentsService {
         type: 'BOOKING_CONFIRMED',
         title: 'Booking confirmed!',
         message: `Your booking for "${bookingWithEvent.event.title}" is confirmed (${confirmed.tickets.length} ticket${confirmed.tickets.length === 1 ? '' : 's'}).`,
-        data: { bookingId: confirmed.id, link: '/tickets' },
+        data: { action: 'BOOKING_CONFIRMED', bookingId: confirmed.id, link: '/tickets' },
       });
     }
 
@@ -1698,7 +1708,7 @@ export class PaymentsService {
         type: 'BOOKING_CONFIRMED',
         title: 'New ticket booking',
         message: `A booking for "${bookingWithEvent.event.title}" was confirmed (₹${(confirmed.totalAmount / 100).toLocaleString('en-IN')}).`,
-        data: { bookingId: confirmed.id, eventId: bookingWithEvent.event.id, link: '/organizer/events' },
+        data: { action: 'ORGANIZER_TICKET_SOLD', bookingId: confirmed.id, eventId: bookingWithEvent.event.id, link: '/organizer/events' },
       });
     }
   }

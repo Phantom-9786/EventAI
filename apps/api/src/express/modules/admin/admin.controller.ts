@@ -158,6 +158,15 @@ export class ExpressAdminController {
     }
   };
 
+  getEventDetail = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const event = await this.adminService.getEventDetail(req.params.id);
+      res.status(200).json({ event });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   moderateEvent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const adminUserId = req.authUser?.id ?? req.user?.id;

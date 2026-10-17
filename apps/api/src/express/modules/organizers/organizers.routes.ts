@@ -34,9 +34,9 @@ export function createOrganizersRouter({
   router.get('/me', controller.getMe);
   router.delete('/me', requireRoles(UserRole.ORGANIZER), controller.leaveOrganizer);
 
-  // Organizer operations (requires ORGANIZER role and verified organizer profile)
-  router.get('/me/events', requireRoles(UserRole.ORGANIZER), controller.listOwnEvents);
-  router.get('/me/stats', requireRoles(UserRole.ORGANIZER), controller.getDashboardStats);
+  // Authenticated organizer dashboard views (returns zero aggregates for pending/rejected applicants)
+  router.get('/me/events', controller.listOwnEvents);
+  router.get('/me/stats', controller.getDashboardStats);
 
   // Organizer Venues
   router.post(

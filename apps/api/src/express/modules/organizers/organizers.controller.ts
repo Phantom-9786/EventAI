@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { OrganizersService } from '../../../modules/organizers/organizers.service';
 import { PaymentsService } from '../../../modules/payments/payments.service';
 import { ExpressModerationService } from '../../services/moderation.service';
-import { UnauthorizedError } from '../../types';
+import { UnauthorizedError, ForbiddenError } from '../../types';
 
 export class ExpressOrganizersController {
   constructor(
@@ -60,12 +60,36 @@ export class ExpressOrganizersController {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
-      const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
       const page = req.query.page ? Math.max(1, parseInt(String(req.query.page), 10) || 1) : 1;
       const limit = req.query.limit
         ? Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20))
         : 20;
 
+      let profile = null;
+      try {
+        profile = await this.organizersService.getOwnOrganizerProfile(userId);
+      } catch {
+        profile = null;
+      }
+
+      if (!profile) {
+        throw new ForbiddenError('You must have an organizer profile to view organizer events');
+      }
+
+      let appStatus: { status?: string } | null = null;
+      try {
+        appStatus = await this.moderationService.getOrganizerApplicationStatus(profile.id);
+      } catch {
+        appStatus = null;
+      }
+      const isApproved = Boolean(profile.isVerified || appStatus?.status === 'APPROVED');
+
+      if (!isApproved) {
+        res.status(200).json({ events: [], total: 0, page, limit });
+        return;
+      }
+
+      const organizerId = profile.id;
       const result = await this.organizersService.listOwnEvents(organizerId, page, limit);
       const eventsWithModeration = await Promise.all(
         result.events.map(async (event) => {
@@ -84,7 +108,38 @@ export class ExpressOrganizersController {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
-      const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
+      let profile = null;
+      try {
+        profile = await this.organizersService.getOwnOrganizerProfile(userId);
+      } catch {
+        profile = null;
+      }
+
+      if (!profile) {
+        throw new ForbiddenError('You must have an organizer profile to view organizer stats');
+      }
+
+      let appStatus: { status?: string } | null = null;
+      try {
+        appStatus = await this.moderationService.getOrganizerApplicationStatus(profile.id);
+      } catch {
+        appStatus = null;
+      }
+      const isApproved = Boolean(profile.isVerified || appStatus?.status === 'APPROVED');
+
+      if (!isApproved) {
+        res.status(200).json({
+          events: { total: 0, DRAFT: 0, PUBLISHED: 0, CANCELLED: 0, COMPLETED: 0, SOLDOUT: 0 },
+          revenue: 0,
+          confirmedBookings: 0,
+          refundedBookings: 0,
+          ticketsIssued: 0,
+          checkedIn: 0,
+        });
+        return;
+      }
+
+      const organizerId = profile.id;
       const stats = await this.organizersService.getDashboardStats(organizerId);
       res.status(200).json(stats);
     } catch (err) {

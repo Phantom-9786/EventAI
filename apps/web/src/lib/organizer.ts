@@ -457,6 +457,7 @@ export interface OrganizerProfile {
   id: string;
   organizationName: string;
   phone: string | null;
+  isVerified?: boolean;
   applicationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   rejectionReason?: string;
   _count: { events: number; venues: number };
@@ -488,10 +489,13 @@ export function useOrganizerDashboard(enabled: boolean) {
     try {
       const prof = await getOrganizerProfile();
       setProfile(prof);
-      if (prof) {
+      if (prof && prof.isVerified && prof.applicationStatus === 'APPROVED') {
         const [s, e] = await Promise.all([getOrganizerStats(), getOrganizerEvents()]);
         setStats(s);
         setEvents(e);
+      } else {
+        setStats(null);
+        setEvents([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');

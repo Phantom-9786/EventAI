@@ -348,6 +348,265 @@ describe('NotificationsService (Brevo)', () => {
       expect(mockPrisma.notification.create).toHaveBeenCalledTimes(1);
     });
 
+    it('allows resubmission after the earlier notification is marked as read', async () => {
+      const mockNewNotification = {
+        id: 'notif-new-2',
+        userId: 'admin-1',
+        type: 'SYSTEM',
+        title: 'Organizer Application Submitted',
+        message: 'Application under review.',
+        data: { action: 'ORGANIZER_APPLICATION_SUBMITTED', organizerId: 'org-1' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const mockPrisma = {
+        notification: {
+          // Because isRead: false is queried, the read notification is not returned
+          findMany: jest.fn().mockResolvedValue([]),
+          create: jest.fn().mockResolvedValue(mockNewNotification),
+        },
+      } as any;
+
+      const service = new NotificationsService(mockPrisma);
+      const resubmitted = await service.createInAppNotification({
+        userId: 'admin-1',
+        type: 'SYSTEM' as any,
+        title: 'Organizer Application Submitted',
+        message: 'Application under review.',
+        data: { action: 'ORGANIZER_APPLICATION_SUBMITTED', organizerId: 'org-1' },
+      });
+
+      expect(mockPrisma.notification.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'admin-1',
+            isRead: false,
+          }),
+        }),
+      );
+      expect(mockPrisma.notification.create).toHaveBeenCalledTimes(1);
+      expect(resubmitted).toEqual(mockNewNotification);
+    });
+
+    it('does not suppress distinct actions for the same organizer', async () => {
+      const existingSubmissionNotification = {
+        id: 'notif-sub-1',
+        userId: 'usr-org-1',
+        type: 'SYSTEM',
+        title: 'Organizer Application Submitted',
+        message: 'Your application is submitted.',
+        data: { action: 'ORGANIZER_APPLICATION_SUBMITTED', organizerId: 'org-1' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const mockApprovalNotification = {
+        id: 'notif-app-2',
+        userId: 'usr-org-1',
+        type: 'SYSTEM',
+        title: 'Organizer Application Approved',
+        message: 'Your application has been approved!',
+        data: { action: 'ORGANIZER_APPLICATION_APPROVED', organizerId: 'org-1' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const mockPrisma = {
+        notification: {
+          findMany: jest.fn().mockResolvedValue([existingSubmissionNotification]),
+          create: jest.fn().mockResolvedValue(mockApprovalNotification),
+        },
+      } as any;
+
+      const service = new NotificationsService(mockPrisma);
+      const approval = await service.createInAppNotification({
+        userId: 'usr-org-1',
+        type: 'SYSTEM' as any,
+        title: 'Organizer Application Approved',
+        message: 'Your application has been approved!',
+        data: { action: 'ORGANIZER_APPLICATION_APPROVED', organizerId: 'org-1' },
+      });
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledTimes(1);
+      expect(approval).toEqual(mockApprovalNotification);
+    });
+
+    it('does not let notifications for two different events of the same organizer suppress each other', async () => {
+      const existingEvent1Notification = {
+        id: 'notif-evt-1',
+        userId: 'admin-1',
+        type: 'SYSTEM',
+        title: 'Event Submitted for Approval',
+        message: '"AI Summit" was submitted for admin approval.',
+        data: { action: 'EVENT_SUBMITTED', eventId: 'evt-1', organizerId: 'org-1' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const mockEvent2Notification = {
+        id: 'notif-evt-2',
+        userId: 'admin-1',
+        type: 'SYSTEM',
+        title: 'Event Submitted for Approval',
+        message: '"Robotics Workshop" was submitted for admin approval.',
+        data: { action: 'EVENT_SUBMITTED', eventId: 'evt-2', organizerId: 'org-1' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const mockPrisma = {
+        notification: {
+          findMany: jest.fn().mockResolvedValue([existingEvent1Notification]),
+          create: jest.fn().mockResolvedValue(mockEvent2Notification),
+        },
+      } as any;
+
+      const service = new NotificationsService(mockPrisma);
+      const res = await service.createInAppNotification({
+        userId: 'admin-1',
+        type: 'SYSTEM' as any,
+        title: 'Event Submitted for Approval',
+        message: '"Robotics Workshop" was submitted for admin approval.',
+        data: { action: 'EVENT_SUBMITTED', eventId: 'evt-2', organizerId: 'org-1' },
+      });
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledTimes(1);
+      expect(res).toEqual(mockEvent2Notification);
+    });
+
+    it('does not deduplicate when primary identifier matches but event identifier differs in multi-identifier payload', async () => {
+      const existingNotification = {
+        id: 'notif-refund-1',
+        userId: 'usr-org-1',
+        type: 'SYSTEM',
+        title: 'New refund request',
+        message: 'Refund requested for event 1',
+        data: { bookingId: 'bk-primary-1', eventId: 'evt-1', link: '/organizer/refunds' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const newNotification = {
+        id: 'notif-refund-2',
+        userId: 'usr-org-1',
+        type: 'SYSTEM',
+        title: 'New refund request',
+        message: 'Refund requested for event 2',
+        data: { bookingId: 'bk-primary-1', eventId: 'evt-2', link: '/organizer/refunds' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const mockPrisma = {
+        notification: {
+          findMany: jest.fn().mockResolvedValue([existingNotification]),
+          create: jest.fn().mockResolvedValue(newNotification),
+        },
+      } as any;
+
+      const service = new NotificationsService(mockPrisma);
+      const res = await service.createInAppNotification({
+        userId: 'usr-org-1',
+        type: 'SYSTEM' as any,
+        title: 'New refund request',
+        message: 'Refund requested for event 2',
+        data: { bookingId: 'bk-primary-1', eventId: 'evt-2', link: '/organizer/refunds' },
+      });
+
+      // Because eventId differs ('evt-1' vs 'evt-2'), existing notification cannot suppress it
+      expect(mockPrisma.notification.create).toHaveBeenCalledTimes(1);
+      expect(res).toEqual(newNotification);
+    });
+
+    it('deduplicates multi-identifier payloads when all shared identifiers match', async () => {
+      const existingNotification = {
+        id: 'notif-refund-1',
+        userId: 'usr-org-1',
+        type: 'SYSTEM',
+        title: 'New refund request',
+        message: 'Refund requested for event 1',
+        data: { bookingId: 'bk-primary-1', eventId: 'evt-1', link: '/organizer/refunds' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const mockPrisma = {
+        notification: {
+          findMany: jest.fn().mockResolvedValue([existingNotification]),
+          create: jest.fn(),
+        },
+      } as any;
+
+      const service = new NotificationsService(mockPrisma);
+      const res = await service.createInAppNotification({
+        userId: 'usr-org-1',
+        type: 'SYSTEM' as any,
+        title: 'New refund request',
+        message: 'Refund requested for event 1',
+        data: { bookingId: 'bk-primary-1', eventId: 'evt-1', link: '/organizer/refunds' },
+      });
+
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled();
+      expect(res).toEqual(existingNotification);
+    });
+
+    it('preserves deduplication for generic key and standalone event notifications', async () => {
+      const keyNotification = {
+        id: 'notif-key-1',
+        userId: 'usr-1',
+        type: 'SYSTEM',
+        title: 'Sync finished',
+        message: 'Periodic sync complete.',
+        data: { key: 'sync-job-1' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const eventNotification = {
+        id: 'notif-evt-standalone',
+        userId: 'usr-1',
+        type: 'SYSTEM',
+        title: 'Event update',
+        message: 'Event time changed.',
+        data: { eventId: 'evt-standalone-1' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const mockPrisma = {
+        notification: {
+          findMany: jest
+            .fn()
+            .mockResolvedValueOnce([keyNotification])
+            .mockResolvedValueOnce([eventNotification]),
+          create: jest.fn(),
+        },
+      } as any;
+
+      const service = new NotificationsService(mockPrisma);
+
+      const resKey = await service.createInAppNotification({
+        userId: 'usr-1',
+        type: 'SYSTEM' as any,
+        title: 'Sync finished',
+        message: 'Periodic sync complete.',
+        data: { key: 'sync-job-1' },
+      });
+      expect(resKey).toEqual(keyNotification);
+
+      const resEvt = await service.createInAppNotification({
+        userId: 'usr-1',
+        type: 'SYSTEM' as any,
+        title: 'Event update',
+        message: 'Event time changed.',
+        data: { eventId: 'evt-standalone-1' },
+      });
+      expect(resEvt).toEqual(eventNotification);
+
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled();
+    });
+
     it('fetches unread and total notifications, and marks as read', async () => {
       const mockNotification = {
         id: 'notif-1',
@@ -375,6 +634,113 @@ describe('NotificationsService (Brevo)', () => {
 
       const markAll = await service.markAllAsRead('usr-1');
       expect(markAll).toEqual({ success: true });
+    });
+
+    it('does not let refund approved and refund settled notifications for the same booking suppress each other', async () => {
+      const refundApprovedNotification = {
+        id: 'notif-ref-app',
+        userId: 'student-1',
+        type: 'REFUND_PROCESSED',
+        title: 'Refund approved',
+        message: 'Your refund for "Tech Conference" was approved and settlement is being processed.',
+        data: { action: 'REFUND_APPROVED', bookingId: 'bk-student-1', link: '/tickets' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const refundSettledNotification = {
+        id: 'notif-ref-set',
+        userId: 'student-1',
+        type: 'REFUND_PROCESSED',
+        title: 'Refund settled',
+        message: 'Your refund of ₹500 for "Tech Conference" has been settled.',
+        data: { action: 'REFUND_SETTLED', bookingId: 'bk-student-1', refundId: 'rf-123', link: '/tickets' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      const mockPrisma = {
+        notification: {
+          findMany: jest.fn().mockResolvedValue([refundApprovedNotification]),
+          create: jest.fn().mockResolvedValue(refundSettledNotification),
+        },
+      } as any;
+
+      const service = new NotificationsService(mockPrisma);
+      const res = await service.createInAppNotification({
+        userId: 'student-1',
+        type: 'REFUND_PROCESSED' as any,
+        title: 'Refund settled',
+        message: 'Your refund of ₹500 for "Tech Conference" has been settled.',
+        data: { action: 'REFUND_SETTLED', bookingId: 'bk-student-1', refundId: 'rf-123', link: '/tickets' },
+      });
+
+      expect(mockPrisma.notification.create).toHaveBeenCalledTimes(1);
+      expect(res).toEqual(refundSettledNotification);
+    });
+
+    it('enforces recipient isolation when marking a notification as read', async () => {
+      const mockPrisma = {
+        notification: {
+          findUnique: jest.fn().mockResolvedValue({
+            id: 'notif-other-user',
+            userId: 'user-actual-owner',
+            isRead: false,
+          }),
+        },
+      } as any;
+
+      const service = new NotificationsService(mockPrisma);
+      await expect(service.markAsRead('user-attacker', 'notif-other-user')).rejects.toThrow(
+        'Notification not found',
+      );
+    });
+
+    it('coalesces truly concurrent identical notification requests so only one record is created', async () => {
+      const createdNotification = {
+        id: 'notif-concurrent-1',
+        userId: 'admin-concurrent',
+        type: 'SYSTEM',
+        title: 'New Organizer Application',
+        message: 'New application received.',
+        data: { action: 'ORGANIZER_APPLICATION_SUBMITTED', organizerId: 'org-conc-1' },
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      let findManyDelayResolve!: (val: any[]) => void;
+      const delayedFindMany = new Promise<any[]>((resolve) => {
+        findManyDelayResolve = resolve;
+      });
+
+      const mockPrisma = {
+        notification: {
+          findMany: jest.fn().mockImplementation(() => delayedFindMany),
+          create: jest.fn().mockResolvedValue(createdNotification),
+        },
+      } as any;
+
+      const service = new NotificationsService(mockPrisma);
+
+      const payload = {
+        userId: 'admin-concurrent',
+        type: 'SYSTEM' as any,
+        title: 'New Organizer Application',
+        message: 'New application received.',
+        data: { action: 'ORGANIZER_APPLICATION_SUBMITTED', organizerId: 'org-conc-1' },
+      };
+
+      const promise1 = service.createInAppNotification(payload);
+      const promise2 = service.createInAppNotification(payload);
+
+      findManyDelayResolve([]);
+
+      const [res1, res2] = await Promise.all([promise1, promise2]);
+
+      expect(mockPrisma.notification.findMany).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.notification.create).toHaveBeenCalledTimes(1);
+      expect(res1).toEqual(createdNotification);
+      expect(res2).toEqual(createdNotification);
     });
   });
 });

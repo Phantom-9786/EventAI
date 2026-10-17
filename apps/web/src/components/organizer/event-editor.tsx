@@ -101,22 +101,22 @@ export function OrganizerEventEditor({ id }: { id: string }) {
         <div className="flex flex-wrap items-center gap-2">
           {event.status === 'DRAFT' && (
             <>
-              {(moderationStatus === 'APPROVED' || !event.moderation) && (
+              {moderationStatus === 'APPROVED' && (
                 <Button type="button" disabled={busy} onClick={() => void changeStatus('publish')}>
                   {busy ? 'Working…' : 'Publish event'}
                 </Button>
               )}
-              {event.moderation && moderationStatus === 'PENDING_APPROVAL' && (
+              {moderationStatus === 'PENDING_APPROVAL' && (
                 <span className="inline-flex h-9 items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium text-amber-800 dark:text-amber-300">
                   Awaiting Admin Approval
                 </span>
               )}
-              {event.moderation && moderationStatus === 'REJECTED' && (
+              {moderationStatus === 'REJECTED' && (
                 <Button type="button" disabled={busy} onClick={() => void submitForReview()}>
                   {busy ? 'Working…' : 'Resubmit for review'}
                 </Button>
               )}
-              {event.moderation && moderationStatus === 'DRAFT' && (
+              {(moderationStatus === 'DRAFT' || !event.moderation) && (
                 <Button type="button" disabled={busy} onClick={() => void submitForReview()}>
                   {busy ? 'Working…' : 'Submit for review'}
                 </Button>

@@ -57,6 +57,7 @@ export function createAdminRouter({
 
   // Event management & moderation
   router.get('/events', controller.listEvents);
+  router.get('/events/:id', validateUuidParam('id'), controller.getEventDetail);
   router.post(
     '/events/:id/moderate',
     validateUuidParam('id'),

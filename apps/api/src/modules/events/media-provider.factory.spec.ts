@@ -91,6 +91,28 @@ describe('MediaProviderFactory', () => {
       expect(providers[0].cloudName).toBe('bawrmf0r');
     });
 
+    it('falls back to PRIMARY credentials if CLOUDINARY_PROVIDERS is not specified', () => {
+      process.env.CLOUDINARY_PRIMARY_CLOUD_NAME = 'bawrmf0r';
+      process.env.CLOUDINARY_PRIMARY_API_KEY = 'k-primary';
+      process.env.CLOUDINARY_PRIMARY_API_SECRET = 's-primary';
+
+      const providers = MediaProviderFactory.createProviders();
+
+      expect(providers).toHaveLength(1);
+      expect(providers[0].id).toBe('primary');
+      expect(providers[0].cloudName).toBe('bawrmf0r');
+    });
+
+    it('falls back to CLOUDINARY_URL connection string if present', () => {
+      process.env.CLOUDINARY_URL = 'cloudinary://my_key:my_secret@my_cloud';
+
+      const providers = MediaProviderFactory.createProviders();
+
+      expect(providers).toHaveLength(1);
+      expect(providers[0].id).toBe('default');
+      expect(providers[0].cloudName).toBe('my_cloud');
+    });
+
     it('returns empty list if neither multi-provider nor legacy credentials are set', () => {
       const providers = MediaProviderFactory.createProviders();
       expect(providers).toEqual([]);

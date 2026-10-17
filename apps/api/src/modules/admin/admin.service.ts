@@ -134,7 +134,9 @@ export class AdminService {
   async platformStats() {
     const [users, organizers, verifiedOrganizers, eventGroups, bookingGroups, ticketGroups] =
       await Promise.all([
-        this.prisma.user.count(),
+        this.prisma.user.count({
+          where: { NOT: { email: { endsWith: '@anonymized.eventai.local' } } },
+        }),
         this.prisma.organizer.count(),
         this.prisma.organizer.count({ where: { isVerified: true } }),
         this.prisma.event.groupBy({
@@ -205,15 +207,40 @@ export class AdminService {
 
   // ── User management ──────────────────────────────
 
-  async listUsers(query: Partial<AdminUserListInput> = {}) {
+  async listUsers(query: Partial<AdminUserListInput> & { status?: string } = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
     const search = query.search?.trim();
     const role = query.role;
-    let isActiveFilter: boolean | undefined = undefined;
-    if (query.isActive !== undefined && (query.isActive as unknown) !== '') {
-      isActiveFilter = String(query.isActive) === 'true' || query.isActive === true;
+    const status = query.status?.toUpperCase()?.trim();
+    let statusFilter: Record<string, unknown> = {};
+
+    if (status === 'ACTIVE') {
+      statusFilter = {
+        isActive: true,
+        isEmailVerified: true,
+        NOT: { email: { endsWith: '@anonymized.eventai.local' } },
+      };
+    } else if (status === 'DEACTIVATED') {
+      statusFilter = {
+        isActive: false,
+        NOT: { email: { endsWith: '@anonymized.eventai.local' } },
+      };
+    } else if (status === 'DELETED') {
+      statusFilter = {
+        email: { endsWith: '@anonymized.eventai.local' },
+      };
+    } else if (status === 'UNVERIFIED') {
+      statusFilter = {
+        isActive: true,
+        isEmailVerified: false,
+        NOT: { email: { endsWith: '@anonymized.eventai.local' } },
+      };
+    } else if (query.isActive !== undefined && (query.isActive as unknown) !== '') {
+      const isActiveFilter = String(query.isActive) === 'true' || query.isActive === true;
+      statusFilter = { isActive: isActiveFilter };
     }
+
     const where = {
       AND: [
         search
@@ -226,7 +253,7 @@ export class AdminService {
             }
           : {},
         role ? { role } : {},
-        isActiveFilter === undefined ? {} : { isActive: isActiveFilter },
+        statusFilter,
       ],
     };
 
@@ -252,7 +279,25 @@ export class AdminService {
     ]);
 
     return {
-      users: users.map(({ _count, ...u }) => ({ ...u, bookingCount: _count.bookings })),
+      users: users.map(({ _count, ...u }) => {
+        const isDeleted = Boolean(
+          (u.email && u.email.endsWith('@anonymized.eventai.local')) ||
+          (u.firstName === 'Deleted' && u.lastName === 'User' && !u.isActive),
+        );
+        const lifecycleStatus = isDeleted
+          ? 'DELETED'
+          : !u.isActive
+            ? 'DEACTIVATED'
+            : !u.isEmailVerified
+              ? 'UNVERIFIED'
+              : 'ACTIVE';
+        return {
+          ...u,
+          bookingCount: _count.bookings,
+          isDeleted,
+          lifecycleStatus,
+        };
+      }),
       total,
       page,
       limit,
@@ -267,10 +312,21 @@ export class AdminService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: targetUserId },
-      select: { id: true, isActive: true },
+      select: { id: true, email: true, firstName: true, lastName: true, isActive: true },
     });
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    const isDeleted = Boolean(
+      (user.email && user.email.endsWith('@anonymized.eventai.local')) ||
+      (user.firstName === 'Deleted' && user.lastName === 'User' && !user.isActive),
+    );
+
+    if (isDeleted && input.isActive) {
+      throw new BadRequestException(
+        'Cannot reactivate a permanently deleted user account whose personal data was anonymized.',
+      );
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
@@ -355,6 +411,63 @@ export class AdminService {
       page,
       limit,
       pages: Math.ceil(total / limit) || 1,
+    };
+  }
+
+  async getEventDetail(eventId: string) {
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      include: {
+        category: true,
+        venue: true,
+        ticketTypes: {
+          orderBy: { price: 'asc' },
+        },
+        organizer: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                email: true,
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+
+    const latestAudit = await this.prisma.auditLog.findFirst({
+      where: {
+        entity: 'Event',
+        entityId: event.id,
+        action: { in: ['EVENT_SUBMITTED', 'EVENT_APPROVED', 'EVENT_REJECTED', 'EVENT_MATERIAL_CHANGE'] },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return {
+      ...event,
+      moderation: latestAudit
+        ? {
+            status:
+              latestAudit.action === 'EVENT_APPROVED'
+                ? 'APPROVED'
+                : latestAudit.action === 'EVENT_REJECTED'
+                  ? 'REJECTED'
+                  : 'PENDING_APPROVAL',
+            rejectionReason: (latestAudit.details as any)?.reason,
+            reviewedAt: latestAudit.createdAt.toISOString(),
+            reviewedBy: latestAudit.userId,
+          }
+        : {
+            status: event.status === 'PUBLISHED' ? 'APPROVED' : 'DRAFT',
+          },
     };
   }
 
