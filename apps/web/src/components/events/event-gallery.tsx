@@ -137,6 +137,7 @@ export function EventGallery({ images, eventTitle }: EventGalleryProps) {
       {/* Lightbox Modal */}
       {isOpen && (
         <div
+          id="event-gallery-lightbox"
           role="dialog"
           aria-modal="true"
           aria-label={`Image viewer for ${eventTitle}`}
