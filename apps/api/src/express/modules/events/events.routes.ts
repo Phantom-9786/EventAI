@@ -12,11 +12,14 @@ import type { ExpressEventsController } from './events.controller';
 import type { ExpressTicketsController } from '../tickets/tickets.controller';
 import { MAX_EVENT_IMAGE_BYTES } from '../../../modules/events/event-media.service';
 
+import type { SystemControlsService } from '../../../modules/admin/system-controls.service';
+
 export interface EventsRouterDependencies {
   controller: ExpressEventsController;
   ticketsController?: ExpressTicketsController;
   authenticateJwt: RequestHandler;
   requireRoles: (...roles: UserRole[]) => RequestHandler;
+  systemControlsService?: SystemControlsService;
 }
 
 export function createEventsRouter({
@@ -24,6 +27,7 @@ export function createEventsRouter({
   ticketsController,
   authenticateJwt,
   requireRoles,
+  systemControlsService,
 }: EventsRouterDependencies): Router {
   const router = Router();
   const upload = multer({
@@ -31,11 +35,33 @@ export function createEventsRouter({
     limits: { fileSize: MAX_EVENT_IMAGE_BYTES, files: 1 },
   });
 
+  const eventCreationGuard: RequestHandler = async (_req, res, next) => {
+    if (!systemControlsService) return next();
+    try {
+      const settings = await systemControlsService.getSettings();
+      if (settings.eventCreationMaintenance) {
+        res.status(503).json({
+          success: false,
+          statusCode: 503,
+          message:
+            settings.eventCreationMaintenanceMessage ||
+            'New event creation is temporarily unavailable. Existing events remain accessible.',
+          code: 'EVENT_CREATION_MAINTENANCE',
+        });
+        return;
+      }
+      next();
+    } catch {
+      next();
+    }
+  };
+
   // 1. Generic upload route & upload configuration (before dynamic params)
   router.post(
     '/upload-image',
     authenticateJwt,
     requireRoles(UserRole.ORGANIZER),
+    eventCreationGuard,
     upload.single('file'),
     controller.uploadGenericImage,
   );
@@ -49,6 +75,7 @@ export function createEventsRouter({
     '/',
     authenticateJwt,
     requireRoles(UserRole.ORGANIZER),
+    eventCreationGuard,
     validateBody(createEventSchema),
     controller.create,
   );

@@ -73,3 +73,27 @@ export const adminAuditLogListSchema = paginationSchema.extend({
 });
 export type AdminAuditLogListInput = z.infer<typeof adminAuditLogListSchema>;
 
+// ── Admin: system controls & maintenance ──────────
+export const systemControlsSchema = z.object({
+  websiteMaintenance: z.boolean(),
+  websiteMaintenanceMessage: z.string().trim().max(500),
+  aiMaintenance: z.boolean(),
+  aiMaintenanceMessage: z.string().trim().max(500),
+  eventCreationMaintenance: z.boolean(),
+  eventCreationMaintenanceMessage: z.string().trim().max(500),
+});
+export type SystemControls = z.infer<typeof systemControlsSchema>;
+
+export const adminUpdateSystemControlsSchema = z.object({
+  websiteMaintenance: z.boolean().optional(),
+  websiteMaintenanceMessage: z.string().trim().max(500).optional(),
+  aiMaintenance: z.boolean().optional(),
+  aiMaintenanceMessage: z.string().trim().max(500).optional(),
+  eventCreationMaintenance: z.boolean().optional(),
+  eventCreationMaintenanceMessage: z.string().trim().max(500).optional(),
+});
+export type AdminUpdateSystemControlsInput = z.infer<
+  typeof adminUpdateSystemControlsSchema
+>;
+
+

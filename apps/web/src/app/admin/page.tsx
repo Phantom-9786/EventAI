@@ -22,6 +22,9 @@ import {
   UserCheck,
   UserX,
   Users,
+  Sparkles,
+  Power,
+  Save,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -45,6 +48,8 @@ import {
   listPendingOrganizerApplications,
   approveOrganizerApplication,
   rejectOrganizerApplication,
+  getAdminSystemControls,
+  updateAdminSystemControls,
   useAdminData,
   type AdminAuditLogRow,
   type AdminEventRow,
@@ -54,10 +59,11 @@ import {
   type AdminOrganizerRow,
   type AdminUser,
   type OrganizerApplication,
+  type SystemControlsSettings,
 } from '@/lib/admin';
 import { formatPrice } from '@/lib/api';
 
-type Tab = 'overview' | 'users' | 'events' | 'organizers' | 'bookings' | 'audit-logs';
+type Tab = 'overview' | 'users' | 'events' | 'organizers' | 'bookings' | 'audit-logs' | 'system-controls';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -66,6 +72,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'organizers', label: 'Organizers & Applications' },
   { id: 'bookings', label: 'Bookings & payments' },
   { id: 'audit-logs', label: 'Audit logs' },
+  { id: 'system-controls', label: 'System Controls' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -146,7 +153,12 @@ export default function AdminPage() {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab') as Tab | null;
-    if (tabParam && ['overview', 'users', 'events', 'organizers', 'bookings', 'audit-logs'].includes(tabParam)) {
+    if (
+      tabParam &&
+      ['overview', 'users', 'events', 'organizers', 'bookings', 'audit-logs', 'system-controls'].includes(
+        tabParam,
+      )
+    ) {
       setTab(tabParam);
     }
   }, []);
@@ -399,6 +411,7 @@ export default function AdminPage() {
       {tab === 'organizers' && <OrganizersTab busy={busy} onAction={runAction} />}
       {tab === 'bookings' && <BookingsTab />}
       {tab === 'audit-logs' && <AuditLogsTab />}
+      {tab === 'system-controls' && <SystemControlsTab />}
     </div>
   );
 }
@@ -2307,3 +2320,331 @@ function AuditLogsTab() {
     </div>
   );
 }
+
+// ── System Controls tab ─────────────────────────────
+
+function SystemControlsTab() {
+  const [controls, setControls] = useState<SystemControlsSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Modal confirmation for enabling website maintenance mode
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+
+  // Message input state
+  const [websiteMsg, setWebsiteMsg] = useState('');
+  const [aiMsg, setAiMsg] = useState('');
+  const [eventCreationMsg, setEventCreationMsg] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getAdminSystemControls();
+      setControls(data);
+      setWebsiteMsg(data.websiteMaintenanceMessage || '');
+      setAiMsg(data.aiMaintenanceMessage || '');
+      setEventCreationMsg(data.eventCreationMaintenanceMessage || '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load system controls');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const handleUpdate = async (updates: Partial<SystemControlsSettings>, key: string) => {
+    setSavingKey(key);
+    setError(null);
+    setSuccess(null);
+    try {
+      const updated = await updateAdminSystemControls(updates);
+      setControls(updated);
+      setSuccess(`System controls updated successfully`);
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update system controls');
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const handleToggleWebsiteMaintenance = () => {
+    if (!controls) return;
+    if (controls.websiteMaintenance) {
+      // Disabling maintenance does not require confirmation
+      void handleUpdate({ websiteMaintenance: false }, 'website');
+    } else {
+      // Enabling maintenance requires confirmation
+      setConfirmModalOpen(true);
+    }
+  };
+
+  const confirmEnableWebsiteMaintenance = async () => {
+    setConfirmModalOpen(false);
+    await handleUpdate(
+      {
+        websiteMaintenance: true,
+        websiteMaintenanceMessage: websiteMsg.trim() || undefined,
+      },
+      'website',
+    );
+  };
+
+  if (loading && !controls) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
+        <p className="text-sm font-medium">Loading system controls…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 pt-4 max-w-4xl">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight text-foreground">System Controls</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Manage platform availability and maintenance switches. All toggles persist in the database and apply across API instances immediately.
+        </p>
+      </div>
+
+      {error && (
+        <div role="alert" className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
+
+      {success && (
+        <div role="status" className="flex items-start gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-300">
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          <p>{success}</p>
+        </div>
+      )}
+
+      <div className="grid gap-6">
+        {/* Control 1: Website Maintenance Mode */}
+        <div className={`rounded-xl border p-6 transition-all shadow-sm ${
+          controls?.websiteMaintenance ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10' : 'border-border bg-card'
+        }`}>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <ShieldAlert className="h-4 w-4" />
+                </span>
+                <h3 className="text-lg font-semibold text-foreground">Website Maintenance Mode</h3>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  controls?.websiteMaintenance
+                    ? 'bg-amber-500 text-amber-950 font-bold animate-pulse'
+                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                }`}>
+                  {controls?.websiteMaintenance ? 'ACTIVE (RESTRICTED)' : 'NORMAL (LIVE)'}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-muted-foreground pt-1 leading-relaxed max-w-2xl">
+                Restricts public website access. Public visitors are shown the maintenance page. Direct API calls from non-administrators are rejected. Admin recovery access and payment webhooks remain fully preserved.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant={controls?.websiteMaintenance ? 'destructive' : 'default'}
+              size="sm"
+              disabled={savingKey === 'website'}
+              onClick={handleToggleWebsiteMaintenance}
+              className="shrink-0"
+            >
+              {savingKey === 'website' ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <Power className="mr-1.5 h-4 w-4" />
+              )}
+              {controls?.websiteMaintenance ? 'Disable Maintenance' : 'Enable Maintenance'}
+            </Button>
+          </div>
+
+          <div className="mt-5 border-t border-border/60 pt-4">
+            <label htmlFor="website-msg" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              Public Maintenance Notice Message
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                id="website-msg"
+                value={websiteMsg}
+                onChange={(e) => setWebsiteMsg(e.target.value)}
+                placeholder="EventPoint is temporarily undergoing maintenance. Please check back soon."
+                className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={savingKey === 'website-msg' || websiteMsg === controls?.websiteMaintenanceMessage}
+                onClick={() => handleUpdate({ websiteMaintenanceMessage: websiteMsg.trim() }, 'website-msg')}
+                className="shrink-0"
+              >
+                {savingKey === 'website-msg' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                Save message
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Control 2: AI Assistant Maintenance Mode */}
+        <div className={`rounded-xl border p-6 transition-all shadow-sm ${
+          controls?.aiMaintenance ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10' : 'border-border bg-card'
+        }`}>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Sparkles className="h-4 w-4" />
+                </span>
+                <h3 className="text-lg font-semibold text-foreground">AI Assistant Maintenance Mode</h3>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  controls?.aiMaintenance
+                    ? 'bg-amber-500 text-amber-950 font-bold'
+                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                }`}>
+                  {controls?.aiMaintenance ? 'MAINTENANCE (OFFLINE)' : 'ONLINE'}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-muted-foreground pt-1 leading-relaxed max-w-2xl">
+                Temporarily disables the AI Assistant chat interface and rejects AI generation requests at the backend (503). Calls to paid AI providers are paused. All event browsing, ticket purchasing, and bookings continue to work normally.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant={controls?.aiMaintenance ? 'destructive' : 'default'}
+              size="sm"
+              disabled={savingKey === 'ai'}
+              onClick={() => handleUpdate({ aiMaintenance: !controls?.aiMaintenance }, 'ai')}
+              className="shrink-0"
+            >
+              {savingKey === 'ai' ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <Power className="mr-1.5 h-4 w-4" />
+              )}
+              {controls?.aiMaintenance ? 'Enable AI Assistant' : 'Pause AI Assistant'}
+            </Button>
+          </div>
+
+          <div className="mt-5 border-t border-border/60 pt-4">
+            <label htmlFor="ai-msg" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              AI Assistant Offline Message
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                id="ai-msg"
+                value={aiMsg}
+                onChange={(e) => setAiMsg(e.target.value)}
+                placeholder="AI Assistant is temporarily unavailable for maintenance. Please try again later."
+                className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={savingKey === 'ai-msg' || aiMsg === controls?.aiMaintenanceMessage}
+                onClick={() => handleUpdate({ aiMaintenanceMessage: aiMsg.trim() }, 'ai-msg')}
+                className="shrink-0"
+              >
+                {savingKey === 'ai-msg' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                Save message
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Control 3: Event Creation Maintenance Mode */}
+        <div className={`rounded-xl border p-6 transition-all shadow-sm ${
+          controls?.eventCreationMaintenance ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10' : 'border-border bg-card'
+        }`}>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                  <CalendarDays className="h-4 w-4" />
+                </span>
+                <h3 className="text-lg font-semibold text-foreground">Event Creation Maintenance Mode</h3>
+                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  controls?.eventCreationMaintenance
+                    ? 'bg-amber-500 text-amber-950 font-bold'
+                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                }`}>
+                  {controls?.eventCreationMaintenance ? 'CREATION PAUSED' : 'CREATION ACTIVE'}
+                </span>
+              </div>
+              <p className="text-xs sm:text-sm text-muted-foreground pt-1 leading-relaxed max-w-2xl">
+                Temporarily prevents organizers from creating or submitting new events. Existing events, public discovery, ticket purchases, check-in, and organizer management remain fully operational.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              variant={controls?.eventCreationMaintenance ? 'destructive' : 'default'}
+              size="sm"
+              disabled={savingKey === 'eventCreation'}
+              onClick={() => handleUpdate({ eventCreationMaintenance: !controls?.eventCreationMaintenance }, 'eventCreation')}
+              className="shrink-0"
+            >
+              {savingKey === 'eventCreation' ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <Power className="mr-1.5 h-4 w-4" />
+              )}
+              {controls?.eventCreationMaintenance ? 'Resume Event Creation' : 'Pause Event Creation'}
+            </Button>
+          </div>
+
+          <div className="mt-5 border-t border-border/60 pt-4">
+            <label htmlFor="event-creation-msg" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+              Event Creation Paused Notice Message
+            </label>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input
+                id="event-creation-msg"
+                value={eventCreationMsg}
+                onChange={(e) => setEventCreationMsg(e.target.value)}
+                placeholder="New event creation is temporarily unavailable. Existing events remain accessible."
+                className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={savingKey === 'event-creation-msg' || eventCreationMsg === controls?.eventCreationMaintenanceMessage}
+                onClick={() => handleUpdate({ eventCreationMaintenanceMessage: eventCreationMsg.trim() }, 'event-creation-msg')}
+                className="shrink-0"
+              >
+                {savingKey === 'event-creation-msg' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                Save message
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Confirmation Modal for Website Maintenance Mode */}
+      <Modal
+        isOpen={confirmModalOpen}
+        onClose={() => setConfirmModalOpen(false)}
+        title="Enable Website Maintenance Mode?"
+        description="This will immediately restrict public access to the website. Public visitors will be redirected to the maintenance page. Administrator accounts retain full recovery access, and payment webhooks will not be interrupted."
+        confirmLabel="Enable Maintenance Mode"
+        confirmVariant="destructive"
+        onConfirm={confirmEnableWebsiteMaintenance}
+      />
+    </div>
+  );
+}
+

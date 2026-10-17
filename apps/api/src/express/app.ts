@@ -25,12 +25,14 @@ import { BookingsService } from '../modules/bookings/bookings.service';
 import { AdminService } from '../modules/admin/admin.service';
 import { AiService } from '../modules/ai/ai.service';
 import { ExpressModerationService } from './services/moderation.service';
+import { SystemControlsService } from '../modules/admin/system-controls.service';
 
 import { createRequestIdMiddleware } from './middleware/request-id';
 import { createErrorHandlerMiddleware } from './middleware/error-handler';
 import { createAuthMiddleware } from './middleware/auth';
 import { createAuthRateLimiter, type RateLimiterOptions } from './middleware/rate-limit';
 import { createAiRequestGuard } from './middleware/ai-guard';
+import { createMaintenanceMiddleware } from './middleware/maintenance.middleware';
 
 import { ExpressAuthController } from './modules/auth/auth.controller';
 import { createAuthRouter } from './modules/auth/auth.routes';
@@ -52,6 +54,7 @@ import { ExpressPaymentsController } from './modules/payments/payments.controlle
 import { createPaymentsRouter } from './modules/payments/payments.routes';
 import { ExpressAdminController } from './modules/admin/admin.controller';
 import { createAdminRouter } from './modules/admin/admin.routes';
+import { createSystemControlsRouter } from './modules/admin/system-controls.routes';
 import { ExpressAiController } from './modules/ai/ai.controller';
 import { createAiRouter } from './modules/ai/ai.routes';
 import { ExpressNotificationsController } from './modules/notifications/notifications.controller';
@@ -73,6 +76,7 @@ export interface AppFactoryOptions {
   paymentsService?: PaymentsService;
   bookingsService?: BookingsService;
   adminService?: AdminService;
+  systemControlsService?: SystemControlsService;
   aiService?: AiService;
   notificationsService?: NotificationsService;
   moderationService?: ExpressModerationService;
@@ -190,6 +194,9 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     new AdminService(prisma as never, eventsService as never, notificationsService as never);
   const aiService =
     options.aiService ?? new AiService(prisma as never, cache as never);
+  const systemControlsService =
+    options.systemControlsService ??
+    new SystemControlsService(prisma as never, cache);
 
   // 1. Request ID and structured request logger
   app.use(createRequestIdMiddleware(logger));
@@ -248,6 +255,13 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     });
   });
 
+  // Global Website Maintenance Middleware
+  const maintenanceMiddleware = createMaintenanceMiddleware({
+    systemControlsService,
+    jwtSecret,
+  });
+  app.use(maintenanceMiddleware);
+
   // 8. Authentication & Authorization Middleware
   const { authenticateJwt, optionalAuthenticateJwt, requireRoles } = createAuthMiddleware({
     jwtSecret,
@@ -300,11 +314,14 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     adminService,
     moderationService,
     paymentsService,
+    systemControlsService,
   );
   const aiController = new ExpressAiController(aiService);
   const notificationsController = new ExpressNotificationsController(notificationsService);
 
   // 10. Routers
+  const systemControlsRouter = createSystemControlsRouter(systemControlsService);
+
   const authRouter = createAuthRouter({
     controller: authController,
     authenticateJwt,
@@ -343,6 +360,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     ticketsController,
     authenticateJwt,
     requireRoles,
+    systemControlsService,
   });
 
   const bookingsRouter = createBookingsRouter({
@@ -365,6 +383,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     controller: aiController,
     optionalAuthenticateJwt,
     aiRequestGuard,
+    systemControlsService,
   });
 
   const notificationsRouter = createNotificationsRouter({
@@ -423,6 +442,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
   apiRouter.use('/admin', adminRouter);
   apiRouter.use('/ai', aiRouter);
   apiRouter.use('/notifications', notificationsRouter);
+  apiRouter.use('/system-controls', systemControlsRouter);
 
   app.use('/api', apiRouter);
 
@@ -443,6 +463,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
   app.use('/admin', adminRouter);
   app.use('/ai', aiRouter);
   app.use('/notifications', notificationsRouter);
+  app.use('/system-controls', systemControlsRouter);
 
   // 11. Unmatched route 404 handler
   app.use((req: Request, _res: Response, next) => {

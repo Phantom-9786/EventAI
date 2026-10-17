@@ -5,10 +5,18 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { formatEventDate } from '@/lib/api';
 import { listOrganizerEventPage, type OrganizerEventRow } from '@/lib/organizer';
+import { useSystemControls } from '@/components/layout/maintenance-guard';
+import { Wrench } from 'lucide-react';
 
 export type EventCategoryFilter = 'all' | 'drafts' | 'pending' | 'approved' | 'rejected';
 
 export function OrganizerEventsList() {
+  const { controls } = useSystemControls();
+  const isCreationMaintenance = Boolean(controls?.eventCreationMaintenance);
+  const creationMessage =
+    controls?.eventCreationMaintenanceMessage ||
+    'New event creation is temporarily unavailable. Existing events remain accessible.';
+
   const [events, setEvents] = useState<OrganizerEventRow[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<EventCategoryFilter>('all');
   const [page, setPage] = useState(1);
@@ -43,12 +51,30 @@ export function OrganizerEventsList() {
 
   return (
     <div>
+      {isCreationMaintenance && (
+        <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-amber-800 dark:text-amber-300 flex items-center gap-2.5 text-xs sm:text-sm font-medium">
+          <Wrench className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <span>{creationMessage}</span>
+        </div>
+      )}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">My events</h1>
           <p className="mt-1 text-sm text-muted-foreground">Create, edit, publish, and manage your event inventory.</p>
         </div>
-        <Link href="/organizer/events/new" className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">Create event</Link>
+        {isCreationMaintenance ? (
+          <button
+            type="button"
+            disabled
+            title="Event creation is currently paused for maintenance"
+            className="inline-flex h-9 items-center justify-center rounded-md bg-muted px-4 text-sm font-medium text-muted-foreground cursor-not-allowed opacity-60"
+          >
+            Create event (Paused)
+          </button>
+        ) : (
+          <Link href="/organizer/events/new" className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90">Create event</Link>
+        )}
       </div>
 
       {/* Category filter tabs */}

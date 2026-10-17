@@ -3,9 +3,10 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
-import { Loader2, Send, Sparkles } from 'lucide-react';
+import { Loader2, Send, Sparkles, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EventCard } from '@/components/events/event-card';
+import { useSystemControls } from '@/components/layout/maintenance-guard';
 import type { EventSummary } from '@/lib/api';
 
 interface ChatMessage {
@@ -33,6 +34,12 @@ const markdownComponents = {
 };
 
 export default function AiPage() {
+  const { controls } = useSystemControls();
+  const isMaintenance = Boolean(controls?.aiMaintenance);
+  const maintenanceMessage =
+    controls?.aiMaintenanceMessage ||
+    'AI Assistant is temporarily unavailable for maintenance. Please try again later.';
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: 'assistant',
@@ -151,21 +158,39 @@ export default function AiPage() {
         </p>
       )}
 
+      {isMaintenance && (
+        <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-amber-800 dark:text-amber-300 flex items-start gap-3">
+          <Wrench className="h-5 w-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+          <div className="text-sm">
+            <p className="font-semibold">AI Assistant Offline</p>
+            <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300/80 leading-relaxed">
+              {maintenanceMessage}
+            </p>
+          </div>
+        </div>
+      )}
+
       <form
         className="mt-4 flex gap-2"
         onSubmit={(e) => {
           e.preventDefault();
+          if (isMaintenance) return;
           void send(input);
         }}
       >
         <input
           value={input}
+          disabled={isMaintenance}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="e.g. What can I do in Mumbai this weekend under ₹2000?"
+          placeholder={
+            isMaintenance
+              ? 'AI Assistant is temporarily unavailable for maintenance'
+              : 'e.g. What can I do in Mumbai this weekend under ₹2000?'
+          }
           aria-label="Message the assistant"
-          className="h-10 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="h-10 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
         />
-        <Button type="submit" disabled={sending || !input.trim()}>
+        <Button type="submit" disabled={isMaintenance || sending || !input.trim()}>
           <Send className="mr-1 h-4 w-4" />
           Send
         </Button>

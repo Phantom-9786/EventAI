@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { AdminService } from '../../../modules/admin/admin.service';
 import { PaymentsService } from '../../../modules/payments/payments.service';
 import { ExpressModerationService } from '../../services/moderation.service';
+import { SystemControlsService } from '../../../modules/admin/system-controls.service';
 import { UnauthorizedError } from '../../types';
 
 export class ExpressAdminController {
@@ -9,6 +10,7 @@ export class ExpressAdminController {
     private readonly adminService: AdminService,
     private readonly moderationService: ExpressModerationService,
     private readonly paymentsService?: PaymentsService,
+    private readonly systemControlsService?: SystemControlsService,
   ) {}
 
   stats = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -205,6 +207,50 @@ export class ExpressAdminController {
     try {
       const result = await this.adminService.listAuditLogs(req.query as never);
       res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  getSystemControls = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!this.systemControlsService) {
+        res.status(200).json({
+          websiteMaintenance: false,
+          websiteMaintenanceMessage: 'EventPoint is temporarily undergoing maintenance. Please check back soon.',
+          aiMaintenance: false,
+          aiMaintenanceMessage: 'AI Assistant is temporarily unavailable for maintenance. Please try again later.',
+          eventCreationMaintenance: false,
+          eventCreationMaintenanceMessage: 'New event creation is temporarily unavailable. Existing events remain accessible.',
+        });
+        return;
+      }
+      const settings = await this.systemControlsService.getSettings();
+      res.status(200).json(settings);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  updateSystemControls = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      if (!this.systemControlsService) {
+        res.status(200).json(req.body);
+        return;
+      }
+
+      const settings = await this.systemControlsService.updateSettings(
+        adminUserId,
+        req.body,
+        {
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent'),
+        },
+      );
+      res.status(200).json(settings);
     } catch (err) {
       next(err);
     }

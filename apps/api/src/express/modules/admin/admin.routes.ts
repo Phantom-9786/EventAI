@@ -3,6 +3,7 @@ import {
   adminModerateEventSchema,
   adminSetOrganizerVerificationSchema,
   adminSetUserStatusSchema,
+  adminUpdateSystemControlsSchema,
 } from '@eventai/validation';
 import { validateBody, validateUuidParam } from '../../middleware/validation';
 import { UserRole } from '@eventai/types';
@@ -68,6 +69,14 @@ export function createAdminRouter({
 
   // Audit logs
   router.get('/audit-logs', controller.listAuditLogs);
+
+  // System controls & maintenance modes
+  router.get('/system-controls', controller.getSystemControls);
+  router.patch(
+    '/system-controls',
+    validateBody(adminUpdateSystemControlsSchema),
+    controller.updateSystemControls,
+  );
 
   return router;
 }

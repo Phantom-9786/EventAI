@@ -1,0 +1,389 @@
+import type { Server } from 'http';
+import type { AddressInfo } from 'net';
+import jwt from 'jsonwebtoken';
+import { createExpressApp } from './app';
+import { UserRole } from '@eventai/types';
+import { StructuredLogger } from '../common/logging/structured-logger';
+import { SystemControlsService } from '../modules/admin/system-controls.service';
+
+describe('System Controls & Maintenance Modes Integration', () => {
+  let server: Server;
+  let baseUrl: string;
+  const JWT_SECRET = 'test-jwt-secret-at-least-32-chars-long';
+
+  const nullLogger = {
+    log: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+    verbose: jest.fn(),
+    logWithMeta: jest.fn(),
+  } as unknown as StructuredLogger;
+
+  const adminUser = {
+    id: 'admin-uuid-1',
+    email: 'admin@eventpoint.test',
+    role: UserRole.ADMIN,
+    isActive: true,
+  };
+
+  const organizerUser = {
+    id: 'organizer-uuid-1',
+    email: 'organizer@eventpoint.test',
+    role: UserRole.ORGANIZER,
+    isActive: true,
+  };
+
+  const customerUser = {
+    id: 'customer-uuid-1',
+    email: 'customer@eventpoint.test',
+    role: UserRole.CUSTOMER,
+    isActive: true,
+  };
+
+  let mockPrisma: any;
+  let mockSystemControlsService: any;
+  let adminToken: string;
+  let organizerToken: string;
+  let customerToken: string;
+
+  beforeAll((done) => {
+    adminToken = jwt.sign(
+      { sub: adminUser.id, email: adminUser.email, role: adminUser.role },
+      JWT_SECRET,
+      { expiresIn: '1h' },
+    );
+    organizerToken = jwt.sign(
+      { sub: organizerUser.id, email: organizerUser.email, role: organizerUser.role },
+      JWT_SECRET,
+      { expiresIn: '1h' },
+    );
+    customerToken = jwt.sign(
+      { sub: customerUser.id, email: customerUser.email, role: customerUser.role },
+      JWT_SECRET,
+      { expiresIn: '1h' },
+    );
+
+    mockPrisma = {
+      $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
+      user: {
+        findUnique: jest.fn().mockImplementation(({ where }) => {
+          if (where.id === adminUser.id) return Promise.resolve(adminUser);
+          if (where.id === organizerUser.id) return Promise.resolve(organizerUser);
+          if (where.id === customerUser.id) return Promise.resolve(customerUser);
+          return Promise.resolve(null);
+        }),
+      },
+      organizer: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: organizerUser.id,
+          userId: organizerUser.id,
+          organizationName: 'Organizer Org',
+          isVerified: true,
+        }),
+      },
+    };
+
+    let currentSettings = {
+      websiteMaintenance: false,
+      websiteMaintenanceMessage: 'Site maintenance',
+      aiMaintenance: false,
+      aiMaintenanceMessage: 'AI maintenance',
+      eventCreationMaintenance: false,
+      eventCreationMaintenanceMessage: 'Creation maintenance',
+    };
+
+    mockSystemControlsService = {
+      getSettings: jest.fn().mockImplementation(() => Promise.resolve({ ...currentSettings })),
+      updateSettings: jest.fn().mockImplementation((_userId, updates) => {
+        currentSettings = { ...currentSettings, ...updates };
+        return Promise.resolve({ ...currentSettings });
+      }),
+    };
+
+    const mockCategoriesService = {
+      listActive: jest.fn().mockResolvedValue([
+        { id: 'cat-1', name: 'Music', slug: 'music', icon: null, color: null },
+      ]),
+    };
+
+    const mockAiService = {
+      chat: jest.fn().mockResolvedValue({
+        reply: 'Hello from AI',
+        events: [],
+      }),
+      isConfigured: jest.fn().mockReturnValue(true),
+    };
+
+    const mockEventsService = {
+      createEvent: jest.fn().mockResolvedValue({
+        id: 'event-1',
+        title: 'New Event',
+        slug: 'new-event',
+      }),
+      searchEvents: jest.fn().mockResolvedValue({
+        events: [],
+        total: 0,
+        page: 1,
+        pages: 1,
+      }),
+      getPublishedEvent: jest.fn().mockResolvedValue({
+        id: 'event-1',
+        title: 'New Event',
+      }),
+    };
+
+    const mockModerationService = {
+      getEventModerationStatus: jest.fn().mockResolvedValue({ status: 'APPROVED' }),
+      requireApprovedOrganizer: jest.fn().mockResolvedValue(organizerUser.id),
+    };
+
+    const mockOrganizersService = {
+      requireOrganizerId: jest.fn().mockResolvedValue(organizerUser.id),
+    };
+
+    const mockCache = {
+      ping: jest.fn().mockResolvedValue('PONG'),
+      consumeAiRequest: jest.fn().mockResolvedValue({ allowed: true }),
+      releaseAiRequest: jest.fn().mockResolvedValue(undefined),
+      providerCooldownMs: jest.fn().mockResolvedValue(0),
+      setProviderCooldown: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const app = createExpressApp({
+      prisma: mockPrisma,
+      cache: mockCache as any,
+      categoriesService: mockCategoriesService as any,
+      aiService: mockAiService as any,
+      eventsService: mockEventsService as any,
+      moderationService: mockModerationService as any,
+      organizersService: mockOrganizersService as any,
+      systemControlsService: mockSystemControlsService,
+      jwtSecret: JWT_SECRET,
+      rateLimit: false,
+      logger: nullLogger,
+    });
+
+    server = app.listen(0, () => {
+      const port = (server.address() as AddressInfo).port;
+      baseUrl = `http://127.0.0.1:${port}`;
+      done();
+    });
+  });
+
+  afterAll((done) => {
+    server.close(done);
+  });
+
+  beforeEach(() => {
+    mockSystemControlsService.updateSettings('admin', {
+      websiteMaintenance: false,
+      aiMaintenance: false,
+      eventCreationMaintenance: false,
+    });
+  });
+
+  it('1. GET /api/system-controls returns public settings without auth', async () => {
+    const res = await fetch(`${baseUrl}/api/system-controls`);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toHaveProperty('websiteMaintenance', false);
+    expect(json).toHaveProperty('aiMaintenance', false);
+    expect(json).toHaveProperty('eventCreationMaintenance', false);
+  });
+
+  it('2. GET /api/admin/system-controls enforces ADMIN authorization', async () => {
+    // Unauthenticated
+    const resAnon = await fetch(`${baseUrl}/api/admin/system-controls`);
+    expect(resAnon.status).toBe(401);
+
+    // Customer
+    const resCust = await fetch(`${baseUrl}/api/admin/system-controls`, {
+      headers: { Authorization: `Bearer ${customerToken}` },
+    });
+    expect(resCust.status).toBe(403);
+
+    // Admin
+    const resAdmin = await fetch(`${baseUrl}/api/admin/system-controls`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    expect(resAdmin.status).toBe(200);
+    const json = (await resAdmin.json()) as any;
+    expect(json.websiteMaintenance).toBe(false);
+  });
+
+  it('3. PATCH /api/admin/system-controls updates control switches for ADMIN only', async () => {
+    const updatePayload = {
+      websiteMaintenance: true,
+      websiteMaintenanceMessage: 'Upgrading EventPoint infrastructure',
+    };
+
+    // Customer cannot update
+    const resCust = await fetch(`${baseUrl}/api/admin/system-controls`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${customerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updatePayload),
+    });
+    expect(resCust.status).toBe(403);
+
+    // Admin updates successfully
+    const resAdmin = await fetch(`${baseUrl}/api/admin/system-controls`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(updatePayload),
+    });
+    expect(resAdmin.status).toBe(200);
+    const json = (await resAdmin.json()) as any;
+    expect(json.websiteMaintenance).toBe(true);
+    expect(json.websiteMaintenanceMessage).toBe('Upgrading EventPoint infrastructure');
+  });
+
+  it('4. Website Maintenance Mode restricts non-admin traffic but allows admin and health recovery', async () => {
+    await mockSystemControlsService.updateSettings('admin', {
+      websiteMaintenance: true,
+      websiteMaintenanceMessage: 'Down for scheduled maintenance',
+    });
+
+    // Public visitor is blocked with 503
+    const resPublic = await fetch(`${baseUrl}/api/categories`);
+    expect(resPublic.status).toBe(503);
+    const jsonPublic = (await resPublic.json()) as any;
+    expect(jsonPublic.code).toBe('MAINTENANCE_MODE');
+    expect(jsonPublic.message).toBe('Down for scheduled maintenance');
+
+    // Authenticated customer is blocked with 503
+    const resCustomer = await fetch(`${baseUrl}/api/categories`, {
+      headers: { Authorization: `Bearer ${customerToken}` },
+    });
+    expect(resCustomer.status).toBe(503);
+
+    // Health check remains available (200)
+    const resHealth = await fetch(`${baseUrl}/api/health`);
+    expect(resHealth.status).toBe(200);
+
+    // Public system-controls status check remains available
+    const resControls = await fetch(`${baseUrl}/api/system-controls`);
+    expect(resControls.status).toBe(200);
+
+    // Admin with Bearer token can bypass maintenance and access the platform
+    const resAdmin = await fetch(`${baseUrl}/api/categories`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    expect(resAdmin.status).toBe(200);
+
+    // Admin system controls endpoint remains accessible
+    const resAdminControls = await fetch(`${baseUrl}/api/admin/system-controls`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    expect(resAdminControls.status).toBe(200);
+  });
+
+  it('5. AI Maintenance Mode blocks AI chat (503) while keeping non-AI endpoints operational', async () => {
+    await mockSystemControlsService.updateSettings('admin', {
+      aiMaintenance: true,
+      aiMaintenanceMessage: 'AI Assistant undergoing model tuning',
+    });
+
+    // AI chat is rejected with 503
+    const resAi = await fetch(`${baseUrl}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'What events are in Mumbai?' }],
+      }),
+    });
+    expect(resAi.status).toBe(503);
+    const jsonAi = (await resAi.json()) as any;
+    expect(jsonAi.code).toBe('AI_MAINTENANCE');
+    expect(jsonAi.message).toBe('AI Assistant undergoing model tuning');
+
+    // Non-AI routes continue to work normally (200)
+    const resCatalog = await fetch(`${baseUrl}/api/categories`);
+    expect(resCatalog.status).toBe(200);
+
+    // When disabled, AI chat works again
+    await mockSystemControlsService.updateSettings('admin', {
+      aiMaintenance: false,
+    });
+    const resAiRestored = await fetch(`${baseUrl}/api/ai/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [{ role: 'user', content: 'What events are in Mumbai?' }],
+      }),
+    });
+    expect(resAiRestored.status).toBe(200);
+  });
+
+  it('6. Event Creation Maintenance Mode blocks event creation (503) while allowing existing events', async () => {
+    await mockSystemControlsService.updateSettings('admin', {
+      eventCreationMaintenance: true,
+      eventCreationMaintenanceMessage: 'Event creation is paused today',
+    });
+
+    // Event creation is rejected with 503
+    const resCreate = await fetch(`${baseUrl}/api/events`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${organizerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'New Concert 2026',
+        description: 'Concert event description exceeding minimum chars',
+        categoryId: 'a0000000-0000-4000-8000-000000000001',
+        venueId: 'b0000000-0000-4000-8000-000000000002',
+        startDate: new Date(Date.now() + 86400000).toISOString(),
+        endDate: new Date(Date.now() + 172800000).toISOString(),
+      }),
+    });
+    expect(resCreate.status).toBe(503);
+    const jsonCreate = (await resCreate.json()) as any;
+    expect(jsonCreate.code).toBe('EVENT_CREATION_MAINTENANCE');
+    expect(jsonCreate.message).toBe('Event creation is paused today');
+
+    // Generic image upload for new event is also blocked with 503
+    const resUpload = await fetch(`${baseUrl}/api/events/upload-image`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${organizerToken}`,
+      },
+    });
+    expect(resUpload.status).toBe(503);
+
+    // Browsing existing events remains fully operational (200)
+    const resBrowse = await fetch(`${baseUrl}/api/events`);
+    expect(resBrowse.status).toBe(200);
+
+    // Viewing specific event remains operational (200)
+    const resDetail = await fetch(`${baseUrl}/api/events/event-1`);
+    expect(resDetail.status).toBe(200);
+
+    // When disabled, event creation is restored
+    await mockSystemControlsService.updateSettings('admin', {
+      eventCreationMaintenance: false,
+    });
+    const resCreateRestored = await fetch(`${baseUrl}/api/events`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${organizerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: 'New Concert 2026',
+        description: 'Concert event description exceeding minimum chars',
+        categoryId: 'a0000000-0000-4000-8000-000000000001',
+        venueId: 'b0000000-0000-4000-8000-000000000002',
+        startDate: new Date(Date.now() + 86400000).toISOString(),
+        endDate: new Date(Date.now() + 172800000).toISOString(),
+      }),
+    });
+    expect(resCreateRestored.status).toBe(201);
+  });
+});

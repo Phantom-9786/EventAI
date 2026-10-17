@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { AuthProvider } from '@/components/auth/auth-provider';
+import { MaintenanceGuard } from '@/components/layout/maintenance-guard';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import './globals.css';
@@ -27,9 +28,11 @@ export default function RootLayout({
       </head>
       <body className="flex min-h-screen flex-col font-sans">
         <AuthProvider>
-          <Header />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          <MaintenanceGuard>
+            <Header />
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </MaintenanceGuard>
         </AuthProvider>
       </body>
     </html>

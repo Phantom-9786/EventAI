@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { BookingWidget } from '@/components/booking/booking-widget';
 import { EventCard } from '@/components/events/event-card';
+import { EventGallery } from '@/components/events/event-gallery';
 import {
   formatEventDate,
   formatPrice,
@@ -176,22 +177,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           {galleryImages.length > 0 && (
             <section className="mt-10" aria-label="Event gallery">
               <h2 className="text-xl font-semibold">Event gallery</h2>
-              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                {galleryImages.map((imgUrl, index) => (
-                  <div
-                    key={`${imgUrl}-${index}`}
-                    className="group relative aspect-video overflow-hidden rounded-xl border bg-muted shadow-sm transition-all hover:border-primary/50"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={imgUrl}
-                      alt={`${event.title} gallery photo ${index + 1}`}
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      loading="lazy"
-                    />
-                  </div>
-                ))}
-              </div>
+              <EventGallery images={galleryImages} eventTitle={event.title} />
             </section>
           )}
 

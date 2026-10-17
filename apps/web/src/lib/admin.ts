@@ -388,3 +388,39 @@ export async function listAdminAuditLogs(
   return res.json();
 }
 
+// ── System Controls & Maintenance ──────────────────
+
+export interface SystemControlsSettings {
+  websiteMaintenance: boolean;
+  websiteMaintenanceMessage: string;
+  aiMaintenance: boolean;
+  aiMaintenanceMessage: string;
+  eventCreationMaintenance: boolean;
+  eventCreationMaintenanceMessage: string;
+}
+
+export async function getAdminSystemControls(): Promise<SystemControlsSettings> {
+  const res = await authFetch('/admin/system-controls');
+  if (!res.ok) throw new Error(`Failed to load system controls (${res.status})`);
+  return res.json();
+}
+
+export async function updateAdminSystemControls(
+  updates: Partial<SystemControlsSettings>,
+): Promise<SystemControlsSettings> {
+  const res = await authFetch('/admin/system-controls', {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update system controls (${res.status})`);
+  return res.json();
+}
+
+export async function getPublicSystemControls(): Promise<SystemControlsSettings> {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+  const res = await fetch(`${apiBase}/system-controls`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Failed to fetch system controls (${res.status})`);
+  return res.json();
+}
+
+
