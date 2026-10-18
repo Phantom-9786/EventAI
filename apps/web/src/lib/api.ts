@@ -97,7 +97,13 @@ async function getJson<T>(path: string): Promise<T> {
 
   if (typeof window !== 'undefined') {
     try {
-      const token = window.localStorage.getItem('eventai_access_token');
+      let token = window.localStorage.getItem('eventai_access_token');
+      if (!token && typeof document !== 'undefined') {
+        const match = document.cookie.match(
+          /(?:^|;\s*)(?:eventai_access_token|accessToken|access_token)=([^;]+)/,
+        );
+        if (match) token = decodeURIComponent(match[1]);
+      }
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
@@ -106,10 +112,23 @@ async function getJson<T>(path: string): Promise<T> {
     }
   } else {
     try {
-      const { cookies } = await import('next/headers');
-      const token = cookies().get('eventai_access_token')?.value || cookies().get('accessToken')?.value;
-      if (token) {
+      const { cookies, headers: getIncomingHeaders } = await import('next/headers');
+      const incomingHeaders = getIncomingHeaders();
+      const authHeader = incomingHeaders.get('authorization');
+      if (authHeader) {
+        headers['Authorization'] = authHeader;
+      }
+      const cookieStore = cookies();
+      const token =
+        cookieStore.get('eventai_access_token')?.value ||
+        cookieStore.get('accessToken')?.value ||
+        cookieStore.get('access_token')?.value;
+      if (token && !headers['Authorization']) {
         headers['Authorization'] = `Bearer ${token}`;
+      }
+      const rawCookie = incomingHeaders.get('cookie');
+      if (rawCookie) {
+        headers['Cookie'] = rawCookie;
       }
     } catch {
       // outside request context or static generation
@@ -119,9 +138,11 @@ async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     cache: 'no-store',
     headers,
+    ...(typeof window !== 'undefined' ? { credentials: 'include' as const } : {}),
   });
   if (!res.ok) {
-    throw new Error(`API request failed: ${res.status} ${path}`);
+    const errorBody = await res.text().catch(() => '');
+    throw new Error(`API request failed: ${res.status} ${path}${errorBody ? ` - ${errorBody}` : ''}`);
   }
   return res.json() as Promise<T>;
 }

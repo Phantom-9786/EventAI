@@ -87,6 +87,15 @@ export function createMaintenanceMiddleware({
         token = req.cookies.eventai_access_token;
       } else if (req.cookies?.accessToken) {
         token = req.cookies.accessToken;
+      } else if (req.cookies?.access_token) {
+        token = req.cookies.access_token;
+      } else if (typeof req.headers.cookie === 'string') {
+        const match = req.headers.cookie.match(
+          /(?:^|;\s*)(?:eventai_access_token|accessToken|access_token)=([^;]+)/,
+        );
+        if (match) {
+          token = decodeURIComponent(match[1]);
+        }
       }
 
       if (token) {

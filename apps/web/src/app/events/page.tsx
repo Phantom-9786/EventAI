@@ -3,12 +3,14 @@ import type { Metadata } from 'next';
 import { Search, SlidersHorizontal } from 'lucide-react';
 import { EventCard } from '@/components/events/event-card';
 import { buttonVariants } from '@/components/ui/button';
-import { getCategories, searchEvents } from '@/lib/api';
+import { getCategories, searchEvents, type Category, type EventsSearchResult, type EventSummary } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 interface EventsPageProps {
   searchParams: { [key: string]: string | string[] | undefined };
 }
+
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Discover Events',
@@ -50,25 +52,53 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
 
   const currentFilters = { q: query, category, city, sort, page: String(page) };
 
-  const [categories, result] = await Promise.all([
-    getCategories().catch(() => []),
-    searchEvents({
-      query,
-      category,
-      city,
-      sortBy: sortBy as 'date' | 'price' | 'popularity' | 'createdAt',
-      sortDir: sortDir as 'asc' | 'desc',
-      page,
-      limit: 12,
-    }).catch(() => ({ events: [], total: 0, page: 1, pages: 1, limit: 12 })),
-  ]);
+  let categories: Category[] = [];
+  let result: EventsSearchResult = { events: [], total: 0, page: 1, pages: 1 };
+  let isMaintenanceBlocked = false;
+  let maintenanceMessage: string | null = null;
+
+  try {
+    const [fetchedCategories, fetchedResult] = await Promise.all([
+      getCategories(),
+      searchEvents({
+        query,
+        category,
+        city,
+        sortBy: sortBy as 'date' | 'price' | 'popularity' | 'createdAt',
+        sortDir: sortDir as 'asc' | 'desc',
+        page,
+        limit: 12,
+      }),
+    ]);
+    categories = fetchedCategories;
+    result = fetchedResult;
+  } catch (err: unknown) {
+    const errMessage = err instanceof Error ? err.message : String(err);
+    if (errMessage.includes('503') || errMessage.toLowerCase().includes('maintenance')) {
+      isMaintenanceBlocked = true;
+      try {
+        const jsonMatch = errMessage.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.message) maintenanceMessage = parsed.message;
+        }
+      } catch {
+        maintenanceMessage = null;
+      }
+    } else {
+      // Allow other unexpected errors to be caught or presented clearly
+      result = { events: [], total: 0, page: 1, pages: 1 };
+    }
+  }
 
   return (
     <div className="container py-10">
       <h1 className="text-3xl font-bold tracking-tight">Discover Events</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        {result.total} event{result.total === 1 ? '' : 's'} found
-      </p>
+      {!isMaintenanceBlocked && (
+        <p className="mt-1 text-sm text-muted-foreground">
+          {result.total} event{result.total === 1 ? '' : 's'} found
+        </p>
+      )}
 
       {/* Filters */}
       <form action="/events" method="get" className="mt-6 flex flex-col gap-3 sm:flex-row">
@@ -142,7 +172,34 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
       </div>
 
       {/* Results */}
-      {result.events.length === 0 ? (
+      {isMaintenanceBlocked ? (
+        <div className="mt-16 rounded-xl border border-amber-500/30 bg-amber-500/5 p-10 text-center max-w-xl mx-auto shadow-sm">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-4 animate-pulse">
+            <SlidersHorizontal className="h-6 w-6" />
+          </div>
+          <h2 className="text-xl font-semibold tracking-tight text-foreground">
+            Website Maintenance Active
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
+            {maintenanceMessage ||
+              'Public event browsing is temporarily unavailable while website maintenance is active. Authorized maintenance testing accounts can sign in to view published events.'}
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link
+              href="/signin"
+              className={cn(buttonVariants(), 'h-9 px-4 text-xs font-semibold')}
+            >
+              Sign In as Tester
+            </Link>
+            <Link
+              href="/events"
+              className={cn(buttonVariants({ variant: 'outline' }), 'h-9 px-4 text-xs')}
+            >
+              Check Again
+            </Link>
+          </div>
+        </div>
+      ) : result.events.length === 0 ? (
         <div className="mt-16 rounded-lg border border-dashed p-12 text-center">
           <p className="text-lg font-medium">No events found</p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -157,7 +214,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
         </div>
       ) : (
         <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {result.events.map((event) => (
+          {result.events.map((event: EventSummary) => (
             <EventCard key={event.id} event={event} />
           ))}
         </div>

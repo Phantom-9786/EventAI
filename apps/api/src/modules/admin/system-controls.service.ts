@@ -297,14 +297,25 @@ export class SystemControlsService {
       const settings = await this.getSettings();
       const testers = settings.maintenanceTesters;
       if (Array.isArray(testers)) {
-        const match = testers.find((t) => {
+        const match = testers.find((t: any) => {
           if (!t) return false;
-          const matchEmail = typeof t.testEmail === 'string' && t.testEmail.toLowerCase().trim() === emailLower;
-          const matchUserId = typeof t.testUserId === 'string' && t.testUserId === userId;
-          return matchEmail || matchUserId;
+          const candidateEmail = String(t.testEmail || t.email || '').toLowerCase().trim();
+          const candidateUserId = String(t.testUserId || t.userId || '').trim();
+          return (
+            (Boolean(candidateEmail) && candidateEmail === emailLower) ||
+            (Boolean(candidateUserId) && candidateUserId === userId)
+          );
         });
         if (match) {
-          const adminIdOrEmail = match.adminId || match.adminEmail;
+          // Verify role constraint if specified on tester entry
+          const allowed = (match as any).allowedRoles;
+          if (Array.isArray(allowed) && allowed.length > 0) {
+            if (!allowed.includes(user.role)) {
+              this.testerCache.set(userId, { isTester: false, expiresAt: now + 5000 });
+              return false;
+            }
+          }
+          const adminIdOrEmail = (match as any).adminId || (match as any).adminEmail || (match as any).linkedBy;
           if (adminIdOrEmail) {
             const admin = await this.prisma.user.findFirst({
               where: {
@@ -367,7 +378,9 @@ export class SystemControlsService {
     const current = await this.getSettings();
     const testers = Array.isArray(current.maintenanceTesters) ? [...current.maintenanceTesters] : [];
 
-    const existingIdx = testers.findIndex((t) => t.testEmail.toLowerCase() === normalizedEmail);
+    const getTesterEmail = (t: any): string =>
+      String(t?.testEmail || t?.email || '').trim().toLowerCase();
+    const existingIdx = testers.findIndex((t) => getTesterEmail(t) === normalizedEmail);
     const entry: MaintenanceTesterEntry = {
       adminId: callerAdmin.id,
       adminEmail: callerAdmin.email,
@@ -429,19 +442,23 @@ export class SystemControlsService {
     const current = await this.getSettings();
     const testers = Array.isArray(current.maintenanceTesters) ? [...current.maintenanceTesters] : [];
 
-    const existing = testers.find((t) => t.testEmail.toLowerCase() === normalizedEmail);
+    const getTesterEmail = (t: any): string =>
+      String(t?.testEmail || t?.email || '').trim().toLowerCase();
+    const existing = testers.find((t) => getTesterEmail(t) === normalizedEmail);
     if (!existing) {
       throw new NotFoundException('Tester link not found');
     }
 
-    if (callerAdmin.adminRole !== 'OWNER' && existing.adminId !== callerAdmin.id) {
+    const adminOwnerId = (existing as any).adminId || (existing as any).linkedBy;
+    if (callerAdmin.adminRole !== 'OWNER' && adminOwnerId !== callerAdmin.id) {
       throw new ForbiddenException('You can only remove test accounts you linked');
     }
 
-    const updated = testers.filter((t) => t.testEmail.toLowerCase() !== normalizedEmail);
+    const updated = testers.filter((t) => getTesterEmail(t) !== normalizedEmail);
     await this.updateSettings(callerAdminId, { maintenanceTesters: updated }, meta);
-    if (existing.testUserId) {
-      this.testerCache.delete(existing.testUserId);
+    const existingUserId = (existing as any).testUserId || (existing as any).userId;
+    if (existingUserId) {
+      this.testerCache.delete(existingUserId);
     }
 
     try {
@@ -450,7 +467,7 @@ export class SystemControlsService {
           userId: callerAdminId,
           action: 'MAINTENANCE_TESTER_UNLINKED',
           entity: 'User',
-          entityId: existing.testUserId || normalizedEmail,
+          entityId: existingUserId || normalizedEmail,
           details: {
             adminEmail: callerAdmin.email,
             testEmail: normalizedEmail,
@@ -481,9 +498,20 @@ export class SystemControlsService {
     const settings = await this.getSettings();
     const testers = Array.isArray(settings.maintenanceTesters) ? settings.maintenanceTesters : [];
 
+    const normalizeTester = (t: any): MaintenanceTesterEntry => ({
+      adminId: t.adminId || t.linkedBy,
+      adminEmail: t.adminEmail,
+      testEmail: t.testEmail || t.email,
+      testUserId: t.testUserId || t.userId,
+      allowedRoles: t.allowedRoles,
+      createdAt: t.createdAt || t.linkedAt,
+    });
+
     if (callerAdmin.adminRole === 'OWNER') {
-      return testers;
+      return testers.map(normalizeTester);
     }
-    return testers.filter((t) => t.adminId === callerAdmin.id || t.adminEmail === callerAdmin.email);
+    return testers
+      .filter((t: any) => (t.adminId || t.linkedBy) === callerAdmin.id || t.adminEmail === callerAdmin.email)
+      .map(normalizeTester);
   }
 }

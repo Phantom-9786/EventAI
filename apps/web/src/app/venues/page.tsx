@@ -9,6 +9,8 @@ interface VenuesPageProps {
   searchParams: { [key: string]: string | string[] | undefined };
 }
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Venues',
   description: 'Browse venues — halls, stadiums and arenas hosting upcoming events.',

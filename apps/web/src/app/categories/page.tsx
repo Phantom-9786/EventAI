@@ -3,6 +3,8 @@ import type { Metadata } from 'next';
 import { CalendarDays, ChevronRight } from 'lucide-react';
 import { getCategories } from '@/lib/api';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Event Categories',
   description: 'Browse events by category — music, tech, sports, food & drink, and more.',

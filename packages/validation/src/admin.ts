@@ -77,10 +77,14 @@ export type AdminAuditLogListInput = z.infer<typeof adminAuditLogListSchema>;
 export const maintenanceTesterEntrySchema = z.object({
   adminId: z.string().optional(),
   adminEmail: z.string().optional(),
-  testEmail: z.string().trim().toLowerCase(),
+  linkedBy: z.string().optional(),
+  testEmail: z.string().trim().toLowerCase().optional(),
+  email: z.string().trim().toLowerCase().optional(),
   testUserId: z.string().optional(),
+  userId: z.string().optional(),
   allowedRoles: z.array(z.enum(['CUSTOMER', 'ORGANIZER'])).optional(),
   createdAt: z.string().optional(),
+  linkedAt: z.string().optional(),
 });
 export type MaintenanceTesterEntry = z.infer<typeof maintenanceTesterEntrySchema>;
 
