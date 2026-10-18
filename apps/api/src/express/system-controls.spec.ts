@@ -141,7 +141,11 @@ describe('System Controls & Maintenance Modes Integration', () => {
         return Promise.resolve({ ...currentSettings });
       }),
       isAuthorizedMaintenanceTester: jest.fn().mockImplementation((userId) => {
-        return Promise.resolve(userId === 'tester-customer-uuid' || userId === 'tester-organizer-uuid');
+        return Promise.resolve(
+          userId === adminUser.id ||
+            userId === 'tester-customer-uuid' ||
+            userId === 'tester-organizer-uuid',
+        );
       }),
       verifyTesterSessionAcquisition: jest.fn().mockImplementation((callerAdminId, targetEmail) => {
         if (callerAdminId !== adminUser.id) {
@@ -590,6 +594,64 @@ describe('System Controls & Maintenance Modes Integration', () => {
     expect(jsonSuccess.user.email).toBe(testerCustomerUser.email);
     expect(jsonSuccess.user.isMaintenanceTester).toBe(true);
     expect(resSuccess.headers.get('set-cookie')).toContain('eventai_refresh_token=');
+  });
+
+  it('4e. Revoked administrator cannot bypass maintenance mode with stale JWT, after fresh login, or via session switching', async () => {
+    await mockSystemControlsService.updateSettings('admin', {
+      websiteMaintenance: true,
+      websiteMaintenanceMessage: 'Platform maintenance active',
+    });
+
+    const revokedUserId = 'revoked-admin-uuid';
+    // Stale token that still claims role: ADMIN
+    const staleAdminToken = jwt.sign(
+      { sub: revokedUserId, email: 'revoked@eventpoint.test', role: UserRole.ADMIN },
+      JWT_SECRET,
+      { expiresIn: '1h' },
+    );
+    // New login token issued after role was revoked to CUSTOMER
+    const newLoginCustomerToken = jwt.sign(
+      { sub: revokedUserId, email: 'revoked@eventpoint.test', role: UserRole.CUSTOMER },
+      JWT_SECRET,
+      { expiresIn: '1h' },
+    );
+
+    // 1. Stale token with role: ADMIN is strictly DENIED (503) because authoritative DB verification rejects it
+    const resStale = await fetch(`${baseUrl}/api/categories`, {
+      headers: { Authorization: `Bearer ${staleAdminToken}` },
+    });
+    expect(resStale.status).toBe(503);
+    const jsonStale = (await resStale.json()) as any;
+    expect(jsonStale.code).toBe('MAINTENANCE_MODE');
+
+    // 2. Fresh login token is also DENIED (503)
+    const resNew = await fetch(`${baseUrl}/api/categories`, {
+      headers: { Authorization: `Bearer ${newLoginCustomerToken}` },
+    });
+    expect(resNew.status).toBe(503);
+
+    // 3. Revoked user cannot use switch-tester-session endpoint
+    const resSwitch = await fetch(`${baseUrl}/api/admin/system-controls/testers/session`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${newLoginCustomerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ testEmail: testerCustomerUser.email }),
+    });
+    expect([401, 403]).toContain(resSwitch.status);
+
+    // 4. Intentionally authorized platform admin continues to have full access (200)
+    const resLegitAdmin = await fetch(`${baseUrl}/api/categories`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    expect(resLegitAdmin.status).toBe(200);
+
+    // 5. Intentionally authorized attendee tester continues to have access (200)
+    const resLegitTester = await fetch(`${baseUrl}/api/events`, {
+      headers: { Authorization: `Bearer ${testerCustomerToken}` },
+    });
+    expect(resLegitTester.status).toBe(200);
   });
 
   it('5. AI Maintenance Mode blocks AI chat (503) while keeping non-AI endpoints operational', async () => {

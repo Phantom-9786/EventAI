@@ -375,5 +375,52 @@ describe('SystemControlsService', () => {
         service.verifyTesterSessionAcquisition('admin-1', 'unlinked@external.test'),
       ).rejects.toThrow('is not registered as an authorized maintenance tester');
     });
+
+    it('purgeTesterEntitlementsForUser prunes both tester matching user and testers sponsored by the revoked admin', async () => {
+      const dbSettings = {
+        ...DEFAULT_SYSTEM_CONTROLS,
+        websiteMaintenance: true,
+        maintenanceTesters: [
+          {
+            testEmail: 'owner.attendee@external.test',
+            testUserId: 'owner-attendee-id',
+            adminId: 'owner-id',
+            allowedRoles: ['CUSTOMER'],
+          },
+          {
+            testEmail: 'delegated.admin@external.test',
+            testUserId: 'delegated-admin-id',
+            adminId: 'owner-id',
+            allowedRoles: ['CUSTOMER', 'ORGANIZER'],
+          },
+          {
+            testEmail: 'sponsored.by.delegated@external.test',
+            testUserId: 'sponsored-id',
+            adminId: 'delegated-admin-id',
+            allowedRoles: ['CUSTOMER'],
+          },
+        ],
+      };
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([{ key: 'system_controls', value: dbSettings }]);
+
+      const result = await service.purgeTesterEntitlementsForUser('owner-id', {
+        id: 'delegated-admin-id',
+        email: 'delegated.admin@external.test',
+      });
+
+      expect(result.removedCount).toBe(2);
+      expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO system_settings'),
+        'system_controls',
+        expect.stringMatching(/"owner\.attendee@external\.test"/),
+      );
+      const insertCall = mockPrisma.$executeRawUnsafe.mock.calls.find((call: any[]) =>
+        typeof call[0] === 'string' && call[0].includes('INSERT INTO system_settings'),
+      );
+      expect(insertCall).toBeDefined();
+      const savedPayload = JSON.parse(insertCall[2]);
+      expect(savedPayload.maintenanceTesters).toHaveLength(1);
+      expect(savedPayload.maintenanceTesters[0].testEmail).toBe('owner.attendee@external.test');
+    });
   });
 });

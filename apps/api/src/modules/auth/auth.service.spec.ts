@@ -311,7 +311,12 @@ describe('AuthService', () => {
 
       const result = await service.loginWithGoogle(googleProfile());
 
-      expect(result.user).toEqual({ id: 'user-2', email: 'guser@example.com', role: 'CUSTOMER' });
+      expect(result.user).toEqual({
+        id: 'user-2',
+        email: 'guser@example.com',
+        role: 'CUSTOMER',
+        isMaintenanceTester: false,
+      });
       const created = prisma.user.create.mock.calls[0][0].data;
       expect(created.googleId).toBe('google-sub-1');
       expect(created.passwordHash).toBeNull();

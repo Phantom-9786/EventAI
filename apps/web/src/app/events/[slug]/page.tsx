@@ -113,7 +113,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
   });
 
   return (
-    <div className="container py-10">
+    <div className="container max-w-full px-4 py-8 sm:px-6 sm:py-10">
       <Link
         href="/events"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
@@ -122,16 +122,16 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         All events
       </Link>
 
-      <div className="mt-6 grid gap-10 lg:grid-cols-[1fr_380px]">
+      <div className="mt-6 grid min-w-0 max-w-full gap-8 lg:gap-10 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* Main column */}
-        <div>
-          <div className="flex h-56 items-center justify-center overflow-hidden rounded-xl border bg-muted lg:h-72">
+        <div className="min-w-0 max-w-full">
+          <div className="relative flex h-52 sm:h-64 lg:h-80 w-full max-w-full items-center justify-center overflow-hidden rounded-xl border bg-muted">
             {coverImage ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={coverImage}
                 alt={event.title}
-                className="h-full w-full object-cover"
+                className="h-full w-full max-w-full object-cover"
               />
             ) : (
               <CalendarDays className="h-16 w-16 text-muted-foreground/40" aria-hidden />
@@ -161,7 +161,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
             ))}
           </div>
 
-          <h1 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">
+          <h1 className="mt-3 break-words text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">
             {event.title}
           </h1>
           {event.shortDescription && (
@@ -201,16 +201,16 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
           </div>
 
           {/* Description */}
-          <section className="mt-10">
+          <section className="mt-10 min-w-0 max-w-full">
             <h2 className="text-xl font-semibold">About this event</h2>
-            <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
+            <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">
               {event.description}
             </div>
           </section>
 
           {/* Gallery Images */}
           {galleryImages.length > 0 && (
-            <section className="mt-10" aria-label="Event gallery">
+            <section className="mt-10 min-w-0 max-w-full" aria-label="Event gallery">
               <h2 className="text-xl font-semibold">Event gallery</h2>
               <EventGallery images={galleryImages} eventTitle={event.title} />
             </section>
@@ -218,9 +218,9 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
           {/* Ticket types */}
           {event.ticketTypes.length > 0 && (
-            <section className="mt-10">
+            <section className="mt-10 min-w-0 max-w-full">
               <h2 className="text-xl font-semibold">Tickets</h2>
-              <div className="mt-3 divide-y rounded-lg border">
+              <div className="mt-3 divide-y rounded-lg border min-w-0 max-w-full overflow-hidden">
                 {event.ticketTypes.map((t) => {
                   const availability = availabilityLabel(t);
                   const saleNote = saleWindow(t);
@@ -314,8 +314,8 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         </div>
 
         {/* Sidebar */}
-        <aside className="lg:sticky lg:top-24 lg:self-start">
-          <div className="rounded-lg border bg-card p-6 shadow-sm">
+        <aside className="min-w-0 max-w-full lg:sticky lg:top-24 lg:self-start">
+          <div className="min-w-0 max-w-full rounded-lg border bg-card p-6 shadow-sm">
             {(() => {
               const computedMinPrice =
                 typeof event.minPrice === 'number' && Number.isFinite(event.minPrice)
@@ -346,7 +346,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
             />
           </div>
 
-          <div className="mt-4 rounded-lg border bg-card p-6">
+          <div className="mt-4 rounded-lg border bg-card p-6 min-w-0 max-w-full">
             <p className="text-sm font-medium">Organized by</p>
             <p className="mt-1 flex items-center gap-1.5 font-semibold">
               {event.organizer.organizationName}
@@ -364,7 +364,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
 
       {/* Recommendations */}
       {similar.length > 0 && (
-        <section className="mt-14">
+        <section className="mt-14 min-w-0 max-w-full">
           <h2 className="text-xl font-semibold">You might also like</h2>
           <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {similar.map((s) => (

@@ -138,9 +138,9 @@ export function EventGallery({ images, eventTitle }: EventGalleryProps) {
   return (
     <>
       {/* 1. Mobile Swipeable Carousel (< sm) */}
-      <div className="mt-3 block sm:hidden">
+      <div className="mt-3 block sm:hidden min-w-0 max-w-full overflow-hidden">
         <div
-          className="relative aspect-video w-full overflow-hidden rounded-xl border bg-muted shadow-sm select-none"
+          className="relative aspect-video w-full max-w-full overflow-hidden rounded-xl border bg-muted shadow-sm select-none"
           onTouchStart={handleMobileTouchStart}
           onTouchMove={handleMobileTouchMove}
           onTouchEnd={handleMobileTouchEnd}
@@ -155,7 +155,7 @@ export function EventGallery({ images, eventTitle }: EventGalleryProps) {
             <img
               src={images[mobileIndex]}
               alt={`${eventTitle} gallery photo ${mobileIndex + 1}`}
-              className="h-full w-full object-cover transition-transform duration-300"
+              className="h-full w-full max-w-full object-cover transition-transform duration-300"
               loading="lazy"
             />
             <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
@@ -219,7 +219,7 @@ export function EventGallery({ images, eventTitle }: EventGalleryProps) {
       </div>
 
       {/* 2. Desktop Gallery Thumbnail Grid (sm and up) */}
-      <div className="mt-3 hidden sm:grid sm:grid-cols-3 md:grid-cols-4 gap-3">
+      <div className="mt-3 hidden sm:grid sm:grid-cols-3 md:grid-cols-4 gap-3 min-w-0 max-w-full">
         {images.map((imgUrl, index) => (
           <button
             key={`${imgUrl}-${index}`}
@@ -230,13 +230,13 @@ export function EventGallery({ images, eventTitle }: EventGalleryProps) {
             onClick={() => handleOpen(index)}
             aria-haspopup="dialog"
             aria-label={`View photo ${index + 1} of ${totalCount} for ${eventTitle}`}
-            className="group relative aspect-video w-full overflow-hidden rounded-xl border bg-muted shadow-sm transition-all hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            className="group relative aspect-video w-full max-w-full overflow-hidden rounded-xl border bg-muted shadow-sm transition-all hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={imgUrl}
               alt={`${eventTitle} gallery photo ${index + 1}`}
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              className="h-full w-full max-w-full object-cover transition-transform duration-300 group-hover:scale-105"
               loading="lazy"
             />
             <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-200 group-hover:bg-black/25">

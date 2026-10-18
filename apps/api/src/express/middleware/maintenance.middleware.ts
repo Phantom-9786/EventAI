@@ -105,9 +105,8 @@ export function createMaintenanceMiddleware({
       if (token) {
         try {
           const decoded = jwt.verify(token, jwtSecret) as { role?: string; sub?: string };
-          if (decoded.role === UserRole.ADMIN) {
-            return next();
-          }
+          // Do not trust client-supplied or stale JWT role claims alone.
+          // Authoritatively verify against database user role and explicit maintenance tester status.
           if (decoded.sub && systemControlsService.isAuthorizedMaintenanceTester) {
             const isTester = await systemControlsService.isAuthorizedMaintenanceTester(decoded.sub);
             if (isTester) {

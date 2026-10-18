@@ -5,9 +5,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AdminService } from './admin.service';
+import { SystemControlsService } from './system-controls.service';
 
 describe('AdminService', () => {
   let service: AdminService;
+  let systemControlsService: { purgeTesterEntitlementsForUser: jest.Mock };
   let prisma: {
     user: { count: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
     organizer: { count: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
@@ -67,6 +69,9 @@ describe('AdminService', () => {
 
     eventsService = { invalidateEventCache: jest.fn().mockResolvedValue(undefined) };
     notificationsService = { sendEventCancellationNotice: jest.fn().mockResolvedValue(undefined) };
+    systemControlsService = {
+      purgeTesterEntitlementsForUser: jest.fn().mockResolvedValue({ removedCount: 1 }),
+    };
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -74,6 +79,7 @@ describe('AdminService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: EventsService, useValue: eventsService },
         { provide: NotificationsService, useValue: notificationsService },
+        { provide: SystemControlsService, useValue: systemControlsService },
       ],
     }).compile();
 
@@ -569,6 +575,11 @@ describe('AdminService', () => {
       const result = await service.revokeAdminAccess('owner-1', 'delegated-admin-1');
       expect(result.success).toBe(true);
       expect(prisma.$transaction).toHaveBeenCalled();
+      expect(systemControlsService.purgeTesterEntitlementsForUser).toHaveBeenCalledWith(
+        'owner-1',
+        { id: 'delegated-admin-1', email: 'delegated@eventai.test' },
+        undefined,
+      );
     });
 
     it('prevents owner from revoking their own administrator access', async () => {

@@ -599,5 +599,76 @@ export class SystemControlsService {
 
     return targetUser;
   }
+
+  /**
+   * Purges all maintenance tester entitlements for a revoked administrator.
+   * Removes tester entries matching their email or user ID, and any tester entries
+   * that were linked or sponsored by them.
+   */
+  async purgeTesterEntitlementsForUser(
+    callerUserId: string,
+    targetUser: { id: string; email: string },
+    meta?: { ipAddress?: string; userAgent?: string },
+  ): Promise<{ removedCount: number }> {
+    const settings = await this.getSettings();
+    const currentTesters = Array.isArray(settings.maintenanceTesters)
+      ? [...settings.maintenanceTesters]
+      : [];
+
+    const targetEmailLower = targetUser.email.toLowerCase().trim();
+    const targetUserId = targetUser.id;
+    const removedIds: string[] = [];
+
+    const remainingTesters = currentTesters.filter((t: any) => {
+      const testerEmail = String(t?.testEmail || t?.email || '').trim().toLowerCase();
+      const testerUserId = String(t?.testUserId || t?.userId || '').trim();
+      const adminId = String(t?.adminId || t?.linkedBy || '').trim();
+      const adminEmail = String(t?.adminEmail || '').trim().toLowerCase();
+
+      // Prune if this entry is for the revoked user
+      if (testerEmail === targetEmailLower || (Boolean(testerUserId) && testerUserId === targetUserId)) {
+        if (testerUserId) removedIds.push(testerUserId);
+        return false;
+      }
+      // Prune if this entry was linked/sponsored by the revoked user
+      if ((Boolean(adminId) && adminId === targetUserId) || (Boolean(adminEmail) && adminEmail === targetEmailLower)) {
+        if (testerUserId) removedIds.push(testerUserId);
+        return false;
+      }
+      return true;
+    });
+
+    const removedCount = currentTesters.length - remainingTesters.length;
+    if (removedCount > 0) {
+      await this.updateSettings(callerUserId, { maintenanceTesters: remainingTesters }, meta);
+      this.testerCache.delete(targetUserId);
+      for (const id of removedIds) {
+        this.testerCache.delete(id);
+      }
+
+      try {
+        await this.prisma.auditLog.create({
+          data: {
+            userId: callerUserId,
+            action: 'MAINTENANCE_TESTER_REVOKED_WITH_ADMIN',
+            entity: 'User',
+            entityId: targetUserId,
+            details: {
+              targetEmail: targetUser.email,
+              removedCount,
+            },
+            ipAddress: meta?.ipAddress,
+            userAgent: meta?.userAgent,
+          },
+        });
+      } catch (err) {
+        this.logger.warn(`Failed to create audit log for tester purge: ${String(err)}`);
+      }
+    } else {
+      this.testerCache.delete(targetUserId);
+    }
+
+    return { removedCount };
+  }
 }
 

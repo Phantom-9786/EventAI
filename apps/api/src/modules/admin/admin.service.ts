@@ -1242,6 +1242,21 @@ export class AdminService {
       }),
     ]);
 
+    // Also purge every maintenance tester entitlement associated with the revoked admin
+    if (this.systemControlsService) {
+      try {
+        await this.systemControlsService.purgeTesterEntitlementsForUser(
+          callerUserId,
+          { id: targetUserId, email: targetUser.email },
+          meta,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Failed to purge maintenance tester entitlements for revoked admin ${targetUser.email}: ${String(err)}`,
+        );
+      }
+    }
+
     return { success: true, message: `Administrator access revoked for ${targetUser.email}` };
   }
 
