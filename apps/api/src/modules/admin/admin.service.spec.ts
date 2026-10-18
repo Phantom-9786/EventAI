@@ -1,4 +1,5 @@
-import { BadRequestException, ConflictException, NotFoundException } from '../../common/exceptions';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '../../common/exceptions';
+import { UserRole, AdminRoleType } from '@eventai/types';
 import { Test } from '../../common/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
@@ -8,7 +9,7 @@ import { AdminService } from './admin.service';
 describe('AdminService', () => {
   let service: AdminService;
   let prisma: {
-    user: { count: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
+    user: { count: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
     organizer: { count: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
     event: {
       groupBy: jest.Mock;
@@ -35,7 +36,7 @@ describe('AdminService', () => {
 
   beforeEach(async () => {
     prisma = {
-      user: { count: jest.fn().mockResolvedValue(42), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+      user: { count: jest.fn().mockResolvedValue(42), findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
       organizer: { count: jest.fn().mockResolvedValue(7), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
       event: {
         groupBy: jest.fn().mockResolvedValue([{ status: 'PUBLISHED', _count: { _all: 5 } }]),
@@ -496,5 +497,127 @@ describe('AdminService', () => {
       expect(organizersResult.limit).toBe(20);
     });
   });
+
+  describe('isPlatformOwner & revokeAdminAccess', () => {
+    it('recognizes explicit platform owner correctly', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'owner-1',
+        role: UserRole.ADMIN,
+        adminRole: AdminRoleType.OWNER,
+        isActive: true,
+      });
+
+      const isOwner = await service.isPlatformOwner('owner-1');
+      expect(isOwner).toBe(true);
+    });
+
+    it('does not treat delegated admin as platform owner when an explicit owner exists, even if delegated admin was created earlier', async () => {
+      // Target is delegated admin
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'delegated-admin-1',
+        role: UserRole.ADMIN,
+        adminRole: AdminRoleType.ADMIN,
+        isActive: true,
+        createdAt: new Date('2026-10-16'),
+      });
+      // Explicit owner exists in the database
+      prisma.user.findFirst.mockResolvedValue({
+        id: 'owner-1',
+        role: UserRole.ADMIN,
+        adminRole: AdminRoleType.OWNER,
+        isActive: true,
+      });
+
+      const isOwner = await service.isPlatformOwner('delegated-admin-1');
+      expect(isOwner).toBe(false);
+    });
+
+    it('allows platform owner to revoke a delegated administrator', async () => {
+      // Caller is owner
+      prisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'owner-1',
+          role: UserRole.ADMIN,
+          adminRole: AdminRoleType.OWNER,
+          isActive: true,
+        })
+        // Target is delegated admin
+        .mockResolvedValueOnce({
+          id: 'delegated-admin-1',
+          email: 'delegated@eventai.test',
+          role: UserRole.ADMIN,
+          adminRole: AdminRoleType.ADMIN,
+        })
+        // Check target's isPlatformOwner
+        .mockResolvedValueOnce({
+          id: 'delegated-admin-1',
+          role: UserRole.ADMIN,
+          adminRole: AdminRoleType.ADMIN,
+          isActive: true,
+        });
+
+      // Explicit owner exists
+      prisma.user.findFirst.mockResolvedValue({
+        id: 'owner-1',
+        role: UserRole.ADMIN,
+        adminRole: AdminRoleType.OWNER,
+        isActive: true,
+      });
+
+      prisma.$transaction.mockResolvedValue([{}, { count: 2 }, {}]);
+
+      const result = await service.revokeAdminAccess('owner-1', 'delegated-admin-1');
+      expect(result.success).toBe(true);
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('prevents owner from revoking their own administrator access', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'owner-1',
+        role: UserRole.ADMIN,
+        adminRole: AdminRoleType.OWNER,
+        isActive: true,
+      });
+
+      await expect(service.revokeAdminAccess('owner-1', 'owner-1')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('prevents revocation of the last active platform owner', async () => {
+      // Caller is owner 1
+      prisma.user.findUnique
+        .mockResolvedValueOnce({
+          id: 'owner-1',
+          role: UserRole.ADMIN,
+          adminRole: AdminRoleType.OWNER,
+          isActive: true,
+        })
+        // Target is owner 2
+        .mockResolvedValueOnce({
+          id: 'owner-2',
+          email: 'owner2@eventai.test',
+          role: UserRole.ADMIN,
+          adminRole: AdminRoleType.OWNER,
+        })
+        // Target isPlatformOwner check
+        .mockResolvedValueOnce({
+          id: 'owner-2',
+          role: UserRole.ADMIN,
+          adminRole: AdminRoleType.OWNER,
+          isActive: true,
+        });
+
+      // Only 1 active owner in the system
+      prisma.user.findMany.mockResolvedValueOnce([
+        { id: 'owner-2', adminRole: AdminRoleType.OWNER, createdAt: new Date() },
+      ]);
+
+      await expect(service.revokeAdminAccess('owner-1', 'owner-2')).rejects.toThrow(
+        'Cannot revoke administrator access for the last active platform owner',
+      );
+    });
+  });
 });
+
 

@@ -772,7 +772,17 @@ export class AdminService {
     if (user.adminRole === AdminRoleType.OWNER) {
       return true;
     }
-    // The earliest created active ADMIN is always recognized as a platform owner
+
+    // If an explicit active platform owner exists, delegated administrators (adminRole: ADMIN) are not owners
+    const explicitOwner = await this.prisma.user.findFirst({
+      where: { role: UserRole.ADMIN, adminRole: AdminRoleType.OWNER, isActive: true },
+      select: { id: true },
+    });
+    if (explicitOwner) {
+      return false;
+    }
+
+    // Fallback: The earliest created active ADMIN is only recognized as a platform owner if no explicit owner exists
     const earliestAdmin = await this.prisma.user.findFirst({
       where: { role: UserRole.ADMIN, isActive: true },
       orderBy: { createdAt: 'asc' },

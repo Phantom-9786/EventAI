@@ -3,6 +3,7 @@
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ImageOff, Maximize2, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export interface EventGalleryProps {
   images: string[];
@@ -11,10 +12,13 @@ export interface EventGalleryProps {
 
 export function EventGallery({ images, eventTitle }: EventGalleryProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [mobileIndex, setMobileIndex] = useState(0);
   const [imageErrors, setImageErrors] = useState<Record<number, boolean>>({});
   const triggerRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
+  const mobileTouchStartX = useRef<number | null>(null);
+  const mobileTouchEndX = useRef<number | null>(null);
 
   const isOpen = selectedIndex !== null;
   const currentIndex = selectedIndex ?? 0;
@@ -22,6 +26,35 @@ export function EventGallery({ images, eventTitle }: EventGalleryProps) {
 
   const handleOpen = (index: number) => {
     setSelectedIndex(index);
+  };
+
+  const handleMobilePrev = () => {
+    setMobileIndex((prev) => (prev === 0 ? totalCount - 1 : prev - 1));
+  };
+
+  const handleMobileNext = () => {
+    setMobileIndex((prev) => (prev === totalCount - 1 ? 0 : prev + 1));
+  };
+
+  const handleMobileTouchStart = (e: React.TouchEvent) => {
+    mobileTouchStartX.current = e.changedTouches[0].clientX;
+  };
+
+  const handleMobileTouchMove = (e: React.TouchEvent) => {
+    mobileTouchEndX.current = e.changedTouches[0].clientX;
+  };
+
+  const handleMobileTouchEnd = () => {
+    if (mobileTouchStartX.current !== null && mobileTouchEndX.current !== null) {
+      const distance = mobileTouchStartX.current - mobileTouchEndX.current;
+      if (distance > 40) {
+        handleMobileNext();
+      } else if (distance < -40) {
+        handleMobilePrev();
+      }
+    }
+    mobileTouchStartX.current = null;
+    mobileTouchEndX.current = null;
   };
 
   const handleClose = useCallback(() => {
@@ -104,8 +137,89 @@ export function EventGallery({ images, eventTitle }: EventGalleryProps) {
 
   return (
     <>
-      {/* Gallery Thumbnail Grid */}
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+      {/* 1. Mobile Swipeable Carousel (< sm) */}
+      <div className="mt-3 block sm:hidden">
+        <div
+          className="relative aspect-video w-full overflow-hidden rounded-xl border bg-muted shadow-sm select-none"
+          onTouchStart={handleMobileTouchStart}
+          onTouchMove={handleMobileTouchMove}
+          onTouchEnd={handleMobileTouchEnd}
+        >
+          <button
+            type="button"
+            onClick={() => handleOpen(mobileIndex)}
+            aria-label={`View enlarged photo ${mobileIndex + 1} of ${totalCount}`}
+            className="group relative h-full w-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={images[mobileIndex]}
+              alt={`${eventTitle} gallery photo ${mobileIndex + 1}`}
+              className="h-full w-full object-cover transition-transform duration-300"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
+              <span className="rounded-full bg-black/60 p-2 text-white shadow backdrop-blur-sm">
+                <Maximize2 className="h-4 w-4" />
+              </span>
+            </div>
+          </button>
+
+          {/* Mobile Prev / Next Buttons */}
+          {totalCount > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleMobilePrev();
+                }}
+                aria-label="Previous gallery image"
+                className="absolute left-2 top-1/2 -translate-y-1/2 z-10 rounded-full bg-black/50 p-2 text-white hover:bg-black/75 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleMobileNext();
+                }}
+                aria-label="Next gallery image"
+                className="absolute right-2 top-1/2 -translate-y-1/2 z-10 rounded-full bg-black/50 p-2 text-white hover:bg-black/75 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+
+              {/* Mobile Counter Pill */}
+              <div className="absolute bottom-2.5 right-2.5 z-10 rounded-full bg-black/60 px-2.5 py-0.5 text-xs font-medium text-white backdrop-blur-sm pointer-events-none">
+                {mobileIndex + 1} / {totalCount}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Mobile Pagination Dot Indicators */}
+        {totalCount > 1 && (
+          <div className="mt-2.5 flex items-center justify-center gap-1.5" aria-hidden="true">
+            {images.map((_, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setMobileIndex(idx)}
+                aria-label={`Go to slide ${idx + 1}`}
+                className={cn(
+                  'h-1.5 rounded-full transition-all',
+                  idx === mobileIndex ? 'w-5 bg-primary' : 'w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/50',
+                )}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* 2. Desktop Gallery Thumbnail Grid (sm and up) */}
+      <div className="mt-3 hidden sm:grid sm:grid-cols-3 md:grid-cols-4 gap-3">
         {images.map((imgUrl, index) => (
           <button
             key={`${imgUrl}-${index}`}
