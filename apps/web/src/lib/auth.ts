@@ -67,8 +67,22 @@ export function getAccessToken(): string | null {
 
 export function setAccessToken(token: string | null): void {
   if (typeof window === 'undefined') return;
-  if (token) window.localStorage.setItem(TOKEN_KEY, token);
-  else window.localStorage.removeItem(TOKEN_KEY);
+  // Security Architecture & Trade-Off:
+  // The eventai_access_token cookie provides Next.js server-side rendering (SSR) components
+  // with the short-lived bearer access token so SSR pages (e.g. /events) can authenticate
+  // with the backend API on behalf of the user during maintenance mode and normal browsing.
+  // The long-lived, sensitive refresh token remains strictly HttpOnly on the backend domain.
+  // Because document.cookie cannot set the HttpOnly flag from client JavaScript, this short-lived
+  // token carries the identical XSS exposure profile as window.localStorage where it is also kept.
+  // The Secure attribute is appended on HTTPS environments, and SameSite=Lax prevents CSRF transmission.
+  const secureSuffix = window.location.protocol === 'https:' ? '; Secure' : '';
+  if (token) {
+    window.localStorage.setItem(TOKEN_KEY, token);
+    document.cookie = `eventai_access_token=${token}; path=/; max-age=3600; SameSite=Lax${secureSuffix}`;
+  } else {
+    window.localStorage.removeItem(TOKEN_KEY);
+    document.cookie = `eventai_access_token=; path=/; max-age=0; SameSite=Lax${secureSuffix}`;
+  }
 }
 
 /** Refreshes the access token using the httpOnly refresh cookie. */

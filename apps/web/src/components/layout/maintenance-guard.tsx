@@ -64,7 +64,7 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
     if (isAdmin) {
       return (
         <SystemControlsContext.Provider value={{ controls, loading, reload: loadControls }}>
-          <div className="bg-amber-500 text-amber-950 dark:bg-amber-500/20 dark:text-amber-200 border-b border-amber-600/30 px-4 py-2.5 text-xs sm:text-sm font-medium flex items-center justify-between sticky top-0 z-50 shadow-sm backdrop-blur-sm">
+          <div className="bg-amber-500 text-amber-950 dark:bg-amber-500/20 dark:text-amber-200 border-b border-amber-600/30 px-4 py-2.5 text-xs sm:text-sm font-medium flex items-center justify-between sticky top-0 z-[60] shadow-sm backdrop-blur-sm pointer-events-auto">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
               <span>
@@ -72,8 +72,18 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
               </span>
             </div>
             <Link
+              id="maintenance-banner-system-controls-link"
               href="/admin?tab=system-controls"
-              className="inline-flex items-center gap-1 font-semibold underline hover:text-black dark:hover:text-white transition-colors ml-4 shrink-0"
+              className="inline-flex items-center gap-1 font-semibold underline hover:text-black dark:hover:text-white transition-colors ml-4 shrink-0 cursor-pointer relative z-10"
+              onClick={(e) => {
+                if (typeof window !== 'undefined' && window.location.pathname === '/admin') {
+                  e.preventDefault();
+                  const url = new URL(window.location.href);
+                  url.searchParams.set('tab', 'system-controls');
+                  window.history.pushState(null, '', url.toString());
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                }
+              }}
             >
               System Controls <ArrowRight className="h-3.5 w-3.5" />
             </Link>
@@ -117,26 +127,31 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
               'EventPoint is temporarily undergoing maintenance. Please check back soon.'}
           </p>
 
-          <div className="mt-8 flex flex-col sm:flex-row items-center gap-3">
+          {/* Primary visitor action: Check Again */}
+          <div className="mt-8 flex justify-center">
             <button
               type="button"
               onClick={() => void loadControls()}
-              className="inline-flex items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all active:scale-[0.98]"
+              className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition-all active:scale-[0.98]"
             >
               Check Again
             </button>
-            <Link
-              href="/signin"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            >
-              <ShieldCheck className="h-4 w-4 text-primary" />
-              Administrator Access
-            </Link>
           </div>
 
-          <p className="mt-12 text-xs text-muted-foreground/60">
+          <p className="mt-12 text-xs text-muted-foreground/60 max-w-sm">
             Expected return shortly. Existing bookings and tickets remain safe.
           </p>
+
+          {/* Discreet secondary administrator link near bottom */}
+          <div className="mt-8 pt-4 border-t border-border/40">
+            <Link
+              href="/signin"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/60 hover:text-muted-foreground underline-offset-4 hover:underline transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded px-2 py-1"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Administrator access</span>
+            </Link>
+          </div>
         </div>
       </SystemControlsContext.Provider>
     );

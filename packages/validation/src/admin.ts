@@ -96,4 +96,16 @@ export type AdminUpdateSystemControlsInput = z.infer<
   typeof adminUpdateSystemControlsSchema
 >;
 
+// ── Admin: Team & Access ───────────────────────────
+export const adminInviteTeamMemberSchema = z.object({
+  email: z.string().trim().email('Invalid email address'),
+  role: z.enum(['ADMIN']).default('ADMIN'),
+});
+export type AdminInviteTeamMemberInput = z.infer<typeof adminInviteTeamMemberSchema>;
+
+export const adminAcceptInvitationSchema = z.object({
+  token: z.string().trim().min(10, 'Invalid invitation token'),
+});
+export type AdminAcceptInvitationInput = z.infer<typeof adminAcceptInvitationSchema>;
+
 

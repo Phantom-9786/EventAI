@@ -193,9 +193,11 @@ test.describe('Features 2-4: Admin System Controls & Maintenance Modes', () => {
 
     await page.goto('/');
 
-    // Admin sees banner
+    // Admin sees banner with clickable link to System Controls
     await expect(page.getByText(/Website Maintenance Mode is ACTIVE/i)).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole('link', { name: /System Controls/i }).first()).toBeVisible();
+    const bannerLink = page.locator('#maintenance-banner-system-controls-link');
+    await expect(bannerLink).toBeVisible();
+    await expect(bannerLink).toHaveAttribute('href', '/admin?tab=system-controls');
   });
 
   test('AI Assistant Maintenance disables AI chat interface with clear status notice', async ({

@@ -4,6 +4,8 @@ import {
   adminSetOrganizerVerificationSchema,
   adminSetUserStatusSchema,
   adminUpdateSystemControlsSchema,
+  adminInviteTeamMemberSchema,
+  adminAcceptInvitationSchema,
 } from '@eventai/validation';
 import { validateBody, validateUuidParam } from '../../middleware/validation';
 import { UserRole } from '@eventai/types';
@@ -22,9 +24,41 @@ export function createAdminRouter({
 }: AdminRouterDependencies): Router {
   const router = Router();
 
-  // All admin routes require ADMIN role
+  // Authentication required for all endpoints
   router.use(authenticateJwt);
+
+  // Invitation acceptance can be performed by any authenticated user who was invited
+  router.post(
+    '/team/invitations/accept',
+    validateBody(adminAcceptInvitationSchema),
+    controller.acceptInvitation,
+  );
+
+  // All administrative operations require ADMIN role
   router.use(requireRoles(UserRole.ADMIN));
+
+  // Team & Access management
+  router.get('/team', controller.listTeam);
+  router.post(
+    '/team/invitations',
+    validateBody(adminInviteTeamMemberSchema),
+    controller.inviteAdministrator,
+  );
+  router.post(
+    '/team/invitations/:id/resend',
+    validateUuidParam('id'),
+    controller.resendInvitation,
+  );
+  router.post(
+    '/team/invitations/:id/revoke',
+    validateUuidParam('id'),
+    controller.revokeInvitation,
+  );
+  router.post(
+    '/team/members/:id/revoke',
+    validateUuidParam('id'),
+    controller.revokeAdminAccess,
+  );
 
   // Platform stats
   router.get('/stats', controller.stats);

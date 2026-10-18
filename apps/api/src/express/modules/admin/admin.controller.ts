@@ -255,4 +255,81 @@ export class ExpressAdminController {
       next(err);
     }
   };
+
+  listTeam = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      const result = await this.adminService.listTeam(adminUserId);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  inviteAdministrator = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      const result = await this.adminService.inviteAdministrator(adminUserId, req.body);
+      res.status(201).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  resendInvitation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      const result = await this.adminService.resendInvitation(adminUserId, req.params.id);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  revokeInvitation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      const result = await this.adminService.revokeInvitation(adminUserId, req.params.id);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  revokeAdminAccess = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      const result = await this.adminService.revokeAdminAccess(adminUserId, req.params.id);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  acceptInvitation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.authUser?.id ?? req.user?.id;
+      if (!userId) {
+        throw new UnauthorizedError('Authentication required to accept invitation');
+      }
+
+      const result = await this.adminService.acceptInvitation(userId, req.body.token, {
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
 }

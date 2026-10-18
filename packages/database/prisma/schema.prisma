@@ -20,6 +20,18 @@ enum UserRole {
   ADMIN
 }
 
+enum AdminRoleType {
+  OWNER
+  ADMIN
+}
+
+enum AdminInvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
 model User {
   id              String    @id @default(uuid())
   email           String    @unique
@@ -34,6 +46,7 @@ model User {
   profileImage    String?   @map("profile_image")
   location        String?
   role            UserRole  @default(CUSTOMER)
+  adminRole       AdminRoleType? @map("admin_role")
   isEmailVerified Boolean   @default(false) @map("is_email_verified")
   isActive        Boolean   @default(true) @map("is_active")
 
@@ -52,8 +65,33 @@ model User {
   notifications   Notification[]
   aiConversations AIConversation[]
   auditLogs       AuditLog[]      @relation("AuditUser")
+  sentAdminInvitations     AdminInvitation[] @relation("InvitedByAdmin")
+  acceptedAdminInvitations AdminInvitation[] @relation("AcceptedByAdmin")
 
   @@map("users")
+}
+
+model AdminInvitation {
+  id           String                @id @default(uuid())
+  email        String
+  role         AdminRoleType         @default(ADMIN)
+  token        String                @unique // SHA-256 hash of invitation token
+  status       AdminInvitationStatus @default(PENDING)
+  invitedById  String                @map("invited_by_id")
+  acceptedById String?               @map("accepted_by_id")
+  expiresAt    DateTime              @map("expires_at")
+  acceptedAt   DateTime?             @map("accepted_at")
+  revokedAt    DateTime?             @map("revoked_at")
+  createdAt    DateTime              @default(now()) @map("created_at")
+  updatedAt    DateTime              @updatedAt @map("updated_at")
+
+  invitedBy    User                  @relation("InvitedByAdmin", fields: [invitedById], references: [id], onDelete: Cascade)
+  acceptedBy   User?                 @relation("AcceptedByAdmin", fields: [acceptedById], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("admin_invitations")
 }
 
 // ── Session ───────────────────────────────────────

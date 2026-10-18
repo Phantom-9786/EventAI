@@ -93,9 +93,32 @@ export interface EventSearchFilters {
 }
 
 async function getJson<T>(path: string): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+
+  if (typeof window !== 'undefined') {
+    try {
+      const token = window.localStorage.getItem('eventai_access_token');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    } catch {
+      // localStorage unavailable
+    }
+  } else {
+    try {
+      const { cookies } = await import('next/headers');
+      const token = cookies().get('eventai_access_token')?.value;
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    } catch {
+      // outside request context or static generation
+    }
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     cache: 'no-store',
-    headers: { Accept: 'application/json' },
+    headers,
   });
   if (!res.ok) {
     throw new Error(`API request failed: ${res.status} ${path}`);

@@ -62,8 +62,9 @@ import {
   type SystemControlsSettings,
 } from '@/lib/admin';
 import { formatPrice } from '@/lib/api';
+import { TeamAccessSection } from '@/components/admin/team-access-section';
 
-type Tab = 'overview' | 'users' | 'events' | 'organizers' | 'bookings' | 'audit-logs' | 'system-controls';
+type Tab = 'overview' | 'users' | 'events' | 'organizers' | 'bookings' | 'audit-logs' | 'system-controls' | 'team';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -73,6 +74,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'bookings', label: 'Bookings & payments' },
   { id: 'audit-logs', label: 'Audit logs' },
   { id: 'system-controls', label: 'System Controls' },
+  { id: 'team', label: 'Team & Access' },
 ];
 
 const STATUS_COLORS: Record<string, string> = {
@@ -149,18 +151,33 @@ export default function AdminPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const handleSelectTab = (selectedTab: Tab) => {
+    setTab(selectedTab);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', selectedTab);
+      window.history.pushState({}, '', url.toString());
+    }
+  };
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const tabParam = params.get('tab') as Tab | null;
-    if (
-      tabParam &&
-      ['overview', 'users', 'events', 'organizers', 'bookings', 'audit-logs', 'system-controls'].includes(
-        tabParam,
-      )
-    ) {
-      setTab(tabParam);
-    }
+    const syncTabFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab') as Tab | null;
+      if (
+        tabParam &&
+        ['overview', 'users', 'events', 'organizers', 'bookings', 'audit-logs', 'system-controls', 'team'].includes(
+          tabParam,
+        )
+      ) {
+        setTab(tabParam);
+      }
+    };
+
+    syncTabFromUrl();
+    window.addEventListener('popstate', syncTabFromUrl);
+    return () => window.removeEventListener('popstate', syncTabFromUrl);
   }, []);
 
   if (authLoading) {
@@ -247,7 +264,7 @@ export default function AdminPage() {
             key={t.id}
             role="tab"
             aria-selected={tab === t.id}
-            onClick={() => setTab(t.id)}
+            onClick={() => handleSelectTab(t.id)}
             className={`-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
               tab === t.id
                 ? 'border-primary text-primary font-semibold'
@@ -412,6 +429,7 @@ export default function AdminPage() {
       {tab === 'bookings' && <BookingsTab />}
       {tab === 'audit-logs' && <AuditLogsTab />}
       {tab === 'system-controls' && <SystemControlsTab />}
+      {tab === 'team' && <TeamAccessSection />}
     </div>
   );
 }

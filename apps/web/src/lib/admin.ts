@@ -423,4 +423,110 @@ export async function getPublicSystemControls(): Promise<SystemControlsSettings>
   return res.json();
 }
 
+// ── Team & Access Management ──────────────────────
+
+export type AdminRoleType = 'OWNER' | 'ADMIN';
+export type AdminInvitationStatus = 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
+
+export interface AdminTeamMember {
+  id: string;
+  email: string;
+  fullName: string;
+  adminRole: AdminRoleType;
+  createdAt: string;
+  isCurrentUser: boolean;
+  isOwner: boolean;
+}
+
+export interface AdminInvitationSummary {
+  id: string;
+  email: string;
+  role: AdminRoleType;
+  status: AdminInvitationStatus;
+  expiresAt: string;
+  createdAt: string;
+  invitedBy: { email: string; fullName: string };
+  acceptedAt: string | null;
+  acceptedBy: { email: string; fullName: string } | null;
+}
+
+export interface AdminTeamResponse {
+  currentUser: { id: string; email: string; isOwner: boolean; role: AdminRoleType };
+  members: AdminTeamMember[];
+  invitations: AdminInvitationSummary[];
+}
+
+export async function listAdminTeam(): Promise<AdminTeamResponse> {
+  const res = await authFetch('/admin/team');
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new Error(errorBody.message || `Failed to load admin team (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function inviteAdminMember(data: {
+  email: string;
+  role: AdminRoleType;
+}): Promise<{ success: boolean; invitation: AdminInvitationSummary }> {
+  const res = await authFetch('/admin/team/invitations', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new Error(errorBody.message || `Failed to send invitation (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function resendAdminInvitation(id: string): Promise<{ success: boolean }> {
+  const res = await authFetch(`/admin/team/invitations/${id}/resend`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new Error(errorBody.message || `Failed to resend invitation (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function revokeAdminInvitation(id: string): Promise<{ success: boolean }> {
+  const res = await authFetch(`/admin/team/invitations/${id}/revoke`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new Error(errorBody.message || `Failed to revoke invitation (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function revokeAdminMemberAccess(id: string): Promise<{ success: boolean }> {
+  const res = await authFetch(`/admin/team/members/${id}/revoke`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new Error(errorBody.message || `Failed to revoke admin access (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function acceptAdminInvitation(token: string): Promise<{
+  success: boolean;
+  role: AdminRoleType;
+  message?: string;
+}> {
+  const res = await authFetch('/admin/team/invitations/accept', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  });
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new Error(errorBody.message || `Failed to accept invitation (${res.status})`);
+  }
+  return res.json();
+}
+
 

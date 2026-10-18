@@ -51,7 +51,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   const currentFilters = { q: query, category, city, sort, page: String(page) };
 
   const [categories, result] = await Promise.all([
-    getCategories(),
+    getCategories().catch(() => []),
     searchEvents({
       query,
       category,

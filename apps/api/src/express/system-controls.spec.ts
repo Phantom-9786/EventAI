@@ -291,6 +291,18 @@ describe('System Controls & Maintenance Modes Integration', () => {
     });
     expect(resAdmin.status).toBe(200);
 
+    // Admin with eventai_access_token cookie (used in SSR) can access attendee endpoints during maintenance
+    const resAdminCookie = await fetch(`${baseUrl}/api/categories`, {
+      headers: { Cookie: `eventai_access_token=${adminToken}` },
+    });
+    expect(resAdminCookie.status).toBe(200);
+
+    // Regular customer with cookie is still strictly blocked with 503
+    const resCustomerCookie = await fetch(`${baseUrl}/api/categories`, {
+      headers: { Cookie: `eventai_access_token=${customerToken}` },
+    });
+    expect(resCustomerCookie.status).toBe(503);
+
     // Admin system controls endpoint remains accessible
     const resAdminControls = await fetch(`${baseUrl}/api/admin/system-controls`, {
       headers: { Authorization: `Bearer ${adminToken}` },

@@ -379,6 +379,42 @@ export class NotificationsService {
     });
   }
 
+  async sendAdminInvitationEmail(input: {
+    to: string;
+    inviterName: string;
+    role: string;
+    invitationToken: string;
+    frontendUrl: string;
+    expiresInHours?: number;
+  }): Promise<boolean> {
+    const inviteUrl = `${input.frontendUrl.replace(/\/$/, '')}/admin/accept-invitation?token=${input.invitationToken}`;
+    return this.sendEmail({
+      to: input.to,
+      subject: 'You have been invited to join the EventPoint Admin Team',
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #18181b;">
+          <h2 style="font-size: 20px; font-weight: 700; color: #09090b; margin-bottom: 12px;">EventPoint Administrator Invitation</h2>
+          <p style="font-size: 15px; line-height: 1.5; color: #3f3f46; margin: 0 0 16px;">Hello,</p>
+          <p style="font-size: 15px; line-height: 1.5; color: #3f3f46; margin: 0 0 20px;">
+            <strong>${escapeHtml(input.inviterName)}</strong> has invited you to join the EventPoint administrative team as a <strong>${escapeHtml(input.role)}</strong>.
+          </p>
+          <div style="margin: 24px 0;">
+            <a href="${inviteUrl}" style="background-color: #6366f1; color: #ffffff; padding: 12px 24px; font-weight: 600; text-decoration: none; border-radius: 6px; display: inline-block;">
+              Accept Invitation
+            </a>
+          </div>
+          <p style="font-size: 14px; line-height: 1.5; color: #71717a; margin: 0 0 8px;">
+            This invitation link is valid for ${input.expiresInHours ?? 48} hours and can only be accepted by this email address (${escapeHtml(input.to)}).
+          </p>
+          <p style="font-size: 14px; line-height: 1.5; color: #71717a; margin: 0 0 24px;">
+            If you do not have an EventPoint account yet, please sign up using this email first, then click Accept.
+          </p>
+          <p style="font-size: 14px; color: #a1a1aa; margin: 0;">— The EventPoint Team</p>
+        </div>
+      `,
+    });
+  }
+
   async sendBookingCancellation(input: {
     to: string;
     holderName: string;

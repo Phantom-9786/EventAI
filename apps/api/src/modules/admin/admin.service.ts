@@ -1,14 +1,18 @@
+import crypto from 'crypto';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
   Optional,
+  UnauthorizedException,
 } from '../../common/exceptions';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AdminRoleType, AdminInvitationStatus, UserRole } from '@eventai/types';
 import type {
   AdminAuditLogListInput,
   AdminEventListInput,
@@ -748,6 +752,518 @@ export class AdminService {
       page,
       limit,
       pages: Math.ceil(total / limit) || 1,
+    };
+  }
+
+  private hashInvitationToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  async isPlatformOwner(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, adminRole: true, createdAt: true, isActive: true },
+    });
+    if (!user || user.role !== UserRole.ADMIN || !user.isActive) {
+      return false;
+    }
+    if (user.adminRole === AdminRoleType.OWNER) {
+      return true;
+    }
+    // The earliest created active ADMIN is always recognized as a platform owner
+    const earliestAdmin = await this.prisma.user.findFirst({
+      where: { role: UserRole.ADMIN, isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return earliestAdmin?.id === userId;
+  }
+
+  async listTeam(callerUserId: string) {
+    const isOwner = await this.isPlatformOwner(callerUserId);
+    const admins = await this.prisma.user.findMany({
+      where: { role: UserRole.ADMIN },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        adminRole: true,
+        isActive: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const explicitOwner = admins.find((a) => a.adminRole === AdminRoleType.OWNER);
+    const members = admins.map((admin, idx) => {
+      const adminIsOwner = explicitOwner
+        ? admin.adminRole === AdminRoleType.OWNER
+        : idx === 0;
+      return {
+        id: admin.id,
+        email: admin.email,
+        firstName: admin.firstName,
+        lastName: admin.lastName,
+        role: admin.role,
+        adminRole: adminIsOwner ? AdminRoleType.OWNER : AdminRoleType.ADMIN,
+        isActive: admin.isActive,
+        createdAt: admin.createdAt.toISOString(),
+        isOwner: adminIsOwner,
+      };
+    });
+
+    const rawInvitations = await this.prisma.adminInvitation.findMany({
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        expiresAt: true,
+        createdAt: true,
+        acceptedAt: true,
+        invitedBy: {
+          select: {
+            id: true,
+            email: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const now = new Date();
+    const invitations = rawInvitations.map((inv) => {
+      let status = inv.status;
+      if (status === AdminInvitationStatus.PENDING && inv.expiresAt < now) {
+        status = AdminInvitationStatus.EXPIRED;
+      }
+      return {
+        id: inv.id,
+        email: inv.email,
+        role: inv.role,
+        status,
+        expiresAt: inv.expiresAt.toISOString(),
+        createdAt: inv.createdAt.toISOString(),
+        acceptedAt: inv.acceptedAt ? inv.acceptedAt.toISOString() : null,
+        invitedBy: inv.invitedBy,
+      };
+    });
+
+    const caller = await this.prisma.user.findUnique({
+      where: { id: callerUserId },
+      select: { id: true, email: true, role: true, adminRole: true },
+    });
+    const callerRole = isOwner ? AdminRoleType.OWNER : AdminRoleType.ADMIN;
+
+    return {
+      currentUser: {
+        id: callerUserId,
+        email: caller?.email ?? '',
+        isOwner,
+        role: callerRole,
+      },
+      members,
+      invitations,
+      isOwner,
+      callerId: callerUserId,
+    };
+  }
+
+  async inviteAdministrator(
+    callerUserId: string,
+    input: { email: string; role?: 'ADMIN' | 'OWNER' },
+    meta?: { ipAddress?: string; userAgent?: string; frontendUrl?: string },
+  ) {
+    const isOwner = await this.isPlatformOwner(callerUserId);
+    if (!isOwner) {
+      throw new ForbiddenException('Only platform owners can invite team members');
+    }
+
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const existingAdmin = await this.prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' }, role: UserRole.ADMIN },
+    });
+    if (existingAdmin) {
+      throw new ConflictException('A team member with this email address already exists');
+    }
+
+    const existingInvitation = await this.prisma.adminInvitation.findFirst({
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        status: AdminInvitationStatus.PENDING,
+        expiresAt: { gt: new Date() },
+      },
+    });
+    if (existingInvitation) {
+      throw new ConflictException(
+        'An active invitation for this email address already exists. You can resend it from the team list.',
+      );
+    }
+
+    const caller = await this.prisma.user.findUnique({
+      where: { id: callerUserId },
+      select: { firstName: true, lastName: true, email: true },
+    });
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = this.hashInvitationToken(rawToken);
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    // Safeguard: Invitations can ONLY grant the delegated ADMIN role. Platform owner
+    // status is strictly reserved and cannot be assigned through the invitation flow.
+    const invitationRole = AdminRoleType.ADMIN;
+
+    const invitation = await this.prisma.adminInvitation.create({
+      data: {
+        email: normalizedEmail,
+        role: invitationRole,
+        token: hashedToken,
+        status: AdminInvitationStatus.PENDING,
+        invitedById: callerUserId,
+        expiresAt,
+      },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        expiresAt: true,
+        createdAt: true,
+      },
+    });
+
+    const inviterName =
+      `${caller?.firstName ?? ''} ${caller?.lastName ?? ''}`.trim() ||
+      caller?.email ||
+      'Platform Owner';
+    const frontendUrl =
+      meta?.frontendUrl ?? process.env.FRONTEND_URL ?? 'http://localhost:3000';
+
+    let emailSent = false;
+    if (this.notifications) {
+      try {
+        emailSent = await this.notifications.sendAdminInvitationEmail({
+          to: normalizedEmail,
+          inviterName,
+          role: invitationRole,
+          invitationToken: rawToken,
+          frontendUrl,
+          expiresInHours: 48,
+        });
+      } catch (err) {
+        this.logger.warn(`Failed to dispatch admin invitation email: ${String(err)}`);
+        emailSent = false;
+      }
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: callerUserId,
+        action: 'ADMIN_INVITATION_CREATED',
+        entity: 'AdminInvitation',
+        entityId: invitation.id,
+        details: {
+          email: normalizedEmail,
+          role: invitationRole,
+          expiresAt: expiresAt.toISOString(),
+          emailDeliveryFailed: !emailSent,
+        },
+        ipAddress: meta?.ipAddress,
+        userAgent: meta?.userAgent,
+      },
+    });
+
+    return {
+      success: true,
+      emailDeliveryFailed: !emailSent,
+      message: emailSent
+        ? `Invitation sent to ${normalizedEmail}`
+        : `Invitation created for ${normalizedEmail}, but email delivery failed. You can resend it from the team list.`,
+      invitation,
+    };
+  }
+
+  async resendInvitation(
+    callerUserId: string,
+    invitationId: string,
+    meta?: { ipAddress?: string; userAgent?: string; frontendUrl?: string },
+  ) {
+    const isOwner = await this.isPlatformOwner(callerUserId);
+    if (!isOwner) {
+      throw new ForbiddenException('Only platform owners can manage invitations');
+    }
+
+    const invitation = await this.prisma.adminInvitation.findUnique({
+      where: { id: invitationId },
+    });
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found');
+    }
+    if (invitation.status === AdminInvitationStatus.REVOKED) {
+      throw new BadRequestException('Cannot resend a revoked invitation');
+    }
+    if (invitation.status === AdminInvitationStatus.ACCEPTED) {
+      throw new BadRequestException('Invitation has already been accepted');
+    }
+
+    const caller = await this.prisma.user.findUnique({
+      where: { id: callerUserId },
+      select: { firstName: true, lastName: true, email: true },
+    });
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = this.hashInvitationToken(rawToken);
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    await this.prisma.adminInvitation.update({
+      where: { id: invitationId },
+      data: {
+        token: hashedToken,
+        status: AdminInvitationStatus.PENDING,
+        expiresAt,
+      },
+    });
+
+    const inviterName =
+      `${caller?.firstName ?? ''} ${caller?.lastName ?? ''}`.trim() ||
+      caller?.email ||
+      'Platform Owner';
+    const frontendUrl =
+      meta?.frontendUrl ?? process.env.FRONTEND_URL ?? 'http://localhost:3000';
+
+    let emailSent = false;
+    if (this.notifications) {
+      try {
+        emailSent = await this.notifications.sendAdminInvitationEmail({
+          to: invitation.email,
+          inviterName,
+          role: invitation.role,
+          invitationToken: rawToken,
+          frontendUrl,
+          expiresInHours: 48,
+        });
+      } catch (err) {
+        this.logger.warn(`Failed to dispatch admin invitation email: ${String(err)}`);
+        emailSent = false;
+      }
+    }
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: callerUserId,
+        action: 'ADMIN_INVITATION_RESENT',
+        entity: 'AdminInvitation',
+        entityId: invitation.id,
+        details: {
+          email: invitation.email,
+          role: invitation.role,
+          expiresAt: expiresAt.toISOString(),
+          emailDeliveryFailed: !emailSent,
+        },
+        ipAddress: meta?.ipAddress,
+        userAgent: meta?.userAgent,
+      },
+    });
+
+    return {
+      success: true,
+      emailDeliveryFailed: !emailSent,
+      message: emailSent
+        ? `Invitation resent to ${invitation.email}`
+        : `Invitation updated, but email delivery failed. Check email service configuration.`,
+    };
+  }
+
+  async revokeInvitation(
+    callerUserId: string,
+    invitationId: string,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ) {
+    const isOwner = await this.isPlatformOwner(callerUserId);
+    if (!isOwner) {
+      throw new ForbiddenException('Only platform owners can revoke invitations');
+    }
+
+    const invitation = await this.prisma.adminInvitation.findUnique({
+      where: { id: invitationId },
+    });
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found');
+    }
+    if (invitation.status !== AdminInvitationStatus.PENDING) {
+      throw new BadRequestException('Only pending invitations can be revoked');
+    }
+
+    await this.prisma.adminInvitation.update({
+      where: { id: invitationId },
+      data: {
+        status: AdminInvitationStatus.REVOKED,
+        revokedAt: new Date(),
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: callerUserId,
+        action: 'ADMIN_INVITATION_REVOKED',
+        entity: 'AdminInvitation',
+        entityId: invitation.id,
+        details: {
+          email: invitation.email,
+        },
+        ipAddress: meta?.ipAddress,
+        userAgent: meta?.userAgent,
+      },
+    });
+
+    return { success: true, message: 'Invitation revoked successfully' };
+  }
+
+  async revokeAdminAccess(
+    callerUserId: string,
+    targetUserId: string,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ) {
+    const isOwner = await this.isPlatformOwner(callerUserId);
+    if (!isOwner) {
+      throw new ForbiddenException('Only platform owners can manage administrator roles');
+    }
+
+    if (callerUserId === targetUserId) {
+      throw new BadRequestException('You cannot revoke your own administrator access');
+    }
+
+    const targetUser = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, email: true, role: true, adminRole: true },
+    });
+
+    if (!targetUser || targetUser.role !== UserRole.ADMIN) {
+      throw new NotFoundException('Administrator not found');
+    }
+
+    const targetIsOwner = await this.isPlatformOwner(targetUserId);
+    if (targetIsOwner) {
+      const allAdmins = await this.prisma.user.findMany({
+        where: { role: UserRole.ADMIN, isActive: true },
+      });
+      if (allAdmins.length <= 1) {
+        throw new BadRequestException(
+          'Cannot revoke administrator access for the last active platform owner',
+        );
+      }
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: targetUserId },
+        data: {
+          role: UserRole.CUSTOMER,
+          adminRole: null,
+        },
+      }),
+      this.prisma.session.deleteMany({
+        where: { userId: targetUserId },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId: callerUserId,
+          action: 'ADMIN_ACCESS_REVOKED',
+          entity: 'User',
+          entityId: targetUserId,
+          details: {
+            email: targetUser.email,
+            previousRole: targetUser.role,
+          },
+          ipAddress: meta?.ipAddress,
+          userAgent: meta?.userAgent,
+        },
+      }),
+    ]);
+
+    return { success: true, message: `Administrator access revoked for ${targetUser.email}` };
+  }
+
+  async acceptInvitation(
+    userId: string,
+    rawToken: string,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ) {
+    if (!rawToken || typeof rawToken !== 'string' || rawToken.trim().length < 10) {
+      throw new BadRequestException('Invalid invitation token');
+    }
+
+    const hashedToken = this.hashInvitationToken(rawToken.trim());
+    const invitation = await this.prisma.adminInvitation.findUnique({
+      where: { token: hashedToken },
+    });
+
+    if (!invitation || invitation.status !== AdminInvitationStatus.PENDING) {
+      throw new BadRequestException('Invalid, revoked, or previously used invitation link');
+    }
+
+    if (invitation.expiresAt < new Date()) {
+      await this.prisma.adminInvitation.update({
+        where: { id: invitation.id },
+        data: { status: AdminInvitationStatus.EXPIRED },
+      });
+      throw new BadRequestException('This invitation has expired. Please request a new invitation.');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, isEmailVerified: true, isActive: true },
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Account not found or inactive');
+    }
+
+    if (user.email.toLowerCase() !== invitation.email.toLowerCase()) {
+      throw new ForbiddenException(
+        `This invitation was issued to ${invitation.email}. You are currently signed in as ${user.email}. Please sign in with the invited email address to accept.`,
+      );
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.adminInvitation.update({
+        where: { id: invitation.id },
+        data: {
+          status: AdminInvitationStatus.ACCEPTED,
+          acceptedById: userId,
+          acceptedAt: new Date(),
+        },
+      }),
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          role: UserRole.ADMIN,
+          adminRole: invitation.role,
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId,
+          action: 'ADMIN_INVITATION_ACCEPTED',
+          entity: 'AdminInvitation',
+          entityId: invitation.id,
+          details: {
+            email: user.email,
+            assignedRole: invitation.role,
+          },
+          ipAddress: meta?.ipAddress,
+          userAgent: meta?.userAgent,
+        },
+      }),
+    ]);
+
+    return {
+      success: true,
+      message: 'Invitation accepted successfully. You now have Administrator access.',
+      role: invitation.role,
     };
   }
 }

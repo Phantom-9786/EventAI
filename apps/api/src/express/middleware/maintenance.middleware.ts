@@ -61,10 +61,18 @@ export function createMaintenanceMiddleware({
         return next();
       }
 
-      // Check Authorization Bearer token header if present
+      // Check Authorization Bearer token header or cookie
+      let token: string | undefined;
       const authHeader = req.headers.authorization;
       if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.slice(7).trim();
+        token = authHeader.slice(7).trim();
+      } else if (req.cookies?.eventai_access_token) {
+        token = req.cookies.eventai_access_token;
+      } else if (req.cookies?.accessToken) {
+        token = req.cookies.accessToken;
+      }
+
+      if (token) {
         try {
           const decoded = jwt.verify(token, jwtSecret) as { role?: string; sub?: string };
           if (decoded.role === UserRole.ADMIN) {
