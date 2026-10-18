@@ -150,9 +150,23 @@ describe('System Controls & Maintenance Modes Integration', () => {
       setProviderCooldown: jest.fn().mockResolvedValue(undefined),
     };
 
+    const mockAuthService = {
+      requestPasswordReset: jest.fn().mockImplementation((_email: string) =>
+        Promise.resolve({
+          message: 'If an account with that email exists, a reset link has been sent',
+        }),
+      ),
+      resetPassword: jest.fn().mockImplementation((_token: string, _newPassword: string) =>
+        Promise.resolve({
+          message: 'Password reset successfully',
+        }),
+      ),
+    };
+
     const app = createExpressApp({
       prisma: mockPrisma,
       cache: mockCache as any,
+      authService: mockAuthService as any,
       categoriesService: mockCategoriesService as any,
       aiService: mockAiService as any,
       eventsService: mockEventsService as any,
@@ -282,6 +296,83 @@ describe('System Controls & Maintenance Modes Integration', () => {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(resAdminControls.status).toBe(200);
+  });
+
+  it('4b. Website Maintenance Mode allows password-recovery endpoints while enforcing 503 for normal public routes', async () => {
+    await mockSystemControlsService.updateSettings('admin', {
+      websiteMaintenance: true,
+      websiteMaintenanceMessage: 'Down for scheduled maintenance',
+    });
+
+    // 1. Password reset request endpoint (POST /api/auth/forgot-password) is permitted
+    const resForgotApi = await fetch(`${baseUrl}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@eventpoint.test' }),
+    });
+    expect(resForgotApi.status).toBe(200);
+    const jsonForgotApi = (await resForgotApi.json()) as any;
+    expect(jsonForgotApi.message).toBe(
+      'If an account with that email exists, a reset link has been sent',
+    );
+
+    // 2. Non-/api alias (POST /auth/forgot-password) is also permitted
+    const resForgot = await fetch(`${baseUrl}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@eventpoint.test' }),
+    });
+    expect(resForgot.status).toBe(200);
+
+    // 3. Password reset completion endpoint (POST /api/auth/reset-password) is permitted
+    const resResetApi = await fetch(`${baseUrl}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: 'test-reset-token-1234567890',
+        newPassword: 'NewPassword123!',
+      }),
+    });
+    expect(resResetApi.status).toBe(200);
+    const jsonResetApi = (await resResetApi.json()) as any;
+    expect(jsonResetApi.message).toBe('Password reset successfully');
+
+    // 4. Non-/api alias (POST /auth/reset-password) is also permitted
+    const resReset = await fetch(`${baseUrl}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token: 'test-reset-token-1234567890',
+        newPassword: 'NewPassword123!',
+      }),
+    });
+    expect(resReset.status).toBe(200);
+
+    // 5. Normal public routes remain blocked with 503
+    const resCategories = await fetch(`${baseUrl}/api/categories`);
+    expect(resCategories.status).toBe(503);
+    const jsonCategories = (await resCategories.json()) as any;
+    expect(jsonCategories.code).toBe('MAINTENANCE_MODE');
+
+    const resEvents = await fetch(`${baseUrl}/api/events`);
+    expect(resEvents.status).toBe(503);
+    const jsonEvents = (await resEvents.json()) as any;
+    expect(jsonEvents.code).toBe('MAINTENANCE_MODE');
+
+    // 6. Non-recovery auth endpoints (e.g. registration) remain blocked with 503
+    const resRegister = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'newuser@eventpoint.test',
+        password: 'Password123!',
+        firstName: 'New',
+        lastName: 'User',
+      }),
+    });
+    expect(resRegister.status).toBe(503);
+    const jsonRegister = (await resRegister.json()) as any;
+    expect(jsonRegister.code).toBe('MAINTENANCE_MODE');
   });
 
   it('5. AI Maintenance Mode blocks AI chat (503) while keeping non-AI endpoints operational', async () => {

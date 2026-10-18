@@ -23,6 +23,10 @@ const EXEMPT_PATHS = [
   '/api/auth/logout',
   '/auth/me',
   '/api/auth/me',
+  '/auth/forgot-password',
+  '/api/auth/forgot-password',
+  '/auth/reset-password',
+  '/api/auth/reset-password',
 ];
 
 export function createMaintenanceMiddleware({

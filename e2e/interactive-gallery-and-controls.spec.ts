@@ -140,6 +140,39 @@ test.describe('Features 2-4: Admin System Controls & Maintenance Modes', () => {
     expect(await adminLink.getAttribute('href')).toBe('/signin');
   });
 
+  test('Website Maintenance allows /forgot-password and /reset-password routes for system recovery', async ({
+    page,
+  }) => {
+    await page.route('**/api/system-controls', (route) =>
+      route.fulfill({
+        status: 200,
+        headers: corsHeaders,
+        json: {
+          websiteMaintenance: true,
+          websiteMaintenanceMessage: 'EventPoint is currently upgrading database servers.',
+          aiMaintenance: false,
+          eventCreationMaintenance: false,
+        },
+      }),
+    );
+
+    // 1. /forgot-password page is accessible and displays recovery banner
+    await page.goto('/forgot-password');
+    await expect(page.getByRole('heading', { name: /Reset your password/i })).toBeVisible({ timeout: 15000 });
+    await expect(
+      page.getByText(/Website Maintenance is active. Administrator authentication and password recovery are available/i),
+    ).toBeVisible();
+    await expect(page.getByText(/EventPoint is Under Maintenance/i)).toBeHidden();
+
+    // 2. /reset-password page is accessible and displays recovery banner
+    await page.goto('/reset-password?token=sample-token');
+    await expect(page.getByRole('heading', { name: /Choose a new password/i })).toBeVisible({ timeout: 15000 });
+    await expect(
+      page.getByText(/Website Maintenance is active. Administrator authentication and password recovery are available/i),
+    ).toBeVisible();
+    await expect(page.getByText(/EventPoint is Under Maintenance/i)).toBeHidden();
+  });
+
   test('Website Maintenance displays warning banner to authenticated Admin with access preserved', async ({
     page,
   }) => {

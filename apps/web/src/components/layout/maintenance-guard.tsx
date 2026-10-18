@@ -52,7 +52,11 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
   }, [loadControls]);
 
   const isAdmin = user?.role === 'ADMIN';
-  const isSignInPath = pathname === '/signin' || pathname === '/auth/callback';
+  const isAuthRecoveryPath =
+    pathname === '/signin' ||
+    pathname === '/auth/callback' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password';
 
   // 1. If website maintenance is active:
   if (controls?.websiteMaintenance) {
@@ -79,12 +83,12 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
       );
     }
 
-    // If unauthenticated or non-admin visiting signin, allow them to view signin to recover admin access
-    if (isSignInPath) {
+    // If unauthenticated or non-admin visiting signin or password recovery, allow them to view the page to recover admin access
+    if (isAuthRecoveryPath) {
       return (
         <SystemControlsContext.Provider value={{ controls, loading, reload: loadControls }}>
           <div className="bg-amber-500/10 text-amber-800 dark:text-amber-300 border-b border-amber-500/20 px-4 py-2 text-xs font-medium text-center">
-            Website Maintenance is active. Administrator authentication is available for system recovery.
+            Website Maintenance is active. Administrator authentication and password recovery are available for system recovery.
           </div>
           {children}
         </SystemControlsContext.Provider>
