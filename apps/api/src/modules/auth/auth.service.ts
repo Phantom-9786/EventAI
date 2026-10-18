@@ -716,7 +716,7 @@ export class AuthService {
     return { message: 'Password has been reset. Please log in again.' };
   }
 
-  private async createSession(
+  async createSession(
     userId: string,
     email: string,
     role: string,

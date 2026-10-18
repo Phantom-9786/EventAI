@@ -79,7 +79,7 @@ export function setAccessToken(token: string | null): void {
   const secureSuffix = window.location.protocol === 'https:' ? '; Secure' : '';
   if (token) {
     window.localStorage.setItem(TOKEN_KEY, token);
-    document.cookie = `eventai_access_token=${token}; path=/; max-age=3600; SameSite=Lax${secureSuffix}`;
+    document.cookie = `eventai_access_token=${token}; path=/; max-age=604800; SameSite=Lax${secureSuffix}`;
   } else {
     window.localStorage.removeItem(TOKEN_KEY);
     document.cookie = `eventai_access_token=; path=/; max-age=0; SameSite=Lax${secureSuffix}`;
@@ -210,6 +210,8 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
   let token = getAccessToken();
   if (!token) token = await refreshAccessToken();
   if (!token) return null;
+  // Ensure document.cookie is actively synchronized whenever token is restored
+  setAccessToken(token);
 
   const res = await fetchWithTimeout(`${API_URL}/auth/me`, {
     cache: 'no-store',
@@ -230,5 +232,22 @@ export async function fetchCurrentUser(): Promise<AuthUser | null> {
   }
   if (!res.ok) return null;
   const body = (await res.json()) as { user: AuthUser };
+  return body.user;
+}
+
+export async function switchTesterSession(testEmail: string): Promise<AuthUser> {
+  const token = getAccessToken();
+  const res = await fetchWithTimeout(`${API_URL}/admin/maintenance-testers/switch-session`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token ?? ''}`,
+    },
+    body: JSON.stringify({ testEmail }),
+  });
+  if (!res.ok) throw await parseError(res);
+  const body = (await res.json()) as { user: AuthUser; accessToken: string };
+  setAccessToken(body.accessToken);
   return body.user;
 }

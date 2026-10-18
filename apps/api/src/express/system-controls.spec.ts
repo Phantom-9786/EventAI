@@ -143,6 +143,25 @@ describe('System Controls & Maintenance Modes Integration', () => {
       isAuthorizedMaintenanceTester: jest.fn().mockImplementation((userId) => {
         return Promise.resolve(userId === 'tester-customer-uuid' || userId === 'tester-organizer-uuid');
       }),
+      verifyTesterSessionAcquisition: jest.fn().mockImplementation((callerAdminId, targetEmail) => {
+        if (callerAdminId !== adminUser.id) {
+          const err = new Error('Only active administrators can switch to maintenance test accounts');
+          (err as any).status = 403;
+          throw err;
+        }
+        if (targetEmail === 'unlinked@eventpoint.test') {
+          const err = new Error(
+            'Test account unlinked@eventpoint.test is not registered as an authorized maintenance tester',
+          );
+          (err as any).status = 404;
+          throw err;
+        }
+        return Promise.resolve({
+          id: testerCustomerUser.id,
+          email: testerCustomerUser.email,
+          role: testerCustomerUser.role,
+        });
+      }),
     };
 
     const mockCategoriesService = {
@@ -214,12 +233,36 @@ describe('System Controls & Maintenance Modes Integration', () => {
           message: 'Password reset successfully',
         }),
       ),
+      createSession: jest.fn().mockImplementation((userId, email, role) =>
+        Promise.resolve({
+          accessToken: 'mock-switched-access-token',
+          refreshToken: 'mock-switched-refresh-token',
+        }),
+      ),
+      refreshCookieMaxAge: 30 * 24 * 60 * 60 * 1000,
+    };
+
+    const mockGoogleOauthService = {
+      isConfigured: true,
+      createState: jest.fn().mockReturnValue('mock-state-random-token'),
+      buildAuthorizationUrl: jest.fn().mockReturnValue(
+        'https://accounts.google.com/o/oauth2/v2/auth?mock=true',
+      ),
+      verifyState: jest.fn().mockReturnValue('/events'),
+      exchangeCode: jest.fn().mockResolvedValue({
+        sub: 'google-sub-123',
+        email: 'tester@google.test',
+        emailVerified: true,
+        firstName: 'Google',
+        lastName: 'Tester',
+      }),
     };
 
     const app = createExpressApp({
       prisma: mockPrisma,
       cache: mockCache as any,
       authService: mockAuthService as any,
+      googleOauthService: mockGoogleOauthService as any,
       categoriesService: mockCategoriesService as any,
       aiService: mockAiService as any,
       eventsService: mockEventsService as any,
@@ -473,6 +516,80 @@ describe('System Controls & Maintenance Modes Integration', () => {
     expect(resRegister.status).toBe(503);
     const jsonRegister = (await resRegister.json()) as any;
     expect(jsonRegister.code).toBe('MAINTENANCE_MODE');
+  });
+
+  it('4c. Website Maintenance Mode exempts Google OAuth initiation and callback endpoints', async () => {
+    await mockSystemControlsService.updateSettings('admin', {
+      websiteMaintenance: true,
+      websiteMaintenanceMessage: 'Down for scheduled maintenance',
+    });
+
+    // 1. Google OAuth start endpoint (/api/auth/google) redirects (302) without 503
+    const resGoogle = await fetch(`${baseUrl}/api/auth/google?redirect=%2Fevents`, {
+      redirect: 'manual',
+    });
+    expect(resGoogle.status).toBe(302);
+    expect(resGoogle.headers.get('location')).toContain('accounts.google.com');
+
+    // 2. Google OAuth callback endpoint is also exempt from 503
+    const resCallback = await fetch(`${baseUrl}/api/auth/google/callback?error=access_denied`, {
+      redirect: 'manual',
+    });
+    expect(resCallback.status).toBe(302);
+    expect(resCallback.headers.get('location')).toContain('/signin?error=google_cancelled');
+  });
+
+  it('4d. Admin can acquire session for explicitly linked maintenance tester without password re-entry', async () => {
+    await mockSystemControlsService.updateSettings('admin', {
+      websiteMaintenance: true,
+      websiteMaintenanceMessage: 'Down for scheduled maintenance',
+    });
+
+    // 1. Anonymous request is rejected (401)
+    const resAnon = await fetch(`${baseUrl}/api/admin/maintenance-testers/switch-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ testEmail: testerCustomerUser.email }),
+    });
+    expect(resAnon.status).toBe(401);
+
+    // 2. Non-admin request is rejected (403)
+    const resCustomer = await fetch(`${baseUrl}/api/admin/maintenance-testers/switch-session`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${customerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ testEmail: testerCustomerUser.email }),
+    });
+    expect(resCustomer.status).toBe(403);
+
+    // 3. Admin switching to unlinked account is rejected (404)
+    const resUnlinked = await fetch(`${baseUrl}/api/admin/maintenance-testers/switch-session`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ testEmail: 'unlinked@eventpoint.test' }),
+    });
+    expect(resUnlinked.status).toBe(404);
+
+    // 4. Admin switching to explicitly linked tester account succeeds (200) with tokens
+    const resSuccess = await fetch(`${baseUrl}/api/admin/maintenance-testers/switch-session`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ testEmail: testerCustomerUser.email }),
+    });
+    expect(resSuccess.status).toBe(200);
+    const jsonSuccess = (await resSuccess.json()) as any;
+    expect(jsonSuccess.accessToken).toBe('mock-switched-access-token');
+    expect(jsonSuccess.user.email).toBe(testerCustomerUser.email);
+    expect(jsonSuccess.user.isMaintenanceTester).toBe(true);
+    expect(resSuccess.headers.get('set-cookie')).toContain('eventai_refresh_token=');
   });
 
   it('5. AI Maintenance Mode blocks AI chat (503) while keeping non-AI endpoints operational', async () => {

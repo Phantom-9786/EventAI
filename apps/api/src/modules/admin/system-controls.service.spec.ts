@@ -324,5 +324,56 @@ describe('SystemControlsService', () => {
       expect(list[1].testEmail).toBe('standard.tester@external.test');
       expect(list[1].adminId).toBe('admin-owner-id');
     });
+
+    it('verifyTesterSessionAcquisition authorizes linked tester and rejects unlinked accounts', async () => {
+      mockPrisma.user = {
+        findUnique: jest.fn().mockImplementation(({ where }) => {
+          if (where.id === 'admin-1') {
+            return Promise.resolve({
+              id: 'admin-1',
+              email: 'admin@eventpoint.test',
+              role: 'ADMIN',
+              adminRole: 'MANAGER',
+              isActive: true,
+            });
+          }
+          return Promise.resolve(null);
+        }),
+        findFirst: jest.fn().mockImplementation(({ where }) => {
+          const email = where.email?.equals?.toLowerCase();
+          if (email === 'linked.tester@external.test') {
+            return Promise.resolve({
+              id: 'target-1',
+              email: 'linked.tester@external.test',
+              role: 'CUSTOMER',
+              isActive: true,
+            });
+          }
+          return Promise.resolve(null);
+        }),
+      };
+
+      const dbSettings = {
+        ...DEFAULT_SYSTEM_CONTROLS,
+        maintenanceTesters: [
+          {
+            email: 'linked.tester@external.test',
+            linkedBy: 'admin-1',
+            allowedRoles: ['CUSTOMER'],
+          },
+        ],
+      };
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([{ key: 'system_controls', value: dbSettings }]);
+
+      // 1. Authorized linked tester succeeds
+      const target = await service.verifyTesterSessionAcquisition('admin-1', 'linked.tester@external.test');
+      expect(target.id).toBe('target-1');
+      expect(target.email).toBe('linked.tester@external.test');
+
+      // 2. Unlinked tester fails
+      await expect(
+        service.verifyTesterSessionAcquisition('admin-1', 'unlinked@external.test'),
+      ).rejects.toThrow('is not registered as an authorized maintenance tester');
+    });
   });
 });

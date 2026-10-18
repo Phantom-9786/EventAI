@@ -78,6 +78,7 @@ export function createAdminRouter({
     controller.linkMaintenanceTester,
   );
   router.post('/maintenance-testers/unlink', controller.unlinkMaintenanceTester);
+  router.post('/maintenance-testers/switch-session', controller.switchTesterSession);
 
   // Platform stats
   router.get('/stats', controller.stats);

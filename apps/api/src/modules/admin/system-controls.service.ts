@@ -514,4 +514,90 @@ export class SystemControlsService {
       .filter((t: any) => (t.adminId || t.linkedBy) === callerAdmin.id || t.adminEmail === callerAdmin.email)
       .map(normalizeTester);
   }
+
+  /**
+   * Verifies that the caller admin is authorized to use a linked maintenance testing account
+   * and returns the verified target user record for session generation.
+   */
+  async verifyTesterSessionAcquisition(
+    callerAdminId: string,
+    targetEmail: string,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ) {
+    const callerAdmin = await this.prisma.user.findUnique({
+      where: { id: callerAdminId },
+      select: { id: true, email: true, role: true, adminRole: true, isActive: true },
+    });
+    if (!callerAdmin || callerAdmin.role !== 'ADMIN' || !callerAdmin.isActive) {
+      throw new ForbiddenException('Only active administrators can switch to maintenance test accounts');
+    }
+
+    const normalizedEmail = targetEmail.trim().toLowerCase();
+    const settings = await this.getSettings();
+    const testers = Array.isArray(settings.maintenanceTesters) ? settings.maintenanceTesters : [];
+
+    const getTesterEmail = (t: any): string =>
+      String(t?.testEmail || t?.email || '').trim().toLowerCase();
+    const match = testers.find((t) => getTesterEmail(t) === normalizedEmail);
+
+    if (!match) {
+      throw new NotFoundException(
+        `Test account ${normalizedEmail} is not registered as an authorized maintenance tester`,
+      );
+    }
+
+    const adminOwnerId = (match as any).adminId || (match as any).linkedBy;
+    const adminOwnerEmail = (match as any).adminEmail;
+    const isOwner = callerAdmin.adminRole === 'OWNER';
+    const isDirectLink =
+      adminOwnerId === callerAdmin.id ||
+      (adminOwnerEmail && adminOwnerEmail.toLowerCase() === callerAdmin.email.toLowerCase());
+
+    if (!isOwner && !isDirectLink) {
+      throw new ForbiddenException(
+        'You can only access test accounts explicitly linked to your administrator account',
+      );
+    }
+
+    const targetUser = await this.prisma.user.findFirst({
+      where: { email: { equals: normalizedEmail, mode: 'insensitive' } },
+      select: { id: true, email: true, role: true, isActive: true, isEmailVerified: true },
+    });
+
+    if (!targetUser || !targetUser.isActive) {
+      throw new NotFoundException('Target test account does not exist or has been deactivated');
+    }
+
+    const allowed = (match as any).allowedRoles;
+    if (Array.isArray(allowed) && allowed.length > 0 && !allowed.includes(targetUser.role)) {
+      throw new ForbiddenException(
+        `Target test account role ${targetUser.role} is not permitted for this tester`,
+      );
+    }
+
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          userId: callerAdminId,
+          action: 'TESTER_SESSION_ACQUIRED',
+          entity: 'User',
+          entityId: targetUser.id,
+          details: {
+            adminEmail: callerAdmin.email,
+            targetEmail: targetUser.email,
+            targetRole: targetUser.role,
+          },
+          ipAddress: meta?.ipAddress,
+          userAgent: meta?.userAgent,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `Failed to create audit log for tester session acquisition: ${String(err)}`,
+      );
+    }
+
+    return targetUser;
+  }
 }
+

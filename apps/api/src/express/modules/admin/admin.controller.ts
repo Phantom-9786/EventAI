@@ -3,7 +3,8 @@ import { AdminService } from '../../../modules/admin/admin.service';
 import { PaymentsService } from '../../../modules/payments/payments.service';
 import { ExpressModerationService } from '../../services/moderation.service';
 import { SystemControlsService } from '../../../modules/admin/system-controls.service';
-import { UnauthorizedError } from '../../types';
+import { AuthService, REFRESH_TOKEN_COOKIE } from '../../../modules/auth/auth.service';
+import { BadRequestError, UnauthorizedError } from '../../types';
 
 export class ExpressAdminController {
   constructor(
@@ -11,6 +12,7 @@ export class ExpressAdminController {
     private readonly moderationService: ExpressModerationService,
     private readonly paymentsService?: PaymentsService,
     private readonly systemControlsService?: SystemControlsService,
+    private readonly authService?: AuthService,
   ) {}
 
   stats = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -395,6 +397,54 @@ export class ExpressAdminController {
         userAgent: req.get('user-agent'),
       });
       res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  switchTesterSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+      if (!this.systemControlsService || !this.authService) {
+        throw new BadRequestError('Session switching is not configured on this server');
+      }
+
+      const { testEmail } = req.body ?? {};
+      if (!testEmail || typeof testEmail !== 'string') {
+        throw new BadRequestError('testEmail is required');
+      }
+
+      const targetUser = await this.systemControlsService.verifyTesterSessionAcquisition(
+        adminUserId,
+        testEmail,
+        { ipAddress: req.ip, userAgent: req.get('user-agent') },
+      );
+
+      const tokens = await this.authService.createSession(
+        targetUser.id,
+        targetUser.email,
+        targetUser.role,
+      );
+
+      const isProduction = process.env.NODE_ENV === 'production';
+      res.cookie(REFRESH_TOKEN_COOKIE, tokens.refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        path: '/api/auth',
+        maxAge: this.authService.refreshCookieMaxAge,
+      });
+
+      res.status(200).json({
+        user: {
+          id: targetUser.id,
+          email: targetUser.email,
+          role: targetUser.role,
+          isMaintenanceTester: true,
+        },
+        accessToken: tokens.accessToken,
+      });
     } catch (err) {
       next(err);
     }

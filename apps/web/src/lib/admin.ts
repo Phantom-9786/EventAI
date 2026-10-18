@@ -555,4 +555,20 @@ export async function clearAcceptedAdminInvitations(): Promise<{ success: boolea
   return res.json();
 }
 
+export interface MaintenanceTester {
+  adminId: string;
+  adminEmail: string;
+  testEmail: string;
+  testUserId: string;
+  allowedRoles: ('CUSTOMER' | 'ORGANIZER')[];
+  createdAt: string;
+}
+
+export async function getMaintenanceTesters(): Promise<MaintenanceTester[]> {
+  const res = await authFetch('/admin/maintenance-testers');
+  if (!res.ok) throw new Error(`Failed to load maintenance testers (${res.status})`);
+  return res.json();
+}
+
+
 

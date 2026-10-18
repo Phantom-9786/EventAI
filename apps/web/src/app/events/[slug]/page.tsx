@@ -22,6 +22,7 @@ import {
   type TicketTypeView,
 } from '@/lib/api';
 import { getDirectionsUrl } from '@/lib/maps';
+import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -62,7 +63,39 @@ function saleWindow(t: TicketTypeView): string | null {
 }
 
 export default async function EventDetailPage({ params }: EventDetailPageProps) {
-  const event = await getEvent(params.slug).catch(() => null);
+  let event: Awaited<ReturnType<typeof getEvent>> | null = null;
+  let isMaintenanceBlocked = false;
+  try {
+    event = await getEvent(params.slug);
+  } catch (err: unknown) {
+    const errMessage = err instanceof Error ? err.message : String(err);
+    if (errMessage.includes('503') || errMessage.toLowerCase().includes('maintenance')) {
+      isMaintenanceBlocked = true;
+    }
+  }
+
+  if (isMaintenanceBlocked) {
+    return (
+      <div className="container py-16 text-center max-w-lg mx-auto">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-4 animate-pulse">
+          <ShieldCheck className="h-6 w-6" />
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight">Website Maintenance Active</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Event details are currently restricted while maintenance mode is active. Authorized maintenance testing accounts may view events.
+        </p>
+        <div className="mt-6 flex justify-center gap-3">
+          <Link href="/events" className={cn(buttonVariants(), 'h-9 px-4 text-xs font-semibold')}>
+            Back to Events
+          </Link>
+          <Link href="/signin" className={cn(buttonVariants({ variant: 'outline' }), 'h-9 px-4 text-xs')}>
+            Sign In as Tester
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!event) notFound();
   const similar = await getSimilarEvents(event.slug, 4).catch(() => []);
 

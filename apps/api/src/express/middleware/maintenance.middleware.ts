@@ -27,6 +27,10 @@ const EXEMPT_PATHS = [
   '/api/auth/forgot-password',
   '/auth/reset-password',
   '/api/auth/reset-password',
+  '/auth/google',
+  '/api/auth/google',
+  '/auth/google/callback',
+  '/api/auth/google/callback',
 ];
 
 export function createMaintenanceMiddleware({

@@ -316,6 +316,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     moderationService,
     paymentsService,
     systemControlsService,
+    authService,
   );
   const aiController = new ExpressAiController(aiService);
   const notificationsController = new ExpressNotificationsController(notificationsService);
