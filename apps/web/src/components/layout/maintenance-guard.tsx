@@ -52,6 +52,7 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
   }, [loadControls]);
 
   const isAdmin = user?.role === 'ADMIN';
+  const isMaintenanceTester = Boolean(user?.isMaintenanceTester);
   const isAuthRecoveryPath =
     pathname === '/signin' ||
     pathname === '/auth/callback' ||
@@ -60,33 +61,35 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
 
   // 1. If website maintenance is active:
   if (controls?.websiteMaintenance) {
-    // If user is ADMIN, let them navigate, with a prominent maintenance banner
-    if (isAdmin) {
+    // If user is ADMIN or Authorized Maintenance Tester, let them navigate, with a prominent maintenance banner
+    if (isAdmin || isMaintenanceTester) {
       return (
         <SystemControlsContext.Provider value={{ controls, loading, reload: loadControls }}>
           <div className="bg-amber-500 text-amber-950 dark:bg-amber-500/20 dark:text-amber-200 border-b border-amber-600/30 px-4 py-2.5 text-xs sm:text-sm font-medium flex items-center justify-between sticky top-0 z-[60] shadow-sm backdrop-blur-sm pointer-events-auto">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
               <span>
-                <strong>Website Maintenance Mode is ACTIVE.</strong> Public visitors are blocked. You are viewing as Administrator.
+                <strong>Website Maintenance Mode is ACTIVE.</strong> Public visitors are blocked. You are viewing as {isAdmin ? 'Administrator' : `Authorized Maintenance Tester (${user?.role === 'ORGANIZER' ? 'Organizer' : 'Attendee'})`}.
               </span>
             </div>
-            <Link
-              id="maintenance-banner-system-controls-link"
-              href="/admin?tab=system-controls"
-              className="inline-flex items-center gap-1 font-semibold underline hover:text-black dark:hover:text-white transition-colors ml-4 shrink-0 cursor-pointer relative z-10"
-              onClick={(e) => {
-                if (typeof window !== 'undefined' && window.location.pathname === '/admin') {
-                  e.preventDefault();
-                  const url = new URL(window.location.href);
-                  url.searchParams.set('tab', 'system-controls');
-                  window.history.pushState(null, '', url.toString());
-                  window.dispatchEvent(new PopStateEvent('popstate'));
-                }
-              }}
-            >
-              System Controls <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+            {isAdmin && (
+              <Link
+                id="maintenance-banner-system-controls-link"
+                href="/admin?tab=system-controls"
+                className="inline-flex items-center gap-1 font-semibold underline hover:text-black dark:hover:text-white transition-colors ml-4 shrink-0 cursor-pointer relative z-10"
+                onClick={(e) => {
+                  if (typeof window !== 'undefined' && window.location.pathname === '/admin') {
+                    e.preventDefault();
+                    const url = new URL(window.location.href);
+                    url.searchParams.set('tab', 'system-controls');
+                    window.history.pushState(null, '', url.toString());
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+              >
+                System Controls <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
           </div>
           {children}
         </SystemControlsContext.Provider>

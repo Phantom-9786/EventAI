@@ -66,6 +66,25 @@ export default function DashboardPage() {
     );
   }
 
+  if (error && !profile) {
+    return (
+      <div className="container max-w-md py-16 text-center">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-6">
+          <h2 className="text-lg font-semibold text-destructive">Unable to load Organizer Hub</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{error}</p>
+          <div className="mt-4 flex justify-center gap-3">
+            <Button onClick={() => window.location.reload()} variant="outline" size="sm">
+              Retry
+            </Button>
+            <Link href="/" className="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium hover:bg-accent">
+              Back to Home
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!profile) {
     // Not an organizer yet — inline onboarding
     return (

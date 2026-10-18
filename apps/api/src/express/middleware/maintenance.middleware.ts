@@ -44,6 +44,17 @@ export function createMaintenanceMiddleware({
 
       const path = req.path.toLowerCase();
 
+      // Invitation acceptance is strictly unavailable during website maintenance
+      if (path.includes('/invitations/accept')) {
+        res.status(503).json({
+          success: false,
+          code: 'MAINTENANCE_MODE',
+          message:
+            'Invitation acceptance is temporarily unavailable while website maintenance is active. Please try again once maintenance is complete.',
+        });
+        return;
+      }
+
       // 1. Allow health checks, webhooks, and auth recovery paths
       const isExempt =
         EXEMPT_PATHS.some((exempt) => path === exempt || path === `${exempt}/`) ||
@@ -54,11 +65,17 @@ export function createMaintenanceMiddleware({
         return next();
       }
 
-      // 2. Allow requests from authenticated administrators
+      // 2. Allow requests from authenticated administrators or explicitly authorized maintenance testers
       // Check already parsed user on request
       const existingUser = req.authUser ?? req.user;
       if (existingUser?.role === UserRole.ADMIN) {
         return next();
+      }
+      if (existingUser?.id && systemControlsService.isAuthorizedMaintenanceTester) {
+        const isTester = await systemControlsService.isAuthorizedMaintenanceTester(existingUser.id);
+        if (isTester) {
+          return next();
+        }
       }
 
       // Check Authorization Bearer token header or cookie
@@ -77,6 +94,12 @@ export function createMaintenanceMiddleware({
           const decoded = jwt.verify(token, jwtSecret) as { role?: string; sub?: string };
           if (decoded.role === UserRole.ADMIN) {
             return next();
+          }
+          if (decoded.sub && systemControlsService.isAuthorizedMaintenanceTester) {
+            const isTester = await systemControlsService.isAuthorizedMaintenanceTester(decoded.sub);
+            if (isTester) {
+              return next();
+            }
           }
         } catch {
           // Token verification failure will fall through to maintenance block

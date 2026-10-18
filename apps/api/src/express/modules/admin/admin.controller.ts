@@ -316,6 +316,73 @@ export class ExpressAdminController {
     }
   };
 
+  deleteInvitationHistory = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      const result = await this.adminService.deleteInvitationHistory(adminUserId, req.params.id);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  clearAcceptedInvitations = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      const result = await this.adminService.clearAcceptedInvitations(adminUserId);
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  linkMaintenanceTester = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      const result = await this.adminService.linkMaintenanceTester(
+        adminUserId,
+        req.body.testEmail,
+        req.body.allowedRoles,
+      );
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  unlinkMaintenanceTester = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      const result = await this.adminService.unlinkMaintenanceTester(
+        adminUserId,
+        req.body.testEmail,
+      );
+      res.status(200).json(result);
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  listMaintenanceTesters = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUserId = req.authUser?.id ?? req.user?.id;
+      if (!adminUserId) throw new UnauthorizedError('Unauthorized');
+
+      const result = await this.adminService.listMaintenanceTesters(adminUserId);
+      res.status(200).json({ testers: result });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   acceptInvitation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;

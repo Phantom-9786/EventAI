@@ -242,12 +242,28 @@ describe('Admin Team & Access Management Integration', () => {
           invitationsDb[where.id] = { ...invitationsDb[where.id], ...data, updatedAt: new Date() };
           return Promise.resolve({ ...invitationsDb[where.id] });
         }),
+        delete: jest.fn().mockImplementation(({ where }) => {
+          const inv = invitationsDb[where.id];
+          if (inv) delete invitationsDb[where.id];
+          return Promise.resolve(inv || { id: where.id });
+        }),
+        deleteMany: jest.fn().mockImplementation(({ where }) => {
+          let count = 0;
+          for (const [id, inv] of Object.entries(invitationsDb)) {
+            if (!where?.status || (inv as any).status === where.status) {
+              delete invitationsDb[id];
+              count++;
+            }
+          }
+          return Promise.resolve({ count });
+        }),
       },
       auditLog: {
         create: jest.fn().mockImplementation(({ data }) => {
           auditLogsDb.push({ id: crypto.randomUUID(), ...data, createdAt: new Date() });
           return Promise.resolve({ id: crypto.randomUUID(), ...data });
         }),
+        findMany: jest.fn().mockResolvedValue([]),
       },
     };
 
@@ -520,15 +536,94 @@ describe('Admin Team & Access Management Integration', () => {
       expect(acceptBody.message).toMatch(/Invalid, revoked, or previously used/i);
     });
 
-    it('protects the last active Platform Owner from being demoted or revoked', async () => {
-      // Try to revoke ownerUser
+    it('rejects owner attempts to revoke their own access via API with 400', async () => {
       const res = await fetch(`${baseUrl}/api/admin/team/members/${ownerUser.id}/revoke`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${ownerToken}` },
       });
       expect(res.status).toBe(400);
       const body = (await res.json()) as any;
-      expect(body.message).toMatch(/Cannot revoke your own administrator access|last active platform owner/i);
+      expect(body.message).toMatch(/cannot revoke (your|their) own/i);
+    });
+
+    it('forbids delegated admin from attempting to revoke platform owner with 403', async () => {
+      const res = await fetch(`${baseUrl}/api/admin/team/members/${ownerUser.id}/revoke`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${delegatedAdminToken}` },
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as any;
+      expect(body.message).toMatch(/Only platform owners can/i);
+    });
+
+    it('forbids delegated admin from deleting invitation history or clearing accepted history (403)', async () => {
+      const deleteRes = await fetch(`${baseUrl}/api/admin/team/invitations/55555555-5555-4555-8555-555555555555`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${delegatedAdminToken}` },
+      });
+      expect(deleteRes.status).toBe(403);
+
+      const clearRes = await fetch(`${baseUrl}/api/admin/team/invitations/clear-accepted`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${delegatedAdminToken}` },
+      });
+      expect(clearRes.status).toBe(403);
+    });
+
+    it('allows Platform Owner to delete an individual historical invitation record', async () => {
+      // Find an accepted or revoked invitation in the DB
+      const historicalInv = Object.values(invitationsDb).find(
+        (i: any) => i.status === 'ACCEPTED' || i.status === 'REVOKED' || i.status === 'EXPIRED',
+      );
+      expect(historicalInv).toBeDefined();
+
+      const res = await fetch(`${baseUrl}/api/admin/team/invitations/${historicalInv.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${ownerToken}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as any;
+      expect(body.success).toBe(true);
+
+      // Verify record is removed from invitationsDb
+      expect(invitationsDb[historicalInv.id]).toBeUndefined();
+    });
+
+    it('allows Platform Owner to clear accepted invitations in bulk while preserving active admins & audit logs', async () => {
+      // Seed an accepted invitation in invitationsDb
+      const acceptedInvId = 'accepted-inv-bulk-test';
+      invitationsDb[acceptedInvId] = {
+        id: acceptedInvId,
+        email: 'bulk-accepted@eventpoint.test',
+        role: 'ADMIN',
+        status: AdminInvitationStatus.ACCEPTED,
+        token: 'hashed-accepted-token',
+        expiresAt: new Date(Date.now() + 86400000),
+        createdAt: new Date(),
+        invitedById: ownerUser.id,
+        acceptedById: delegatedAdminUser.id,
+      };
+
+      const auditCountBefore = auditLogsDb.length;
+      const adminUserRoleBefore = usersDb[delegatedAdminUser.id].role;
+
+      const res = await fetch(`${baseUrl}/api/admin/team/invitations/clear-accepted`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${ownerToken}` },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as any;
+      expect(body.success).toBe(true);
+      expect(body.clearedCount).toBeGreaterThanOrEqual(1);
+
+      // Verify the accepted invitation is gone from invitationsDb
+      expect(invitationsDb[acceptedInvId]).toBeUndefined();
+
+      // Verify active admin was NOT revoked
+      expect(usersDb[delegatedAdminUser.id].role).toBe(adminUserRoleBefore);
+
+      // Verify audit logs were NOT deleted (in fact, a new audit entry was added for clearing)
+      expect(auditLogsDb.length).toBeGreaterThan(auditCountBefore);
     });
 
     it('allows Platform Owner to revoke delegated admin access', async () => {

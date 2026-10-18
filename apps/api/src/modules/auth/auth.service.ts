@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
   UnauthorizedException,
 } from '../../common/exceptions';
 import { ConfigService } from '../../common/config/config.service';
@@ -14,6 +15,7 @@ import type { TokenPayload, UserRole } from '@eventai/types';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { GoogleProfile } from './google-oauth.service';
+import type { SystemControlsService } from '../admin/system-controls.service';
 
 export const REFRESH_TOKEN_COOKIE = 'eventai_refresh_token';
 
@@ -66,6 +68,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly notifications: NotificationsService,
+    @Optional() private readonly systemControlsService?: SystemControlsService,
   ) {
     this.refreshTtlMs = parseDurationMs(
       this.configService.get<string>('REFRESH_TOKEN_EXPIRY'),
@@ -186,7 +189,10 @@ export class AuthService {
   async login(input: {
     email: string;
     password: string;
-  }): Promise<{ user: { id: string; email: string; role: UserRole }; tokens: SessionTokens }> {
+  }): Promise<{
+    user: { id: string; email: string; role: UserRole; isMaintenanceTester?: boolean };
+    tokens: SessionTokens;
+  }> {
     const user = await this.prisma.user.findUnique({
       where: { email: input.email },
     });
@@ -214,9 +220,18 @@ export class AuthService {
       });
     }
 
+    const isMaintenanceTester = this.systemControlsService
+      ? await this.systemControlsService.isAuthorizedMaintenanceTester(user.id)
+      : user.role === 'ADMIN';
+
     const tokens = await this.createSession(user.id, user.email, user.role);
     return {
-      user: { id: user.id, email: user.email, role: user.role as UserRole },
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role as UserRole,
+        isMaintenanceTester,
+      },
       tokens,
     };
   }
@@ -235,7 +250,7 @@ export class AuthService {
   //   (also requires a Google-verified email).
   // ═══════════════════════════════════════════════════
   async loginWithGoogle(profile: GoogleProfile): Promise<{
-    user: { id: string; email: string; role: UserRole };
+    user: { id: string; email: string; role: UserRole; isMaintenanceTester?: boolean };
     tokens: SessionTokens;
   }> {
     if (!profile.emailVerified) {
@@ -285,9 +300,13 @@ export class AuthService {
       }
     }
 
+    const isMaintenanceTester = this.systemControlsService
+      ? await this.systemControlsService.isAuthorizedMaintenanceTester(user.id)
+      : user.role === 'ADMIN';
+
     const tokens = await this.createSession(user.id, user.email, user.role);
     return {
-      user: { id: user.id, email: user.email, role: user.role as UserRole },
+      user: { id: user.id, email: user.email, role: user.role as UserRole, isMaintenanceTester },
       tokens,
     };
   }
@@ -353,6 +372,7 @@ export class AuthService {
         profileImage: true,
         location: true,
         role: true,
+        adminRole: true,
         isEmailVerified: true,
         createdAt: true,
       },
@@ -360,7 +380,14 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException();
     }
-    return user;
+    const isMaintenanceTester = this.systemControlsService
+      ? await this.systemControlsService.isAuthorizedMaintenanceTester(userId)
+      : user.role === 'ADMIN';
+
+    return {
+      ...user,
+      isMaintenanceTester,
+    };
   }
 
   async changePassword(

@@ -36,6 +36,7 @@ export interface AuthUser {
   lastName: string | null;
   role: 'CUSTOMER' | 'ORGANIZER' | 'ADMIN';
   isEmailVerified?: boolean;
+  isMaintenanceTester?: boolean;
 }
 
 export class ApiError extends Error {

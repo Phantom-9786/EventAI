@@ -12,6 +12,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import type { SystemControlsService } from './system-controls.service';
 import { AdminRoleType, AdminInvitationStatus, UserRole } from '@eventai/types';
 import type {
   AdminAuditLogListInput,
@@ -32,6 +33,7 @@ export class AdminService {
     private readonly prisma: PrismaService,
     @Optional() private readonly eventsService?: EventsService,
     @Optional() private readonly notifications?: NotificationsService,
+    @Optional() private readonly systemControlsService?: SystemControlsService,
   ) {}
 
   async invalidateEventCache(): Promise<void> {
@@ -800,16 +802,21 @@ export class AdminService {
       const adminIsOwner = explicitOwner
         ? admin.adminRole === AdminRoleType.OWNER
         : idx === 0;
+      const isCurrentUser = admin.id === callerUserId;
+      const fullName =
+        `${admin.firstName ?? ''} ${admin.lastName ?? ''}`.trim() || admin.email;
       return {
         id: admin.id,
         email: admin.email,
         firstName: admin.firstName,
         lastName: admin.lastName,
+        fullName,
         role: admin.role,
         adminRole: adminIsOwner ? AdminRoleType.OWNER : AdminRoleType.ADMIN,
         isActive: admin.isActive,
         createdAt: admin.createdAt.toISOString(),
         isOwner: adminIsOwner,
+        isCurrentUser,
       };
     });
 
@@ -822,6 +829,7 @@ export class AdminService {
         expiresAt: true,
         createdAt: true,
         acceptedAt: true,
+        revokedAt: true,
         invitedBy: {
           select: {
             id: true,
@@ -832,8 +840,26 @@ export class AdminService {
         },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 100,
     });
+
+    // Query recent invitation audit logs to reflect email delivery failure status
+    const invitationAuditLogs = await this.prisma.auditLog.findMany({
+      where: {
+        entity: 'AdminInvitation',
+        action: { in: ['ADMIN_INVITATION_CREATED', 'ADMIN_INVITATION_RESENT'] },
+      },
+      select: { entityId: true, details: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    const deliveryFailedMap = new Map<string, boolean>();
+    for (const log of invitationAuditLogs) {
+      if (log.entityId && !deliveryFailedMap.has(log.entityId)) {
+        const details = (log.details as Record<string, unknown> | null) ?? {};
+        deliveryFailedMap.set(log.entityId, Boolean(details.emailDeliveryFailed));
+      }
+    }
 
     const now = new Date();
     const invitations = rawInvitations.map((inv) => {
@@ -849,9 +875,23 @@ export class AdminService {
         expiresAt: inv.expiresAt.toISOString(),
         createdAt: inv.createdAt.toISOString(),
         acceptedAt: inv.acceptedAt ? inv.acceptedAt.toISOString() : null,
+        revokedAt: inv.revokedAt ? inv.revokedAt.toISOString() : null,
         invitedBy: inv.invitedBy,
+        emailDeliveryFailed: deliveryFailedMap.get(inv.id) ?? false,
       };
     });
+
+    const pendingInvitations = invitations.filter(
+      (inv) => inv.status === AdminInvitationStatus.PENDING,
+    );
+    const acceptedInvitations = invitations.filter(
+      (inv) => inv.status === AdminInvitationStatus.ACCEPTED,
+    );
+    const historicalInvitations = invitations.filter(
+      (inv) =>
+        inv.status === AdminInvitationStatus.REVOKED ||
+        inv.status === AdminInvitationStatus.EXPIRED,
+    );
 
     const caller = await this.prisma.user.findUnique({
       where: { id: callerUserId },
@@ -868,6 +908,9 @@ export class AdminService {
       },
       members,
       invitations,
+      pendingInvitations,
+      acceptedInvitations,
+      historicalInvitations,
       isOwner,
       callerId: callerUserId,
     };
@@ -1149,8 +1192,13 @@ export class AdminService {
     if (targetIsOwner) {
       const allAdmins = await this.prisma.user.findMany({
         where: { role: UserRole.ADMIN, isActive: true },
+        select: { id: true, adminRole: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
       });
-      if (allAdmins.length <= 1) {
+      const explicitOwners = allAdmins.filter((a) => a.adminRole === AdminRoleType.OWNER);
+      const activeOwnersCount =
+        explicitOwners.length > 0 ? explicitOwners.length : allAdmins.length > 0 ? 1 : 0;
+      if (activeOwnersCount <= 1) {
         throw new BadRequestException(
           'Cannot revoke administrator access for the last active platform owner',
         );
@@ -1185,6 +1233,121 @@ export class AdminService {
     ]);
 
     return { success: true, message: `Administrator access revoked for ${targetUser.email}` };
+  }
+
+  async deleteInvitationHistory(
+    callerUserId: string,
+    invitationId: string,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ) {
+    const isOwner = await this.isPlatformOwner(callerUserId);
+    if (!isOwner) {
+      throw new ForbiddenException('Only platform owners can manage invitation history');
+    }
+
+    const invitation = await this.prisma.adminInvitation.findUnique({
+      where: { id: invitationId },
+    });
+    if (!invitation) {
+      throw new NotFoundException('Invitation not found');
+    }
+    if (invitation.status === AdminInvitationStatus.PENDING && invitation.expiresAt > new Date()) {
+      throw new BadRequestException(
+        'Active pending invitations cannot be deleted from history; revoke them instead',
+      );
+    }
+
+    await this.prisma.adminInvitation.delete({
+      where: { id: invitationId },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: callerUserId,
+        action: 'ADMIN_INVITATION_HISTORY_DELETED',
+        entity: 'AdminInvitation',
+        entityId: invitation.id,
+        details: {
+          email: invitation.email,
+          previousStatus: invitation.status,
+          role: invitation.role,
+        },
+        ipAddress: meta?.ipAddress,
+        userAgent: meta?.userAgent,
+      },
+    });
+
+    return { success: true, message: 'Invitation history record removed' };
+  }
+
+  async clearAcceptedInvitations(
+    callerUserId: string,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ) {
+    const isOwner = await this.isPlatformOwner(callerUserId);
+    if (!isOwner) {
+      throw new ForbiddenException('Only platform owners can clear invitation history');
+    }
+
+    const deleteResult = await this.prisma.adminInvitation.deleteMany({
+      where: { status: AdminInvitationStatus.ACCEPTED },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        userId: callerUserId,
+        action: 'ADMIN_ACCEPTED_INVITATIONS_CLEARED',
+        entity: 'AdminInvitation',
+        entityId: 'bulk',
+        details: {
+          count: deleteResult.count,
+        },
+        ipAddress: meta?.ipAddress,
+        userAgent: meta?.userAgent,
+      },
+    });
+
+    return {
+      success: true,
+      count: deleteResult.count,
+      clearedCount: deleteResult.count,
+      message: `Cleared ${deleteResult.count} accepted invitation record(s) from history. Active team members remain unaffected.`,
+    };
+  }
+
+  async linkMaintenanceTester(
+    callerUserId: string,
+    testEmail: string,
+    allowedRoles?: ('CUSTOMER' | 'ORGANIZER')[],
+    meta?: { ipAddress?: string; userAgent?: string },
+  ) {
+    if (!this.systemControlsService) {
+      throw new BadRequestException('System controls service is not configured');
+    }
+    return this.systemControlsService.linkMaintenanceTester(
+      callerUserId,
+      testEmail,
+      allowedRoles,
+      meta,
+    );
+  }
+
+  async unlinkMaintenanceTester(
+    callerUserId: string,
+    testEmail: string,
+    meta?: { ipAddress?: string; userAgent?: string },
+  ) {
+    if (!this.systemControlsService) {
+      throw new BadRequestException('System controls service is not configured');
+    }
+    return this.systemControlsService.unlinkMaintenanceTester(callerUserId, testEmail, meta);
+  }
+
+  async listMaintenanceTesters(callerUserId: string) {
+    if (!this.systemControlsService) {
+      return [];
+    }
+    return this.systemControlsService.listMaintenanceTesters(callerUserId);
   }
 
   async acceptInvitation(

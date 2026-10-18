@@ -156,6 +156,9 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     options.notificationsService ?? new NotificationsService(prisma as never);
   const moderationService =
     options.moderationService ?? new ExpressModerationService(prisma, notificationsService);
+  const systemControlsService =
+    options.systemControlsService ??
+    new SystemControlsService(prisma as never, cache);
   const authService =
     options.authService ??
     new AuthService(
@@ -163,6 +166,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
       jwtService as never,
       configService,
       notificationsService,
+      systemControlsService,
     );
   const googleOauthService =
     options.googleOauthService ?? new GoogleOauthService(configService);
@@ -191,12 +195,9 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     new BookingsService(prisma as never, paymentsService as never, notificationsService as never);
   const adminService =
     options.adminService ??
-    new AdminService(prisma as never, eventsService as never, notificationsService as never);
+    new AdminService(prisma as never, eventsService as never, notificationsService as never, systemControlsService);
   const aiService =
     options.aiService ?? new AiService(prisma as never, cache as never);
-  const systemControlsService =
-    options.systemControlsService ??
-    new SystemControlsService(prisma as never, cache);
 
   // 1. Request ID and structured request logger
   app.use(createRequestIdMiddleware(logger));

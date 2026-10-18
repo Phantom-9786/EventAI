@@ -6,6 +6,7 @@ import {
   adminUpdateSystemControlsSchema,
   adminInviteTeamMemberSchema,
   adminAcceptInvitationSchema,
+  adminLinkMaintenanceTesterSchema,
 } from '@eventai/validation';
 import { validateBody, validateUuidParam } from '../../middleware/validation';
 import { UserRole } from '@eventai/types';
@@ -54,11 +55,29 @@ export function createAdminRouter({
     validateUuidParam('id'),
     controller.revokeInvitation,
   );
+  router.delete(
+    '/team/invitations/:id',
+    validateUuidParam('id'),
+    controller.deleteInvitationHistory,
+  );
+  router.post(
+    '/team/invitations/clear-accepted',
+    controller.clearAcceptedInvitations,
+  );
   router.post(
     '/team/members/:id/revoke',
     validateUuidParam('id'),
     controller.revokeAdminAccess,
   );
+
+  // Authorized Maintenance Testers management
+  router.get('/maintenance-testers', controller.listMaintenanceTesters);
+  router.post(
+    '/maintenance-testers',
+    validateBody(adminLinkMaintenanceTesterSchema),
+    controller.linkMaintenanceTester,
+  );
+  router.post('/maintenance-testers/unlink', controller.unlinkMaintenanceTester);
 
   // Platform stats
   router.get('/stats', controller.stats);

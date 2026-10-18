@@ -17,6 +17,8 @@ import {
   Loader2,
   Calendar,
   Lock,
+  AlertTriangle,
+  History,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -26,6 +28,8 @@ import {
   resendAdminInvitation,
   revokeAdminInvitation,
   revokeAdminMemberAccess,
+  deleteAdminInvitationHistory,
+  clearAcceptedAdminInvitations,
   type AdminTeamResponse,
   type AdminTeamMember,
   type AdminInvitationSummary,
@@ -39,6 +43,9 @@ export function TeamAccessSection() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Invitation tab: 'pending' | 'accepted' | 'archived'
+  const [invitationTab, setInvitationTab] = useState<'pending' | 'accepted' | 'archived'>('pending');
+
   // Modals state
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -50,9 +57,17 @@ export function TeamAccessSection() {
   const [revokeMemberTarget, setRevokeMemberTarget] = useState<AdminTeamMember | null>(null);
   const [revokeMemberLoading, setRevokeMemberLoading] = useState(false);
 
-  // Revoke invitation modal
+  // Revoke pending invitation modal
   const [revokeInviteTarget, setRevokeInviteTarget] = useState<AdminInvitationSummary | null>(null);
   const [revokeInviteLoading, setRevokeInviteLoading] = useState(false);
+
+  // Bulk clear accepted modal
+  const [bulkClearModalOpen, setBulkClearModalOpen] = useState(false);
+  const [bulkClearLoading, setBulkClearLoading] = useState(false);
+
+  // Single clear record target
+  const [singleClearTarget, setSingleClearTarget] = useState<AdminInvitationSummary | null>(null);
+  const [singleClearLoading, setSingleClearLoading] = useState(false);
 
   // Action loading indicators
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
@@ -157,7 +172,42 @@ export function TeamAccessSection() {
     }
   };
 
-  // Filter members and invitations by search query
+  // Handle clear single historical record
+  const handleConfirmClearSingleHistory = async () => {
+    if (!singleClearTarget) return;
+    try {
+      setSingleClearLoading(true);
+      setError(null);
+      await deleteAdminInvitationHistory(singleClearTarget.id);
+      setSuccessMessage(`Cleared invitation record for ${singleClearTarget.email}.`);
+      setSingleClearTarget(null);
+      await loadTeamData();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to clear record';
+      setError(message);
+    } finally {
+      setSingleClearLoading(false);
+    }
+  };
+
+  // Handle bulk clear accepted invitations
+  const handleConfirmBulkClear = async () => {
+    try {
+      setBulkClearLoading(true);
+      setError(null);
+      const res = await clearAcceptedAdminInvitations();
+      setSuccessMessage(`Successfully cleared ${res.clearedCount} accepted invitation records from history.`);
+      setBulkClearModalOpen(false);
+      await loadTeamData();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to clear accepted history';
+      setError(message);
+    } finally {
+      setBulkClearLoading(false);
+    }
+  };
+
+  // Filter members by search query
   const filteredMembers = useMemo(() => {
     if (!data?.members) return [];
     if (!searchQuery.trim()) return data.members;
@@ -167,12 +217,27 @@ export function TeamAccessSection() {
     );
   }, [data?.members, searchQuery]);
 
-  const filteredInvitations = useMemo(() => {
-    if (!data?.invitations) return [];
-    if (!searchQuery.trim()) return data.invitations;
+  // Invitations categorized
+  const pendingInvitations = useMemo(() => {
+    const list = data?.pendingInvitations || data?.invitations.filter((i) => i.status === 'PENDING') || [];
+    if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase();
-    return data.invitations.filter((i) => i.email.toLowerCase().includes(q));
-  }, [data?.invitations, searchQuery]);
+    return list.filter((i) => i.email.toLowerCase().includes(q));
+  }, [data, searchQuery]);
+
+  const acceptedInvitations = useMemo(() => {
+    const list = data?.acceptedInvitations || data?.invitations.filter((i) => i.status === 'ACCEPTED') || [];
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase();
+    return list.filter((i) => i.email.toLowerCase().includes(q));
+  }, [data, searchQuery]);
+
+  const historicalInvitations = useMemo(() => {
+    const list = data?.historicalInvitations || data?.invitations.filter((i) => i.status === 'REVOKED' || i.status === 'EXPIRED') || [];
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase();
+    return list.filter((i) => i.email.toLowerCase().includes(q));
+  }, [data, searchQuery]);
 
   if (loading && !data) {
     return (
@@ -283,7 +348,7 @@ export function TeamAccessSection() {
             <Mail className="h-4 w-4 text-amber-500" />
           </div>
           <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">
-            {data?.invitations.filter((i) => i.status === 'PENDING').length ?? 0}
+            {pendingInvitations.length}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Awaiting recipient acceptance & verification
@@ -339,187 +404,376 @@ export function TeamAccessSection() {
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {filteredMembers.map((member) => (
-              <div
-                key={member.id}
-                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 transition-colors hover:bg-muted/10"
-              >
-                <div className="flex items-start sm:items-center gap-3.5">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
-                    {member.fullName ? member.fullName.charAt(0).toUpperCase() : member.email.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-foreground">
-                        {member.fullName || 'Unnamed Account'}
-                      </span>
-                      {member.isCurrentUser && (
-                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
-                          You
-                        </span>
-                      )}
-                      {member.adminRole === 'OWNER' ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
-                          <Crown className="h-3 w-3" />
-                          Platform Owner
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:text-blue-400">
-                          <ShieldCheck className="h-3 w-3" />
-                          Delegated Admin
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
-                      <span>{member.email}</span>
-                      <span className="hidden sm:inline">•</span>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Added {new Date(member.createdAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 self-end sm:self-center">
-                  {isOwner && !member.isCurrentUser && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRevokeMemberTarget(member)}
-                      className="text-destructive hover:bg-destructive/10 border-destructive/30 hover:border-destructive/60"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 mr-1" />
-                      Revoke Access
-                    </Button>
-                  )}
-                  {member.isCurrentUser && (
-                    <span className="text-xs text-muted-foreground italic">Current session</span>
-                  )}
-                  {!isOwner && !member.isCurrentUser && (
-                    <span className="text-xs text-muted-foreground italic">View only</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Section 2: Invitations */}
-      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-        <div className="border-b px-6 py-4 bg-muted/20">
-          <h3 className="font-semibold text-base text-foreground">Invitations</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Pending, accepted, expired, or revoked administrative invitations.
-          </p>
-        </div>
-
-        {filteredInvitations.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            No invitations found.
-          </div>
-        ) : (
-          <div className="divide-y divide-border">
-            {filteredInvitations.map((inv) => {
-              const isPending = inv.status === 'PENDING';
-              const isAccepted = inv.status === 'ACCEPTED';
-              const isExpired = inv.status === 'EXPIRED';
-              const isRevoked = inv.status === 'REVOKED';
+            {filteredMembers.map((member) => {
+              const isCurrentUser = member.isCurrentUser || member.id === data?.currentUser?.id;
+              const isMemberOwner = member.adminRole === 'OWNER' || member.isOwner;
 
               return (
                 <div
-                  key={inv.id}
+                  key={member.id}
                   className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 transition-colors hover:bg-muted/10"
                 >
                   <div className="flex items-start sm:items-center gap-3.5">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <Mail className="h-4 w-4" />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
+                      {member.fullName ? member.fullName.charAt(0).toUpperCase() : member.email.charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm text-foreground">{inv.email}</span>
-                        <span className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted/50 font-medium">
-                          {inv.role === 'OWNER' ? 'Platform Owner' : 'Delegated Admin'}
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-sm text-foreground">
+                          {member.fullName || 'Unnamed Account'}
                         </span>
-                        {isPending && (
+                        {isCurrentUser && (
+                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                            You
+                          </span>
+                        )}
+                        {isMemberOwner ? (
                           <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
-                            <Clock className="h-3 w-3" />
-                            Pending
+                            <Crown className="h-3 w-3" />
+                            Platform Owner
                           </span>
-                        )}
-                        {isAccepted && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Accepted
-                          </span>
-                        )}
-                        {isExpired && (
-                          <span className="rounded-full border border-muted-foreground/30 bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
-                            Expired
-                          </span>
-                        )}
-                        {isRevoked && (
-                          <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
-                            Revoked
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:text-blue-400">
+                            <ShieldCheck className="h-3 w-3" />
+                            Delegated Admin
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
-                        <span>Invited by {inv.invitedBy.fullName || inv.invitedBy.email}</span>
-                        <span>•</span>
-                        <span>Created {new Date(inv.createdAt).toLocaleDateString()}</span>
-                        {isPending && (
-                          <>
-                            <span>•</span>
-                            <span>Expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
-                          </>
-                        )}
-                        {isAccepted && inv.acceptedAt && (
-                          <>
-                            <span>•</span>
-                            <span>Accepted {new Date(inv.acceptedAt).toLocaleDateString()}</span>
-                          </>
-                        )}
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
+                        <span>{member.email}</span>
+                        <span className="hidden sm:inline">•</span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          Added {new Date(member.createdAt).toLocaleDateString()}
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 self-end sm:self-center">
-                    {isOwner && (isPending || isExpired) && (
+                    {/* ISSUE 1: Do not render Revoke Access for current user or platform owner */}
+                    {isOwner && !isCurrentUser && !isMemberOwner && (
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={resendingInviteId === inv.id}
-                        onClick={() => handleResendInvitation(inv)}
-                        className="gap-1.5"
-                      >
-                        {resendingInviteId === inv.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-3.5 w-3.5" />
-                        )}
-                        Resend
-                      </Button>
-                    )}
-                    {isOwner && isPending && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setRevokeInviteTarget(inv)}
-                        className="text-destructive hover:bg-destructive/10"
+                        onClick={() => setRevokeMemberTarget(member)}
+                        className="text-destructive hover:bg-destructive/10 border-destructive/30 hover:border-destructive/60"
                       >
                         <Trash2 className="h-3.5 w-3.5 mr-1" />
-                        Revoke
+                        Revoke Access
                       </Button>
+                    )}
+                    {isCurrentUser && (
+                      <span className="text-xs text-muted-foreground italic">Current session</span>
+                    )}
+                    {!isCurrentUser && isMemberOwner && (
+                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Protected Owner</span>
+                    )}
+                    {!isOwner && !isCurrentUser && !isMemberOwner && (
+                      <span className="text-xs text-muted-foreground italic">View only</span>
                     )}
                   </div>
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      {/* Section 2: Invitations & History (ISSUE 2: Organized into tabs) */}
+      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+        <div className="border-b px-6 py-4 bg-muted/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="font-semibold text-base text-foreground">Invitations & History</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Manage pending invitations and inspect historical administrative invitations.
+            </p>
+          </div>
+
+          {/* Tab selector */}
+          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-lg border text-xs">
+            <button
+              type="button"
+              onClick={() => setInvitationTab('pending')}
+              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+                invitationTab === 'pending'
+                  ? 'bg-background text-foreground shadow-xs font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Pending ({pendingInvitations.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setInvitationTab('accepted')}
+              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+                invitationTab === 'accepted'
+                  ? 'bg-background text-foreground shadow-xs font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Accepted History ({acceptedInvitations.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setInvitationTab('archived')}
+              className={`px-3 py-1.5 rounded-md font-medium transition-all ${
+                invitationTab === 'archived'
+                  ? 'bg-background text-foreground shadow-xs font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Revoked / Expired ({historicalInvitations.length})
+            </button>
+          </div>
+        </div>
+
+        {/* Tab 1: Pending Invitations */}
+        {invitationTab === 'pending' && (
+          <div>
+            {pendingInvitations.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                No pending invitations awaiting acceptance.
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {pendingInvitations.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 transition-colors hover:bg-muted/10"
+                  >
+                    <div className="flex items-start sm:items-center gap-3.5">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                        <Clock className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-foreground">{inv.email}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted/50 font-medium">
+                            {inv.role === 'OWNER' ? 'Platform Owner' : 'Delegated Admin'}
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                            <Clock className="h-3 w-3" />
+                            Pending Acceptance
+                          </span>
+                          {inv.emailDeliveryFailed && (
+                            <span
+                              title="The email delivery service reported a delivery issue. You can resend or have the recipient register and sign in."
+                              className="inline-flex items-center gap-1 rounded-full border border-rose-500/30 bg-rose-500/10 px-2 py-0.5 text-xs font-semibold text-rose-700 dark:text-rose-400"
+                            >
+                              <AlertTriangle className="h-3 w-3" />
+                              Delivery Notice
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
+                          <span>Invited by {inv.invitedBy.fullName || inv.invitedBy.email}</span>
+                          <span>•</span>
+                          <span>Sent {new Date(inv.createdAt).toLocaleDateString()}</span>
+                          <span>•</span>
+                          <span>Expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                      {isOwner && (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={resendingInviteId === inv.id}
+                            onClick={() => handleResendInvitation(inv)}
+                            className="gap-1.5"
+                          >
+                            {resendingInviteId === inv.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5" />
+                            )}
+                            Resend
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setRevokeInviteTarget(inv)}
+                            className="text-destructive hover:bg-destructive/10"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            Revoke
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: Accepted / Approved History */}
+        {invitationTab === 'accepted' && (
+          <div>
+            <div className="px-6 py-3 bg-muted/10 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-muted-foreground">
+              <span>
+                Accepted invitation history records. Clearing historical entries does <strong>not</strong> revoke administrator access or modify audit logs.
+              </span>
+              {isOwner && acceptedInvitations.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBulkClearModalOpen(true)}
+                  className="self-end sm:self-center text-xs h-7 gap-1.5 text-muted-foreground hover:text-foreground border-dashed"
+                >
+                  <History className="h-3 w-3" />
+                  Clear Accepted History
+                </Button>
+              )}
+            </div>
+
+            {acceptedInvitations.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                No accepted invitation records in history.
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {acceptedInvitations.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 transition-colors hover:bg-muted/10"
+                  >
+                    <div className="flex items-start sm:items-center gap-3.5">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        <CheckCircle2 className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-sm text-foreground">{inv.email}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted/50 font-medium">
+                            {inv.role === 'OWNER' ? 'Platform Owner' : 'Delegated Admin'}
+                          </span>
+                          <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Accepted
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
+                          <span>Invited by {inv.invitedBy.fullName || inv.invitedBy.email}</span>
+                          <span>•</span>
+                          <span>Invited {new Date(inv.createdAt).toLocaleDateString()}</span>
+                          {inv.acceptedAt && (
+                            <>
+                              <span>•</span>
+                              <span>Accepted {new Date(inv.acceptedAt).toLocaleDateString()}</span>
+                            </>
+                          )}
+                          {inv.acceptedBy && (
+                            <>
+                              <span>•</span>
+                              <span>Claimed by {inv.acceptedBy.fullName || inv.acceptedBy.email}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                      {isOwner && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSingleClearTarget(inv)}
+                          className="text-muted-foreground hover:text-destructive text-xs"
+                          title="Clear this record from history"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 mr-1" />
+                          Clear Entry
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: Revoked / Expired History */}
+        {invitationTab === 'archived' && (
+          <div>
+            <div className="px-6 py-3 bg-muted/10 border-b text-xs text-muted-foreground">
+              Historical records of invitations that expired or were cancelled before acceptance.
+            </div>
+
+            {historicalInvitations.length === 0 ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                No revoked or expired invitation records found.
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {historicalInvitations.map((inv) => {
+                  const isRevoked = inv.status === 'REVOKED';
+                  return (
+                    <div
+                      key={inv.id}
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 transition-colors hover:bg-muted/10 opacity-80 hover:opacity-100"
+                    >
+                      <div className="flex items-start sm:items-center gap-3.5">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                          <Mail className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm text-foreground">{inv.email}</span>
+                            <span className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted/50 font-medium">
+                              {inv.role === 'OWNER' ? 'Platform Owner' : 'Delegated Admin'}
+                            </span>
+                            {isRevoked ? (
+                              <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
+                                Revoked
+                              </span>
+                            ) : (
+                              <span className="rounded-full border border-muted-foreground/30 bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">
+                                Expired
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
+                            <span>Invited by {inv.invitedBy.fullName || inv.invitedBy.email}</span>
+                            <span>•</span>
+                            <span>Created {new Date(inv.createdAt).toLocaleDateString()}</span>
+                            <span>•</span>
+                            <span>Expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-center">
+                        {isOwner && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSingleClearTarget(inv)}
+                            className="text-muted-foreground hover:text-destructive text-xs"
+                            title="Clear this record from history"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            Clear
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -602,7 +856,7 @@ export function TeamAccessSection() {
         onConfirm={handleConfirmRevokeMemberAccess}
       />
 
-      {/* Revoke Invitation Modal */}
+      {/* Revoke Pending Invitation Modal */}
       <Modal
         isOpen={Boolean(revokeInviteTarget)}
         onClose={() => setRevokeInviteTarget(null)}
@@ -612,6 +866,30 @@ export function TeamAccessSection() {
         confirmVariant="destructive"
         isLoading={revokeInviteLoading}
         onConfirm={handleConfirmRevokeInvitation}
+      />
+
+      {/* Bulk Clear Accepted History Modal */}
+      <Modal
+        isOpen={bulkClearModalOpen}
+        onClose={() => setBulkClearModalOpen(false)}
+        title="Clear Accepted Invitation History?"
+        description="Are you sure you want to clear all accepted invitation entries from this view? Active administrators will NOT be revoked, and security audit logs are safely preserved."
+        confirmLabel="Clear Accepted Records"
+        confirmVariant="destructive"
+        isLoading={bulkClearLoading}
+        onConfirm={handleConfirmBulkClear}
+      />
+
+      {/* Clear Single History Record Modal */}
+      <Modal
+        isOpen={Boolean(singleClearTarget)}
+        onClose={() => setSingleClearTarget(null)}
+        title="Clear Invitation History Record?"
+        description={`Remove historical invitation record for ${singleClearTarget?.email}? Active administrator accounts and audit logs will not be affected.`}
+        confirmLabel="Clear Record"
+        confirmVariant="destructive"
+        isLoading={singleClearLoading}
+        onConfirm={handleConfirmClearSingleHistory}
       />
     </div>
   );

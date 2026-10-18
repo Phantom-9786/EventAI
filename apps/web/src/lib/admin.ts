@@ -448,12 +448,16 @@ export interface AdminInvitationSummary {
   invitedBy: { email: string; fullName: string };
   acceptedAt: string | null;
   acceptedBy: { email: string; fullName: string } | null;
+  emailDeliveryFailed?: boolean;
 }
 
 export interface AdminTeamResponse {
   currentUser: { id: string; email: string; isOwner: boolean; role: AdminRoleType };
   members: AdminTeamMember[];
   invitations: AdminInvitationSummary[];
+  pendingInvitations?: AdminInvitationSummary[];
+  acceptedInvitations?: AdminInvitationSummary[];
+  historicalInvitations?: AdminInvitationSummary[];
 }
 
 export async function listAdminTeam(): Promise<AdminTeamResponse> {
@@ -525,6 +529,28 @@ export async function acceptAdminInvitation(token: string): Promise<{
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
     throw new Error(errorBody.message || `Failed to accept invitation (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function deleteAdminInvitationHistory(id: string): Promise<{ success: boolean }> {
+  const res = await authFetch(`/admin/team/invitations/${id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new Error(errorBody.message || `Failed to clear invitation record (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function clearAcceptedAdminInvitations(): Promise<{ success: boolean; clearedCount: number }> {
+  const res = await authFetch('/admin/team/invitations/clear-accepted', {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new Error(errorBody.message || `Failed to clear accepted invitations (${res.status})`);
   }
   return res.json();
 }

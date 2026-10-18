@@ -41,11 +41,27 @@ describe('System Controls & Maintenance Modes Integration', () => {
     isActive: true,
   };
 
+  const testerCustomerUser = {
+    id: 'tester-customer-uuid',
+    email: 'tester-customer@eventpoint.test',
+    role: UserRole.CUSTOMER,
+    isActive: true,
+  };
+
+  const testerOrganizerUser = {
+    id: 'tester-organizer-uuid',
+    email: 'tester-organizer@eventpoint.test',
+    role: UserRole.ORGANIZER,
+    isActive: true,
+  };
+
   let mockPrisma: any;
   let mockSystemControlsService: any;
   let adminToken: string;
   let organizerToken: string;
   let customerToken: string;
+  let testerCustomerToken: string;
+  let testerOrganizerToken: string;
 
   beforeAll((done) => {
     adminToken = jwt.sign(
@@ -63,6 +79,16 @@ describe('System Controls & Maintenance Modes Integration', () => {
       JWT_SECRET,
       { expiresIn: '1h' },
     );
+    testerCustomerToken = jwt.sign(
+      { sub: testerCustomerUser.id, email: testerCustomerUser.email, role: testerCustomerUser.role },
+      JWT_SECRET,
+      { expiresIn: '1h' },
+    );
+    testerOrganizerToken = jwt.sign(
+      { sub: testerOrganizerUser.id, email: testerOrganizerUser.email, role: testerOrganizerUser.role },
+      JWT_SECRET,
+      { expiresIn: '1h' },
+    );
 
     mockPrisma = {
       $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
@@ -71,15 +97,30 @@ describe('System Controls & Maintenance Modes Integration', () => {
           if (where.id === adminUser.id) return Promise.resolve(adminUser);
           if (where.id === organizerUser.id) return Promise.resolve(organizerUser);
           if (where.id === customerUser.id) return Promise.resolve(customerUser);
+          if (where.id === testerCustomerUser.id) return Promise.resolve(testerCustomerUser);
+          if (where.id === testerOrganizerUser.id) return Promise.resolve(testerOrganizerUser);
           return Promise.resolve(null);
         }),
       },
       organizer: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: organizerUser.id,
-          userId: organizerUser.id,
-          organizationName: 'Organizer Org',
-          isVerified: true,
+        findUnique: jest.fn().mockImplementation(({ where }) => {
+          if (where.id === organizerUser.id || where.userId === organizerUser.id) {
+            return Promise.resolve({
+              id: organizerUser.id,
+              userId: organizerUser.id,
+              organizationName: 'Organizer Org',
+              isVerified: true,
+            });
+          }
+          if (where.id === testerOrganizerUser.id || where.userId === testerOrganizerUser.id) {
+            return Promise.resolve({
+              id: testerOrganizerUser.id,
+              userId: testerOrganizerUser.id,
+              organizationName: 'Tester Organizer Org',
+              isVerified: true,
+            });
+          }
+          return Promise.resolve(null);
         }),
       },
     };
@@ -98,6 +139,9 @@ describe('System Controls & Maintenance Modes Integration', () => {
       updateSettings: jest.fn().mockImplementation((_userId, updates) => {
         currentSettings = { ...currentSettings, ...updates };
         return Promise.resolve({ ...currentSettings });
+      }),
+      isAuthorizedMaintenanceTester: jest.fn().mockImplementation((userId) => {
+        return Promise.resolve(userId === 'tester-customer-uuid' || userId === 'tester-organizer-uuid');
       }),
     };
 
@@ -136,10 +180,19 @@ describe('System Controls & Maintenance Modes Integration', () => {
     const mockModerationService = {
       getEventModerationStatus: jest.fn().mockResolvedValue({ status: 'APPROVED' }),
       requireApprovedOrganizer: jest.fn().mockResolvedValue(organizerUser.id),
+      getOrganizerApplicationStatus: jest.fn().mockResolvedValue({ status: 'APPROVED' }),
     };
 
     const mockOrganizersService = {
       requireOrganizerId: jest.fn().mockResolvedValue(organizerUser.id),
+      getOwnOrganizerProfile: jest.fn().mockImplementation((userId) =>
+        Promise.resolve({
+          id: 'org-' + userId,
+          userId,
+          organizationName: 'Organizer Org',
+          isVerified: true,
+        }),
+      ),
     };
 
     const mockCache = {
@@ -308,6 +361,41 @@ describe('System Controls & Maintenance Modes Integration', () => {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     expect(resAdminControls.status).toBe(200);
+
+    // Authorized Maintenance Tester (CUSTOMER role) can query published events & categories (200)
+    const resTesterCustomer = await fetch(`${baseUrl}/api/events`, {
+      headers: { Authorization: `Bearer ${testerCustomerToken}` },
+    });
+    expect(resTesterCustomer.status).toBe(200);
+
+    // Authorized Maintenance Tester with cookie can query published events (SSR compatibility)
+    const resTesterCustomerCookie = await fetch(`${baseUrl}/api/events`, {
+      headers: { Cookie: `eventai_access_token=${testerCustomerToken}` },
+    });
+    expect(resTesterCustomerCookie.status).toBe(200);
+
+    // Authorized Maintenance Tester (ORGANIZER role) can access Organizer Hub endpoints (/api/organizers/me)
+    const resTesterOrganizer = await fetch(`${baseUrl}/api/organizers/me`, {
+      headers: { Authorization: `Bearer ${testerOrganizerToken}` },
+    });
+    expect(resTesterOrganizer.status).toBe(200);
+
+    // Ordinary Organizer (not authorized maintenance tester) is strictly blocked with 503
+    const resOrdinaryOrganizer = await fetch(`${baseUrl}/api/organizers/me`, {
+      headers: { Authorization: `Bearer ${organizerToken}` },
+    });
+    expect(resOrdinaryOrganizer.status).toBe(503);
+
+    // Invitation acceptance remains blocked during website maintenance (503)
+    const resAcceptInvite = await fetch(`${baseUrl}/api/admin/team/invitations/accept`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${customerToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ token: 'some-token' }),
+    });
+    expect(resAcceptInvite.status).toBe(503);
   });
 
   it('4b. Website Maintenance Mode allows password-recovery endpoints while enforcing 503 for normal public routes', async () => {

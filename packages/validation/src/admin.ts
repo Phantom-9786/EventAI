@@ -74,6 +74,16 @@ export const adminAuditLogListSchema = paginationSchema.extend({
 export type AdminAuditLogListInput = z.infer<typeof adminAuditLogListSchema>;
 
 // ── Admin: system controls & maintenance ──────────
+export const maintenanceTesterEntrySchema = z.object({
+  adminId: z.string().optional(),
+  adminEmail: z.string().optional(),
+  testEmail: z.string().trim().toLowerCase(),
+  testUserId: z.string().optional(),
+  allowedRoles: z.array(z.enum(['CUSTOMER', 'ORGANIZER'])).optional(),
+  createdAt: z.string().optional(),
+});
+export type MaintenanceTesterEntry = z.infer<typeof maintenanceTesterEntrySchema>;
+
 export const systemControlsSchema = z.object({
   websiteMaintenance: z.boolean(),
   websiteMaintenanceMessage: z.string().trim().max(500),
@@ -81,6 +91,7 @@ export const systemControlsSchema = z.object({
   aiMaintenanceMessage: z.string().trim().max(500),
   eventCreationMaintenance: z.boolean(),
   eventCreationMaintenanceMessage: z.string().trim().max(500),
+  maintenanceTesters: z.array(maintenanceTesterEntrySchema).optional(),
 });
 export type SystemControls = z.infer<typeof systemControlsSchema>;
 
@@ -91,9 +102,18 @@ export const adminUpdateSystemControlsSchema = z.object({
   aiMaintenanceMessage: z.string().trim().max(500).optional(),
   eventCreationMaintenance: z.boolean().optional(),
   eventCreationMaintenanceMessage: z.string().trim().max(500).optional(),
+  maintenanceTesters: z.array(maintenanceTesterEntrySchema).optional(),
 });
 export type AdminUpdateSystemControlsInput = z.infer<
   typeof adminUpdateSystemControlsSchema
+>;
+
+export const adminLinkMaintenanceTesterSchema = z.object({
+  testEmail: z.string().trim().email('Invalid test account email address'),
+  allowedRoles: z.array(z.enum(['CUSTOMER', 'ORGANIZER'])).optional(),
+});
+export type AdminLinkMaintenanceTesterInput = z.infer<
+  typeof adminLinkMaintenanceTesterSchema
 >;
 
 // ── Admin: Team & Access ───────────────────────────

@@ -107,7 +107,7 @@ async function getJson<T>(path: string): Promise<T> {
   } else {
     try {
       const { cookies } = await import('next/headers');
-      const token = cookies().get('eventai_access_token')?.value;
+      const token = cookies().get('eventai_access_token')?.value || cookies().get('accessToken')?.value;
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
