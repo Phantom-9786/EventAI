@@ -59,6 +59,7 @@ describe('Express Notifications Module', () => {
     markAsRead: jest.Mock;
     markAllAsRead: jest.Mock;
     clearAll: jest.Mock;
+    clearRead: jest.Mock;
     clearNotification: jest.Mock;
   };
 
@@ -85,6 +86,7 @@ describe('Express Notifications Module', () => {
         readAt: new Date().toISOString(),
       }),
       markAllAsRead: jest.fn().mockResolvedValue({ success: true }),
+      clearRead: jest.fn().mockResolvedValue({ success: true, count: 2 }),
       clearAll: jest.fn().mockResolvedValue({ success: true, count: 1 }),
       clearNotification: jest.fn().mockResolvedValue({ success: true }),
     };
@@ -115,6 +117,17 @@ describe('Express Notifications Module', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('clears only the signed-in user read notifications on DELETE /api/notifications/read', async () => {
+    const res = await fetch(baseUrl + '/api/notifications/read', { method: 'DELETE', headers: { Authorization: 'Bearer ' + userToken } });
+    expect(res.status).toBe(200);
+    expect(mockNotificationsService.clearRead).toHaveBeenCalledWith(testUser.id);
+    expect(mockNotificationsService.clearNotification).not.toHaveBeenCalled();
+  });
+  it('rejects signed-out clearing of read notifications', async () => {
+    expect((await fetch(baseUrl + '/api/notifications/read', { method: 'DELETE' })).status).toBe(401);
+    expect(mockNotificationsService.clearRead).not.toHaveBeenCalled();
   });
 
   it('rejects unauthenticated requests with 401', async () => {

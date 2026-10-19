@@ -1,0 +1,248 @@
+'use client';
+import Link from 'next/link';
+import { EventImage } from './event-image';
+import { useState } from 'react';
+import { ArrowRight, CalendarDays, Ticket, Users, Briefcase } from 'lucide-react';
+import type {
+  OrganizerEventRow,
+  OrganizerProfile,
+  OrganizerStats,
+} from '@/lib/organizer';
+import { formatEventDate, formatPrice } from '@/lib/api';
+import { PreviewHeading, PreviewPanel, PreviewStat, PreviewBadge } from './ui';
+import type { ReactNode } from 'react';
+export function PreviewTrend({
+  values,
+  labels,
+  label,
+}: {
+  values: number[];
+  labels: string[];
+  label: string;
+}) {
+  const max = Math.max(1, ...values);
+  const points = values.map((v, i) => [
+    (i * 600) / Math.max(1, values.length - 1),
+    175 - (v / max) * 145,
+  ]);
+  const line = points.map((p, i) => (i ? 'L' : 'M') + p.join(' ')).join(' ');
+  return (
+    <>
+      <svg className="chart" viewBox="0 0 600 190" role="img" aria-label={label}>
+        <path
+          d="M0 150H600M0 100H600M0 50H600"
+          stroke="currentColor"
+          opacity=".08"
+          fill="none"
+        />
+        <path d={line + ' L600 190 L0 190 Z'} fill="#8b7af314" />
+        <path d={line} stroke="#8b7af3" strokeWidth="3" fill="none" />
+      </svg>
+      <div className="chart-labels">
+        {labels.map((l, i) => (
+          <span key={i}>{l}</span>
+        ))}
+      </div>
+    </>
+  );
+}
+export function OrganizerOverview({
+  stats,
+  events,
+  profile: _profile,
+  settings,
+  error,
+}: {
+  stats: OrganizerStats | null;
+  events: OrganizerEventRow[];
+  profile: OrganizerProfile;
+  settings: ReactNode;
+  error?: string | null;
+}) {
+  const [query, setQuery] = useState('');
+  const month = new Date();
+  month.setDate(1);
+  const months = Array.from(
+    { length: 6 },
+    (_, i) => new Date(month.getFullYear(), month.getMonth() + i, 1),
+  );
+  const values = months.map(
+    (m) =>
+      events.filter((e) => {
+        const d = new Date(e.startDate);
+        return d.getMonth() === m.getMonth() && d.getFullYear() === m.getFullYear();
+      }).length,
+  );
+  const groups = new Map<string, number>();
+  events.forEach((e) =>
+    groups.set(
+      e.category?.name || 'Other',
+      (groups.get(e.category?.name || 'Other') || 0) + 1,
+    ),
+  );
+  return (
+    <>
+      <PreviewHeading
+        eyebrow="Organizer workspace"
+        title="Bring good people together."
+        sub="Your events, your community, and what comes next."
+        action={
+          <Link href="/organizer/events/new" className="btn">
+            Create event
+            <ArrowRight className="icon" />
+          </Link>
+        }
+      />
+      {error && (
+        <div className="notice" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="stats">
+        <PreviewStat
+          label="Your events"
+          note="All your events"
+          value={String(stats?.events.total ?? events.length)}
+          href="/organizer/events"
+          icon={<CalendarDays className="icon" />}
+        />
+        <PreviewStat
+          label="Confirmed bookings"
+          note="Confirmed reservations"
+          value={String(stats?.confirmedBookings ?? 0)}
+          href="/organizer/attendees"
+          icon={<Users className="icon" />}
+        />
+        <PreviewStat
+          label="Revenue"
+          note="Before platform fees"
+          value={formatPrice(stats?.revenue ?? 0)}
+          href="/organizer/analytics"
+          icon={<Ticket className="icon" />}
+        />
+        <PreviewStat
+          label="Checked in"
+          note="Validated tickets"
+          value={String(stats?.checkedIn ?? 0)}
+          href="/dashboard/scan"
+          icon={<Briefcase className="icon" />}
+        />
+      </div>
+      <div className="ep-analytics-entry">
+        <div>
+          <span className="small-label">Performance at a glance</span>
+          <h2>Understand your events.</h2>
+        </div>
+        <Link className="btn outline" href="/organizer/analytics">
+          View analytics <ArrowRight className="icon" />
+        </Link>
+      </div>
+      <div className="workspace-grid">
+        <PreviewPanel title="Activity over time">
+          <PreviewTrend
+            values={values}
+            labels={months.map((m) => m.toLocaleDateString('en-IN', { month: 'short' }))}
+            label="Scheduled events per month"
+          />
+        </PreviewPanel>
+        <PreviewPanel title="Your audience">
+          <div className="bar-list">
+            {Array.from(groups).map(([label, count]) => (
+              <div key={label}>
+                <div className="bar-label">
+                  <span>{label}</span>
+                  <span>
+                    {events.length ? Math.round((count / events.length) * 100) : 0}%
+                  </span>
+                </div>
+                <div className="bar-track">
+                  <span
+                    style={{
+                      width: events.length ? (count / events.length) * 100 + '%' : '0%',
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          {!events.length && (
+            <p className="help">Your event categories will appear here.</p>
+          )}
+          <p className="ep-health-note">
+            Category distribution across your latest {events.length} events.
+          </p>
+        </PreviewPanel>
+      </div>
+      <section className="section">
+        <PreviewPanel title="Your recent events">
+          <div className="toolbar">
+            <input
+              type="search"
+              aria-label="Search recent events"
+              placeholder="Search this table…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <Link href="/organizer/events" className="text-link">
+              Manage Events <ArrowRight className="icon" />
+            </Link>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  {['Event', 'Status', 'Date', 'Actions'].map((h) => (
+                    <th key={h}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {events
+                  .filter((e) => e.title.toLowerCase().includes(query.toLowerCase()))
+                  .slice(0, 4)
+                  .map((e) => (
+                    <tr key={e.id}>
+                      <td>
+                        <EventImage
+                          className="row-thumb"
+                          src={e.coverImage || e.images?.[0]}
+                          fallbacks={e.images}
+                          alt=""
+                        />
+                        <strong>{e.title}</strong>
+                        <div className="sub">{e.venue?.city}</div>
+                      </td>
+                      <td>
+                        <PreviewBadge status={e.status} />
+                      </td>
+                      <td>{formatEventDate(e.startDate)}</td>
+                      <td>
+                        <Link
+                          className="btn outline small"
+                          href={'/organizer/events/' + e.id}
+                        >
+                          Manage <ArrowRight className="icon" />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            {!events.length && (
+              <div className="empty">
+                <p>No events yet.</p>
+                <Link href="/organizer/events/new" className="btn">
+                  Create your first event
+                </Link>
+              </div>
+            )}
+          </div>
+        </PreviewPanel>
+      </section>
+      <details className="ep-organizer-settings">
+        <summary>Organizer profile settings</summary>
+        {settings}
+      </details>
+    </>
+  );
+}

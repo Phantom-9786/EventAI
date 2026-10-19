@@ -8,7 +8,10 @@
 import { authFetch } from './auth';
 
 export class BookingApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
     super(message);
     this.name = 'BookingApiError';
   }
@@ -39,7 +42,10 @@ export async function cancelBooking(bookingId: string, reason = 'Customer cancel
   return booking;
 }
 
-export async function refundBooking(bookingId: string, reason = 'Customer refund request') {
+export async function refundBooking(
+  bookingId: string,
+  reason = 'Customer refund request',
+) {
   return postJson<{
     refundRequest: {
       bookingId: string;
@@ -57,6 +63,7 @@ export interface BookingItemInput {
 
 export interface TicketView {
   id: string;
+  ticketTypeId?: string;
   ticketCode: string;
   holderName: string;
   status: string;
@@ -125,11 +132,18 @@ export interface BookingListEntry extends BookingView {
     status?: string;
     venue: { id?: string; name: string; city: string; address?: string | null };
   };
-  items: { id: string; quantity: number; ticketType: { name: string; price?: number } }[];
+  items: {
+    id: string;
+    quantity: number;
+    ticketType: { id?: string; name: string; price?: number };
+  }[];
   totalAmount: number;
 }
 
-export async function listBookings(page = 1, limit = 20): Promise<{
+export async function listBookings(
+  page = 1,
+  limit = 20,
+): Promise<{
   bookings: BookingListEntry[];
   total: number;
   pages: number;
@@ -137,4 +151,21 @@ export async function listBookings(page = 1, limit = 20): Promise<{
   const res = await authFetch(`/bookings?page=${page}&limit=${limit}`);
   if (!res.ok) throw new Error(`Failed to load bookings (${res.status})`);
   return res.json();
+}
+
+/** Loads every page for attendee ticket/calendar views; deduplicates during refresh. */
+export async function listAllBookings(signal?: AbortSignal): Promise<BookingListEntry[]> {
+  const entries = new Map<string, BookingListEntry>();
+  let page = 1,
+    pages = 1;
+  do {
+    const res = await authFetch('/bookings?page=' + page + '&limit=50', { signal });
+    if (!res.ok) throw new Error('Unable to load your bookings. Please retry.');
+    const data = (await res.json()) as { bookings: BookingListEntry[]; pages: number };
+    data.bookings.forEach((b) => entries.set(b.id, b));
+    pages = data.pages;
+    if (!data.bookings.length) break;
+    page++;
+  } while (page <= pages);
+  return Array.from(entries.values());
 }

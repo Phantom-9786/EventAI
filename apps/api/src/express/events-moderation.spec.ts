@@ -67,6 +67,19 @@ describe('Express Events, Organizers & Moderation Modules', () => {
     );
   }
 
+  it('saves only authenticated organizer profile fields and rejects privilege changes',async()=>{
+    mockOrganizersService.updateOwnProfile=jest.fn().mockResolvedValue({organizationName:'Updated name'});
+    const headers={Authorization:`Bearer ${createToken(organizerUser)}`,'Content-Type':'application/json'};
+    const response=await fetch(`${baseUrl}/api/organizers/me`,{method:'PATCH',headers,body:JSON.stringify({organizationName:'Updated name'})});
+    expect(response.status).toBe(200);
+    expect(mockOrganizersService.updateOwnProfile).toHaveBeenCalledWith(organizerUser.id,{organizationName:'Updated name'});
+    mockOrganizersService.updateOwnProfile.mockClear();
+    const rejected=await fetch(`${baseUrl}/api/organizers/me`,{method:'PATCH',headers,body:JSON.stringify({organizationName:'Updated name',isVerified:true})});
+    expect(rejected.status).toBe(400);
+    expect(mockOrganizersService.updateOwnProfile).not.toHaveBeenCalled();
+    const anonymous=await fetch(`${baseUrl}/api/organizers/me`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({organizationName:'Updated name'})});
+    expect(anonymous.status).toBe(401);
+  });
   beforeAll((done) => {
     mockPrisma = {
       $queryRaw: jest.fn().mockResolvedValue([{ '?column?': 1 }]),

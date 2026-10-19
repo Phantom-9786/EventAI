@@ -410,3 +410,19 @@ describe('OrganizersService ticket validation', () => {
     expect(prisma.booking.findMany).not.toHaveBeenCalled();
   });
 });
+
+describe('OrganizersService own profile updates',()=>{
+ it('updates only the authenticated user organization and whitelisted fields',async()=>{
+  const prisma={organizer:{findUnique:jest.fn().mockResolvedValue({id:'own-org'}),update:jest.fn().mockResolvedValue({organizationName:'New name'})}};
+  const service=new OrganizersService(prisma as unknown as PrismaService);
+  await service.updateOwnProfile('authenticated-user',{organizationName:'New name',isVerified:true,userId:'another-user'} as Parameters<OrganizersService['updateOwnProfile']>[1]);
+  expect(prisma.organizer.findUnique).toHaveBeenCalledWith({where:{userId:'authenticated-user'},select:{id:true}});
+  expect(prisma.organizer.update).toHaveBeenCalledWith({where:{id:'own-org'},data:{organizationName:'New name'}});
+ });
+ it('does not create or edit another organization when no own profile exists',async()=>{
+  const prisma={organizer:{findUnique:jest.fn().mockResolvedValue(null),update:jest.fn()}};
+  const service=new OrganizersService(prisma as unknown as PrismaService);
+  await expect(service.updateOwnProfile('no-profile',{organizationName:'New name'})).rejects.toThrow(NotFoundException);
+  expect(prisma.organizer.update).not.toHaveBeenCalled();
+ });
+});

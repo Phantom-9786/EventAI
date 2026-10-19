@@ -758,3 +758,12 @@ describe('NotificationsService (Brevo)', () => {
   });
 });
 
+
+describe('clear read notifications', () => {
+  it('deletes read items belonging only to the requesting user', async () => {
+    const deleteMany = jest.fn().mockResolvedValue({ count: 2 });
+    const service = new NotificationsService({ notification: { deleteMany } } as never);
+    await expect(service.clearRead('current-user')).resolves.toEqual({ success: true, count: 2 });
+    expect(deleteMany).toHaveBeenCalledWith({ where: { userId: 'current-user', isRead: true } });
+  });
+});

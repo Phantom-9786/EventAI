@@ -4,6 +4,18 @@ import { AiService } from '../../../modules/ai/ai.service';
 export class ExpressAiController {
   constructor(private readonly aiService: AiService) {}
 
+  suggestions = async (
+    _req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
+    try {
+      res.json(await this.aiService.suggestions());
+    } catch (error) {
+      next(error);
+    }
+  };
+
   chat = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const isStreamRequested =
@@ -25,13 +37,15 @@ export class ExpressAiController {
         });
 
         try {
-          const result = await this.aiService.chat(req.body.messages);
+          const result = await this.aiService.chat(req.body.messages, req.body.eventId);
           if (!clientDisconnected) {
             res.write(
               `data: ${JSON.stringify({
                 configured: this.aiService.isConfigured(),
                 reply: result.reply,
                 events: result.events,
+                moreEventsUrl: result.moreEventsUrl,
+                total: result.total,
               })}\n\n`,
             );
             res.write('data: [DONE]\n\n');
@@ -51,11 +65,13 @@ export class ExpressAiController {
       }
 
       // Standard JSON response mode
-      const result = await this.aiService.chat(req.body.messages);
+      const result = await this.aiService.chat(req.body.messages, req.body.eventId);
       res.status(200).json({
         configured: this.aiService.isConfigured(),
         reply: result.reply,
         events: result.events,
+                moreEventsUrl: result.moreEventsUrl,
+                total: result.total,
       });
     } catch (err) {
       next(err);

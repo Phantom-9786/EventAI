@@ -49,6 +49,25 @@ export const becomeOrganizerSchema = z.object({
   phone: z.string().max(20).optional(),
 });
 
+export const updateOrganizerProfileSchema = z
+  .object({
+    organizationName: z.string().trim().min(2).max(100).optional(),
+    description: z.string().max(2000).nullable().optional(),
+    website: z
+      .string()
+      .url()
+      .max(500)
+      .refine(
+        (value) => /^https?:\/\//i.test(value),
+        'Use an HTTPS or HTTP website address',
+      )
+      .nullable()
+      .optional(),
+    phone: z.string().max(20).nullable().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'Provide profile fields to update');
+
 export const deleteAccountSchema = z.object({
   confirmation: z.literal('DELETE', {
     errorMap: () => ({ message: 'You must type DELETE to confirm account deletion' }),

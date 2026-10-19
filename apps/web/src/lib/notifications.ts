@@ -50,3 +50,8 @@ export async function clearNotification(id: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to clear notification (${res.status})`);
 }
 
+
+export async function clearReadNotifications(): Promise<void> {
+  const res = await authFetch('/notifications/read', { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to clear read notifications (' + res.status + ')');
+}

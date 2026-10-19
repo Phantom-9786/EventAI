@@ -11,12 +11,19 @@ export class ExpressOrganizersController {
     private readonly paymentsService?: PaymentsService,
   ) {}
 
-  becomeOrganizer = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  becomeOrganizer = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
-      const organizer = await this.moderationService.applyToBecomeOrganizer(userId, req.body);
+      const organizer = await this.moderationService.applyToBecomeOrganizer(
+        userId,
+        req.body,
+      );
       res.status(201).json({ organizer });
     } catch (err) {
       next(err);
@@ -29,7 +36,9 @@ export class ExpressOrganizersController {
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
       const profile = await this.organizersService.getOwnOrganizerProfile(userId);
-      const appStatus = await this.moderationService.getOrganizerApplicationStatus(profile.id);
+      const appStatus = await this.moderationService.getOrganizerApplicationStatus(
+        profile.id,
+      );
 
       res.status(200).json({
         organizer: {
@@ -43,7 +52,22 @@ export class ExpressOrganizersController {
     }
   };
 
-  leaveOrganizer = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  updateMe = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.authUser?.id ?? req.user?.id;
+      if (!userId) throw new UnauthorizedError('Unauthorized');
+      const organizer = await this.organizersService.updateOwnProfile(userId, req.body);
+      res.status(200).json({ organizer });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  leaveOrganizer = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
@@ -55,12 +79,18 @@ export class ExpressOrganizersController {
     }
   };
 
-  listOwnEvents = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  listOwnEvents = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
-      const page = req.query.page ? Math.max(1, parseInt(String(req.query.page), 10) || 1) : 1;
+      const page = req.query.page
+        ? Math.max(1, parseInt(String(req.query.page), 10) || 1)
+        : 1;
       const limit = req.query.limit
         ? Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20))
         : 20;
@@ -73,12 +103,16 @@ export class ExpressOrganizersController {
       }
 
       if (!profile) {
-        throw new ForbiddenError('You must have an organizer profile to view organizer events');
+        throw new ForbiddenError(
+          'You must have an organizer profile to view organizer events',
+        );
       }
 
       let appStatus: { status?: string } | null = null;
       try {
-        appStatus = await this.moderationService.getOrganizerApplicationStatus(profile.id);
+        appStatus = await this.moderationService.getOrganizerApplicationStatus(
+          profile.id,
+        );
       } catch {
         appStatus = null;
       }
@@ -93,7 +127,9 @@ export class ExpressOrganizersController {
       const result = await this.organizersService.listOwnEvents(organizerId, page, limit);
       const eventsWithModeration = await Promise.all(
         result.events.map(async (event) => {
-          const moderation = await this.moderationService.getEventModerationStatus(event.id);
+          const moderation = await this.moderationService.getEventModerationStatus(
+            event.id,
+          );
           return { ...event, moderation };
         }),
       );
@@ -103,7 +139,11 @@ export class ExpressOrganizersController {
     }
   };
 
-  getDashboardStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  getDashboardStats = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
@@ -116,12 +156,16 @@ export class ExpressOrganizersController {
       }
 
       if (!profile) {
-        throw new ForbiddenError('You must have an organizer profile to view organizer stats');
+        throw new ForbiddenError(
+          'You must have an organizer profile to view organizer stats',
+        );
       }
 
       let appStatus: { status?: string } | null = null;
       try {
-        appStatus = await this.moderationService.getOrganizerApplicationStatus(profile.id);
+        appStatus = await this.moderationService.getOrganizerApplicationStatus(
+          profile.id,
+        );
       } catch {
         appStatus = null;
       }
@@ -129,7 +173,14 @@ export class ExpressOrganizersController {
 
       if (!isApproved) {
         res.status(200).json({
-          events: { total: 0, DRAFT: 0, PUBLISHED: 0, CANCELLED: 0, COMPLETED: 0, SOLDOUT: 0 },
+          events: {
+            total: 0,
+            DRAFT: 0,
+            PUBLISHED: 0,
+            CANCELLED: 0,
+            COMPLETED: 0,
+            SOLDOUT: 0,
+          },
           revenue: 0,
           confirmedBookings: 0,
           refundedBookings: 0,
@@ -147,7 +198,11 @@ export class ExpressOrganizersController {
     }
   };
 
-  createVenue = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  createVenue = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
@@ -160,7 +215,11 @@ export class ExpressOrganizersController {
     }
   };
 
-  listOwnVenues = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  listOwnVenues = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
@@ -173,109 +232,171 @@ export class ExpressOrganizersController {
     }
   };
 
-  updateVenue = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  updateVenue = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
       const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
-      const venue = await this.organizersService.updateVenue(organizerId, req.params.venueId, req.body);
+      const venue = await this.organizersService.updateVenue(
+        organizerId,
+        req.params.venueId,
+        req.body,
+      );
       res.status(200).json({ venue });
     } catch (err) {
       next(err);
     }
   };
 
-  deleteVenue = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  deleteVenue = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
       const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
-      const result = await this.organizersService.deleteVenue(organizerId, req.params.venueId);
+      const result = await this.organizersService.deleteVenue(
+        organizerId,
+        req.params.venueId,
+      );
       res.status(200).json(result);
     } catch (err) {
       next(err);
     }
   };
 
-  createSeatSection = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  createSeatSection = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
       const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
-      const section = await this.organizersService.createSeatSection(organizerId, req.params.venueId, req.body);
+      const section = await this.organizersService.createSeatSection(
+        organizerId,
+        req.params.venueId,
+        req.body,
+      );
       res.status(201).json({ section });
     } catch (err) {
       next(err);
     }
   };
 
-  listSeatSections = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  listSeatSections = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
       const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
-      const sections = await this.organizersService.listSeatSections(organizerId, req.params.venueId);
+      const sections = await this.organizersService.listSeatSections(
+        organizerId,
+        req.params.venueId,
+      );
       res.status(200).json({ sections });
     } catch (err) {
       next(err);
     }
   };
 
-  validateTicket = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  validateTicket = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
       const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
-      const result = await this.organizersService.validateTicket(organizerId, req.params.eventId, req.body.ticketCode);
+      const result = await this.organizersService.validateTicket(
+        organizerId,
+        req.params.eventId,
+        req.body.ticketCode,
+      );
       res.status(200).json(result);
     } catch (err) {
       next(err);
     }
   };
 
-  eventTicketStats = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  eventTicketStats = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
       const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
-      const result = await this.organizersService.eventTicketStats(organizerId, req.params.eventId);
+      const result = await this.organizersService.eventTicketStats(
+        organizerId,
+        req.params.eventId,
+      );
       res.status(200).json(result);
     } catch (err) {
       next(err);
     }
   };
 
-  eventAttendees = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  eventAttendees = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
       const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
-      const page = req.query.page ? Math.max(1, parseInt(String(req.query.page), 10) || 1) : 1;
+      const page = req.query.page
+        ? Math.max(1, parseInt(String(req.query.page), 10) || 1)
+        : 1;
       const limit = req.query.limit
         ? Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20))
         : 20;
 
-      const result = await this.organizersService.eventAttendees(organizerId, req.params.eventId, page, limit);
+      const result = await this.organizersService.eventAttendees(
+        organizerId,
+        req.params.eventId,
+        page,
+        limit,
+      );
       res.status(200).json(result);
     } catch (err) {
       next(err);
     }
   };
 
-  refundRequests = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  refundRequests = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
 
       const organizerId = await this.moderationService.requireApprovedOrganizer(userId);
-      const page = req.query.page ? Math.max(1, parseInt(String(req.query.page), 10) || 1) : 1;
+      const page = req.query.page
+        ? Math.max(1, parseInt(String(req.query.page), 10) || 1)
+        : 1;
       const limit = req.query.limit
         ? Math.min(100, Math.max(1, parseInt(String(req.query.limit), 10) || 20))
         : 20;
@@ -286,14 +407,23 @@ export class ExpressOrganizersController {
         return;
       }
 
-      const result = await this.paymentsService.listOrganizerRefundRequests(organizerId, status, page, limit);
+      const result = await this.paymentsService.listOrganizerRefundRequests(
+        organizerId,
+        status,
+        page,
+        limit,
+      );
       res.status(200).json(result);
     } catch (err) {
       next(err);
     }
   };
 
-  approveRefundRequest = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  approveRefundRequest = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
@@ -303,14 +433,22 @@ export class ExpressOrganizersController {
         throw new UnauthorizedError('Payments service unavailable');
       }
 
-      const result = await this.paymentsService.approveRefundRequest(organizerId, userId, req.params.bookingId);
+      const result = await this.paymentsService.approveRefundRequest(
+        organizerId,
+        userId,
+        req.params.bookingId,
+      );
       res.status(200).json(result);
     } catch (err) {
       next(err);
     }
   };
 
-  rejectRefundRequest = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  rejectRefundRequest = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
@@ -320,14 +458,22 @@ export class ExpressOrganizersController {
         throw new UnauthorizedError('Payments service unavailable');
       }
 
-      const result = await this.paymentsService.rejectRefundRequest(organizerId, userId, req.params.bookingId);
+      const result = await this.paymentsService.rejectRefundRequest(
+        organizerId,
+        userId,
+        req.params.bookingId,
+      );
       res.status(200).json(result);
     } catch (err) {
       next(err);
     }
   };
 
-  reconcileRefundRequest = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  reconcileRefundRequest = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
@@ -337,14 +483,22 @@ export class ExpressOrganizersController {
         throw new UnauthorizedError('Payments service unavailable');
       }
 
-      const result = await this.paymentsService.reconcileOrganizerRefund(organizerId, userId, req.params.bookingId);
+      const result = await this.paymentsService.reconcileOrganizerRefund(
+        organizerId,
+        userId,
+        req.params.bookingId,
+      );
       res.status(200).json(result);
     } catch (err) {
       next(err);
     }
   };
 
-  recoverRefundRequest = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  recoverRefundRequest = async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;
       if (!userId) throw new UnauthorizedError('Unauthorized');
@@ -354,7 +508,11 @@ export class ExpressOrganizersController {
         throw new UnauthorizedError('Payments service unavailable');
       }
 
-      const result = await this.paymentsService.recoverOrganizerRefund(organizerId, userId, req.params.bookingId);
+      const result = await this.paymentsService.recoverOrganizerRefund(
+        organizerId,
+        userId,
+        req.params.bookingId,
+      );
       res.status(200).json(result);
     } catch (err) {
       next(err);

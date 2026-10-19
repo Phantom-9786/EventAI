@@ -3,7 +3,9 @@ import { AuthProvider } from '@/components/auth/auth-provider';
 import { MaintenanceGuard } from '@/components/layout/maintenance-guard';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
+import { WorkspaceShell } from '@/components/layout/workspace-shell';
 import './globals.css';
+import './approved-preview.css';
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -12,11 +14,11 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: 'EventAI — Discover. Book. Experience.',
-    template: '%s | EventAI',
+    default: 'EventPoint — Discover. Book. Experience.',
+    template: '%s | EventPoint',
   },
   description:
-    'AI-powered event discovery and ticket booking platform. Find events, book tickets, and experience more.',
+    'EventPoint — Discover amazing events, book instant digital tickets, and experience unforgettable moments.',
 };
 
 export default function RootLayout({
@@ -31,11 +33,11 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="flex min-h-screen flex-col font-sans">
+      <body className="ep-app flex min-h-screen flex-col">
         <AuthProvider>
           <MaintenanceGuard>
             <Header />
-            <main className="flex-1">{children}</main>
+            <main className="flex-1"><WorkspaceShell>{children}</WorkspaceShell></main>
             <Footer />
           </MaintenanceGuard>
         </AuthProvider>

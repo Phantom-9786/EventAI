@@ -69,7 +69,7 @@ export function ThemeToggle() {
     <div className="flex items-center gap-1">
       <button
         type="button"
-        className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }))}
+        className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'icon-btn')}
         aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
         title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`}
         onClick={() => void toggleTheme()}

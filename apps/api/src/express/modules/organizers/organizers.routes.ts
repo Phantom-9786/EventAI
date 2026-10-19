@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from 'express';
 import {
   becomeOrganizerSchema,
+  updateOrganizerProfileSchema,
   createSeatSectionSchema,
   createVenueSchema,
   updateVenueSchema,
@@ -32,6 +33,7 @@ export function createOrganizersRouter({
 
   // Authenticated profile & status
   router.get('/me', controller.getMe);
+  router.patch('/me', validateBody(updateOrganizerProfileSchema), controller.updateMe);
   router.delete('/me', requireRoles(UserRole.ORGANIZER), controller.leaveOrganizer);
 
   // Authenticated organizer dashboard views (returns zero aggregates for pending/rejected applicants)
@@ -97,7 +99,11 @@ export function createOrganizersRouter({
   );
 
   // Organizer Refunds
-  router.get('/refund-requests', requireRoles(UserRole.ORGANIZER), controller.refundRequests);
+  router.get(
+    '/refund-requests',
+    requireRoles(UserRole.ORGANIZER),
+    controller.refundRequests,
+  );
   router.post(
     '/refund-requests/:bookingId/approve',
     requireRoles(UserRole.ORGANIZER),

@@ -1,374 +1,237 @@
+import {EventSectionNav} from '@/components/events/event-section-nav';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import {
-  BadgeCheck,
-  CalendarDays,
-  ChevronLeft,
-  Clock,
-  MapPin,
-  Navigation,
-  ShieldCheck,
-  Ticket,
-} from 'lucide-react';
+import { ArrowRight, CalendarDays, MapPin, Users, Ticket, Sparkles } from 'lucide-react';
+import { getEvent, getSimilarEvents, formatEventDate } from '@/lib/api';
+import { getDirectionsUrl } from '@/lib/maps';
 import { BookingWidget } from '@/components/booking/booking-widget';
 import { EventCard } from '@/components/events/event-card';
-import { EventGallery } from '@/components/events/event-gallery';
-import {
-  formatEventDate,
-  formatPrice,
-  getEvent,
-  getSimilarEvents,
-  type TicketTypeView,
-} from '@/lib/api';
-import { getDirectionsUrl } from '@/lib/maps';
-import { buttonVariants } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-
+import { FavoriteButton } from '@/components/events/favorite-button';
+import { EventShareButton } from '@/components/events/event-share-button';
+import { EventAiWidget } from '@/components/events/event-ai-widget';
+import { PreviewGallery } from '@/components/approved/gallery';
 export const dynamic = 'force-dynamic';
-
-interface EventDetailPageProps {
+interface Props {
   params: { slug: string };
 }
-
-export async function generateMetadata({
-  params,
-}: EventDetailPageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const event = await getEvent(params.slug).catch(() => null);
-  if (!event) return { title: 'Event not found' };
   return {
-    title: event.title,
-    description:
-      event.shortDescription ?? event.description.slice(0, 160),
+    title: event?.title ?? 'Event not found',
+    description: event?.shortDescription ?? event?.description.slice(0, 160),
   };
 }
-
-function availabilityLabel(t: TicketTypeView): { text: string; soldOut: boolean } {
-  if (t.availableQuantity <= 0) return { text: 'Sold out', soldOut: true };
-  if (t.totalQuantity > 0 && t.availableQuantity <= t.totalQuantity * 0.1) {
-    return { text: `Only ${t.availableQuantity} left`, soldOut: false };
-  }
-  return { text: `${t.availableQuantity} available`, soldOut: false };
-}
-
-function saleWindow(t: TicketTypeView): string | null {
-  const now = Date.now();
-  if (t.saleStartDate && new Date(t.saleStartDate).getTime() > now) {
-    return `Sales start ${formatEventDate(t.saleStartDate)}`;
-  }
-  if (t.saleEndDate && new Date(t.saleEndDate).getTime() < now) {
-    return 'Sales ended';
-  }
-  return null;
-}
-
-export default async function EventDetailPage({ params }: EventDetailPageProps) {
+export default async function EventDetailPage({ params }: Props) {
   let event: Awaited<ReturnType<typeof getEvent>> | null = null;
-  let isMaintenanceBlocked = false;
+  let maintenance = false;
   try {
     event = await getEvent(params.slug);
-  } catch (err: unknown) {
-    const errMessage = err instanceof Error ? err.message : String(err);
-    if (errMessage.includes('503') || errMessage.toLowerCase().includes('maintenance')) {
-      isMaintenanceBlocked = true;
-    }
+  } catch (err) {
+    const text = err instanceof Error ? err.message : String(err);
+    maintenance = text.includes('503') || text.toLowerCase().includes('maintenance');
   }
-
-  if (isMaintenanceBlocked) {
+  if (maintenance)
     return (
-      <div className="container py-16 text-center max-w-lg mx-auto">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 mb-4 animate-pulse">
-          <ShieldCheck className="h-6 w-6" />
-        </div>
-        <h1 className="text-2xl font-bold tracking-tight">Website Maintenance Active</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Event details are currently restricted while maintenance mode is active. Authorized maintenance testing accounts may view events.
+      <div className="ep-app-gate">
+        <h1>Website Maintenance Active</h1>
+        <p>
+          Event details are temporarily restricted. Authorized maintenance testing
+          accounts may sign in to continue.
         </p>
-        <div className="mt-6 flex justify-center gap-3">
-          <Link href="/events" className={cn(buttonVariants(), 'h-9 px-4 text-xs font-semibold')}>
-            Back to Events
-          </Link>
-          <Link href="/signin" className={cn(buttonVariants({ variant: 'outline' }), 'h-9 px-4 text-xs')}>
-            Sign In as Tester
-          </Link>
-        </div>
+        <Link href="/signin" className="btn">
+          Sign in
+        </Link>
+        <Link href="/events" className="btn outline">
+          Back to events
+        </Link>
       </div>
     );
-  }
-
   if (!event) notFound();
   const similar = await getSimilarEvents(event.slug, 4).catch(() => []);
-
-  const startDate = new Date(event.startDate);
-  const endDate = new Date(event.endDate);
-  const sameDay = startDate.toDateString() === endDate.toDateString();
-
-  const coverImage =
-    event.coverImage || (event.images && event.images.length > 0 ? event.images[0] : null);
-  const galleryImages = (event.images ?? []).filter((img, idx) => {
-    if (event.coverImage) {
-      return img !== event.coverImage;
-    }
-    return idx > 0;
-  });
-
+  const d = new Date(event.startDate);
+  const images = Array.from(
+    new Set([event.coverImage, ...event.images].filter((v): v is string => Boolean(v))),
+  );
   return (
-    <div className="container max-w-full px-4 py-8 sm:px-6 sm:py-10">
-      <Link
-        href="/events"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ChevronLeft className="h-4 w-4" />
-        All events
-      </Link>
-
-      <div className="mt-6 grid min-w-0 max-w-full gap-8 lg:gap-10 lg:grid-cols-[minmax(0,1fr)_380px]">
-        {/* Main column */}
-        <div className="min-w-0 max-w-full">
-          <div className="relative flex h-52 sm:h-64 lg:h-80 w-full max-w-full items-center justify-center overflow-hidden rounded-xl border bg-muted">
-            {coverImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={coverImage}
-                alt={event.title}
-                className="h-full w-full max-w-full object-cover"
-              />
-            ) : (
-              <CalendarDays className="h-16 w-16 text-muted-foreground/40" aria-hidden />
-            )}
+    <div className="wrap">
+      <div className="breadcrumb">
+        <Link href="/">Home</Link>
+        <span>›</span>
+        <Link href="/events">Discover events</Link>
+        <span>›</span>
+        <span>{event.title}</span>
+      </div>
+      <div className="detail-grid">
+        <div>
+          <div className="ep-gallery-frame">
+            <PreviewGallery images={images} title={event.title} />
+            <div className="ep-detail-actions">
+              <EventShareButton eventTitle={event.title} />
+              <FavoriteButton eventId={event.id} size="md" />
+            </div>
           </div>
-
-          <div className="mt-6 flex flex-wrap items-center gap-2">
-            {event.category.name && (
-              <span
-                className="rounded-full px-3 py-1 text-xs font-medium"
-                style={
-                  event.category.color
-                    ? { backgroundColor: `${event.category.color}22`, color: event.category.color }
-                    : undefined
-                }
-              >
-                {event.category.name}
+          <div className="detail-title">
+            <div className="large-date">
+              <span>
+                {d.toLocaleDateString('en-IN', { month: 'short' }).toUpperCase()}
               </span>
-            )}
-            {event.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full border px-3 py-1 text-xs text-muted-foreground"
-              >
-                #{tag}
-              </span>
-            ))}
+              <strong>{d.getDate()}</strong>
+              <span>{d.getFullYear()}</span>
+            </div>
+            <div>
+              <span className="pill">{event.category.name}</span>
+              <h1>{event.title}</h1>
+              <p>{event.shortDescription}</p>
+            </div>
           </div>
-
-          <h1 className="mt-3 break-words text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">
-            {event.title}
-          </h1>
-          {event.shortDescription && (
-            <p className="mt-2 text-lg text-muted-foreground">{event.shortDescription}</p>
-          )}
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <div className="flex items-start gap-3 rounded-lg border bg-card p-4">
-              <CalendarDays className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+          <div className="info-row">
+            <div className="info-box">
+              <CalendarDays className="icon" />
               <div>
-                <p className="text-sm font-medium">Date &amp; time</p>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  {sameDay
-                    ? formatEventDate(event.startDate)
-                    : `${startDate.toLocaleDateString('en-IN')} – ${endDate.toLocaleDateString('en-IN')}`}
-                </p>
+                <strong>{formatEventDate(event.startDate)}</strong>
+                <span>
+                  {d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}{' '}
+                  –{' '}
+                  {new Date(event.endDate).toLocaleString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                  })}
+                </span>
               </div>
             </div>
-            <div className="flex items-start gap-3 rounded-lg border bg-card p-4">
-              <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+            <div className="info-box">
+              <MapPin className="icon" />
               <div>
-                <p className="text-sm font-medium">{event.venue.name}</p>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  {event.venue.address}, {event.venue.city}, {event.venue.state}
-                </p>
+                <strong>{event.venue.name}</strong>
+                <span>
+                  {event.venue.city}, {event.venue.state}
+                </span>
+              </div>
+            </div>
+          </div>
+          <EventSectionNav/>
+          <section className="detail-section" id="about">
+            <h2>About the experience</h2>
+            <p className="prose" style={{ whiteSpace: 'pre-line' }}>
+              {event.description}
+            </p>
+            {event.tags.length > 0 && (
+              <div className="highlight-list">
+                {event.tags.map((t) => (
+                  <div key={t}>
+                    <Sparkles className="icon" />
+                    {t}
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+          <section className="detail-section" id="venue">
+            <h2>A place to come together</h2>
+            <div className="info-box">
+              <MapPin className="icon" />
+              <div>
+                <strong>
+                  {event.venue.name}, {event.venue.city}
+                </strong>
+                <span>
+                  {event.venue.address}, {event.venue.state}, {event.venue.country}
+                </span>
                 <a
                   href={getDirectionsUrl(event.venue)}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                  className="text-link"
                 >
-                  <Navigation className="h-4 w-4" />
                   Get directions
+                  <ArrowRight className="icon" />
                 </a>
               </div>
             </div>
-          </div>
-
-          {/* Description */}
-          <section className="mt-10 min-w-0 max-w-full">
-            <h2 className="text-xl font-semibold">About this event</h2>
-            <div className="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-muted-foreground">
-              {event.description}
+          </section>
+          <section className="detail-section" id="faq">
+            <h2>A few things to know</h2>
+            {event.faqs.map((f) => (
+              <details key={f.id}>
+                <summary>{f.question}</summary>
+                <p>{f.answer}</p>
+              </details>
+            ))}
+            {event.policies && (
+              <details>
+                <summary>Event policies</summary>
+                <p>{event.policies}</p>
+              </details>
+            )}
+            {event.cancellationPolicy && (
+              <details>
+                <summary>Cancellation policy</summary>
+                <p>{event.cancellationPolicy}</p>
+              </details>
+            )}
+            {!event.faqs.length && !event.policies && !event.cancellationPolicy && (
+              <p className="prose">
+                The organizer has not added additional policies yet.
+              </p>
+            )}
+          </section>
+          <section className="detail-section">
+            <h2>Made possible by</h2>
+            <div className="info-box">
+              <Users className="icon" />
+              <div>
+                <strong>{event.organizer.organizationName}</strong>
+                <span>
+                  {event.organizer.isVerified ? 'Verified organizer' : 'Event organizer'}
+                </span>
+              </div>
             </div>
           </section>
-
-          {/* Gallery Images */}
-          {galleryImages.length > 0 && (
-            <section className="mt-10 min-w-0 max-w-full" aria-label="Event gallery">
-              <h2 className="text-xl font-semibold">Event gallery</h2>
-              <EventGallery images={galleryImages} eventTitle={event.title} />
-            </section>
-          )}
-
-          {/* Ticket types */}
-          {event.ticketTypes.length > 0 && (
-            <section className="mt-10 min-w-0 max-w-full">
-              <h2 className="text-xl font-semibold">Tickets</h2>
-              <div className="mt-3 divide-y rounded-lg border min-w-0 max-w-full overflow-hidden">
-                {event.ticketTypes.map((t) => {
-                  const availability = availabilityLabel(t);
-                  const saleNote = saleWindow(t);
-                  return (
-                    <div key={t.id} className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="font-medium">
-                          {t.name}
-                          {t.section && (
-                            <span className="ml-2 text-xs font-normal text-muted-foreground">
-                              {t.section.name}
-                            </span>
-                          )}
-                        </p>
-                        {t.description && (
-                          <p className="mt-0.5 text-sm text-muted-foreground">{t.description}</p>
-                        )}
-                        <p className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                          <span
-                            className={cn(
-                              availability.soldOut
-                                ? 'text-destructive'
-                                : 'text-green-600 dark:text-green-400',
-                            )}
-                          >
-                            {availability.text}
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            Max {t.maxPerBooking} per booking
-                          </span>
-                          {saleNote && <span>{saleNote}</span>}
-                        </p>
-                      </div>
-                      <p className="text-lg font-semibold sm:text-right">
-                        {formatPrice(t.price)}
-                        <span className="ml-1 text-xs font-normal text-muted-foreground">
-                          {t.currency}
-                        </span>
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-                <Ticket className="h-3 w-3" />
-                Booking opens with the Phase 3 booking engine — ticket selection is shown for planning.
-              </p>
-            </section>
-          )}
-
-          {/* FAQs */}
-          {event.faqs.length > 0 && (
-            <section className="mt-10">
-              <h2 className="text-xl font-semibold">Frequently asked questions</h2>
-              <div className="mt-3 divide-y rounded-lg border">
-                {event.faqs.map((faq) => (
-                  <details key={faq.id} className="group p-4">
-                    <summary className="cursor-pointer list-none text-sm font-medium marker:hidden">
-                      {faq.question}
-                    </summary>
-                    <p className="mt-2 text-sm text-muted-foreground">{faq.answer}</p>
-                  </details>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Policies */}
-          {(event.policies || event.cancellationPolicy) && (
-            <section className="mt-10">
-              <h2 className="text-xl font-semibold">Policies</h2>
-              {event.policies && (
-                <>
-                  <h3 className="mt-3 text-sm font-medium">Event policies</h3>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-                    {event.policies}
-                  </p>
-                </>
-              )}
-              {event.cancellationPolicy && (
-                <>
-                  <h3 className="mt-4 text-sm font-medium">Cancellation policy</h3>
-                  <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-                    {event.cancellationPolicy}
-                  </p>
-                </>
-              )}
-            </section>
-          )}
         </div>
-
-        {/* Sidebar */}
-        <aside className="min-w-0 max-w-full lg:sticky lg:top-24 lg:self-start">
-          <div className="min-w-0 max-w-full rounded-lg border bg-card p-6 shadow-sm">
-            {(() => {
-              const computedMinPrice =
-                typeof event.minPrice === 'number' && Number.isFinite(event.minPrice)
-                  ? event.minPrice
-                  : event.ticketTypes && event.ticketTypes.length > 0
-                    ? Math.min(
-                        ...event.ticketTypes.map((t) =>
-                          typeof t.price === 'number' && Number.isFinite(t.price) ? t.price : 0,
-                        ),
-                      )
-                    : null;
-              return computedMinPrice !== null ? (
-                <>
-                  <p className="text-sm text-muted-foreground">Tickets from</p>
-                  <p className="mt-1 text-3xl font-bold">{formatPrice(computedMinPrice)}</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm text-muted-foreground">Pricing</p>
-                  <p className="mt-1 text-2xl font-bold">To be announced</p>
-                </>
-              );
-            })()}
+        <aside>
+          <div className="ticket-panel">
+            <div className="ticket-heading">
+              <h2>Your next good plan</h2>
+              <span className="status">Tickets</span>
+            </div>
+            <p className="ticket-caption">Choose your experience · Pricing in INR</p>
             <BookingWidget
               eventId={event.id}
               eventTitle={event.title}
               ticketTypes={event.ticketTypes}
             />
+            <div className="question-box">
+              <h3>
+                <Ticket className="icon" /> A little help finding your plan?
+              </h3>
+              <p>Explore another experience that feels like you.</p>
+              <Link className="text-link" href="/events">
+                Keep exploring
+                <ArrowRight className="icon" />
+              </Link>
+            </div>
           </div>
-
-          <div className="mt-4 rounded-lg border bg-card p-6 min-w-0 max-w-full">
-            <p className="text-sm font-medium">Organized by</p>
-            <p className="mt-1 flex items-center gap-1.5 font-semibold">
-              {event.organizer.organizationName}
-              {event.organizer.isVerified && (
-                <BadgeCheck className="h-4 w-4 text-primary" aria-label="Verified organizer" />
-              )}
-            </p>
-            <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Secure checkout once bookings open
-            </p>
-          </div>
+          <EventAiWidget eventId={event.id} eventTitle={event.title} eventCity={event.venue.city} />
         </aside>
       </div>
-
-      {/* Recommendations */}
       {similar.length > 0 && (
-        <section className="mt-14 min-w-0 max-w-full">
-          <h2 className="text-xl font-semibold">You might also like</h2>
-          <div className="mt-4 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {similar.map((s) => (
-              <EventCard key={s.id} event={s} />
+        <section className="section">
+          <div className="section-heading">
+            <div>
+              <p className="small-label">Keep the possibilities open</p>
+              <h2>You might also love</h2>
+            </div>
+            <Link href="/events" className="text-link">
+              View all
+              <ArrowRight className="icon" />
+            </Link>
+          </div>
+          <div className="ep-grid">
+            {similar.map((e) => (
+              <EventCard key={e.id} event={e} />
             ))}
           </div>
         </section>

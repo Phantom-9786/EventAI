@@ -40,6 +40,18 @@ const config: Config = {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+        popover: {
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
+        },
+        brand: {
+          indigo: '#4F46E5',
+          blue: '#2563EB',
+          purple: '#7C3AED',
+          cyan: '#06B6D4',
+          emerald: '#10B981',
+          lightBg: '#F8FAFC',
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -51,9 +63,23 @@ const config: Config = {
           from: { opacity: '0', transform: 'translateY(8px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        'fade-in-up': {
+          from: { opacity: '0', transform: 'translateY(16px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        'pulse-subtle': {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0.6' },
+        },
+        shimmer: {
+          '100%': { transform: 'translateX(100%)' },
+        },
       },
       animation: {
-        'fade-in': 'fade-in 0.4s ease-out both',
+        'fade-in': 'fade-in 0.3s ease-out both',
+        'fade-in-up': 'fade-in-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) both',
+        'pulse-subtle': 'pulse-subtle 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        shimmer: 'shimmer 2s infinite',
       },
     },
   },

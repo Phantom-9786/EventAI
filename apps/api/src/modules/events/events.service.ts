@@ -7,6 +7,7 @@ import {
 } from '../../common/exceptions';
 import { Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
+import { aiEventFilterSchema } from '@eventai/validation';
 import type { CreateEventInput, EventSearchInput, UpdateEventInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
@@ -450,12 +451,30 @@ export class EventsService {
    * through Prisma with relations and price ranges.
    */
   async searchEvents(input: EventSearchInput) {
+    const aiSearch = Boolean(input.aiFilters);
+    let partySize: number | undefined;
+    let excludedKeywords: string[] = [];
+    if (input.aiFilters) {
+      const filters = aiEventFilterSchema.parse(JSON.parse(input.aiFilters));
+      partySize = filters.partySize;
+      excludedKeywords = filters.excludedKeywords ?? [];
+      input = {
+        ...input, ...filters,
+        query: input.query ?? filters.query,
+        category: input.category ?? filters.category,
+        city: input.city ?? filters.city,
+        dateFrom: input.dateFrom ?? filters.dateFrom ?? new Date().toISOString(),
+      };
+    }
     const page = Math.max(1, Number.parseInt(String(input?.page ?? '1'), 10) || 1);
     const limit = Math.min(100, Math.max(1, Number.parseInt(String(input?.limit ?? '20'), 10) || 20));
     const offset = (page - 1) * limit;
     const query = input?.query?.trim();
 
     const conditions: Prisma.Sql[] = [Prisma.sql`e.status = 'PUBLISHED'`];
+    for (const word of excludedKeywords) conditions.push(Prisma.sql`NOT (to_tsvector('english', e.title || ' ' || array_to_string(e.tags, ' ')) @@ plainto_tsquery('english', ${word}))`);
+    if (partySize) conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM public.ticket_types tt WHERE tt.event_id = e.id AND tt.is_active = true AND tt.available_quantity >= ${partySize} AND tt.max_per_booking >= ${partySize} AND (${input.priceMax ?? null}::int IS NULL OR tt.price <= ${input.priceMax ?? null}) AND (${input.priceMin ?? null}::int IS NULL OR tt.price >= ${input.priceMin ?? null}))`);
+    if (input?.venueId) conditions.push(Prisma.sql`e.venue_id = ${input.venueId}`);
     if (query) {
       conditions.push(
         Prisma.sql`e.search_vector @@ websearch_to_tsquery('english', ${query})`,
@@ -494,7 +513,11 @@ export class EventsService {
 
     const dir = input?.sortDir === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`;
     let orderBy: Prisma.Sql;
-    if (query) {
+    if (aiSearch) {
+      // All rows match the same validated filter. Paid admissions rank first;
+      // Earlier-created listings break ties when sales are equal.
+      orderBy = Prisma.sql`(SELECT COUNT(*) FROM public.tickets t JOIN public.bookings b ON b.id = t.booking_id JOIN public.payments p ON p.booking_id = b.id WHERE b.event_id = e.id AND b.status = 'CONFIRMED' AND p.status = 'CAPTURED' AND p.amount > 0 AND t.status IN ('VALID', 'USED')) DESC, e.created_at ASC, e.id ASC`;
+    } else if (query) {
       // Relevance first when searching
       orderBy = Prisma.sql`ts_rank(e.search_vector, websearch_to_tsquery('english', ${query})) DESC, e.start_date ASC`;
     } else {

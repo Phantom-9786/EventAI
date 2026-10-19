@@ -3,6 +3,8 @@ import { classifyAiComplexity, resolveModelProfiles, nextCapableModel } from './
 describe('AI model router', () => {
   it.each([
     ['Hello', 'simple'],
+    ['music', 'simple'],
+    ['We are 5 friends with a budget of 5000, free this weekend, want a calm chill vibe and no dance', 'complex'],
     ['Where is the concert?', 'simple'],
     ['Compare these events and recommend the best one', 'moderate'],
     ['Create a detailed step-by-step plan with alternatives', 'complex'],

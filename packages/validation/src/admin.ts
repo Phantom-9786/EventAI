@@ -2,7 +2,14 @@ import { z } from 'zod';
 import { paginationSchema } from './common';
 
 const userRoleEnum = z.enum(['CUSTOMER', 'ORGANIZER', 'ADMIN']);
-const eventStatusEnum = z.enum(['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED', 'SOLDOUT']);
+const eventStatusEnum = z.enum([
+  'DRAFT',
+  'PUBLISHED',
+  'CANCELLED',
+  'COMPLETED',
+  'SOLDOUT',
+  'PAUSED',
+]);
 const bookingStatusEnum = z.enum([
   'PENDING',
   'PAYMENT_PENDING',
@@ -36,7 +43,7 @@ export const adminEventListSchema = paginationSchema.extend({
 export type AdminEventListInput = z.infer<typeof adminEventListSchema>;
 
 export const adminModerateEventSchema = z.object({
-  action: z.literal('CANCEL'),
+  action: z.enum(['CANCEL', 'PAUSE', 'RESUME']),
   reason: z.string().trim().max(500).optional(),
 });
 export type AdminModerateEventInput = z.infer<typeof adminModerateEventSchema>;
@@ -131,5 +138,3 @@ export const adminAcceptInvitationSchema = z.object({
   token: z.string().trim().min(10, 'Invalid invitation token'),
 });
 export type AdminAcceptInvitationInput = z.infer<typeof adminAcceptInvitationSchema>;
-
-

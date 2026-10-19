@@ -44,6 +44,7 @@ describe('Express AI & Streaming Module', () => {
 
   let mockAiService: {
     isConfigured: jest.Mock;
+    suggestions: jest.Mock;
     chat: jest.Mock;
   };
 
@@ -62,6 +63,11 @@ describe('Express AI & Streaming Module', () => {
 
     mockAiService = {
       isConfigured: jest.fn().mockReturnValue(true),
+      suggestions: jest
+        .fn()
+        .mockResolvedValue({
+          suggestions: [{ title: 'Music', prompt: 'Show upcoming Music events' }],
+        }),
       chat: jest.fn().mockResolvedValue({
         reply: 'Here are some great upcoming events for you in Mumbai!',
         events: [
@@ -116,6 +122,15 @@ describe('Express AI & Streaming Module', () => {
     } else {
       done();
     }
+  });
+
+  it('serves catalog suggestions through the public API route', async () => {
+    const response = await fetch(baseUrl + '/api/ai/suggestions');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      suggestions: [{ title: 'Music', prompt: 'Show upcoming Music events' }],
+    });
+    expect(mockAiService.suggestions).toHaveBeenCalledTimes(1);
   });
 
   describe('POST /api/ai/chat JSON Mode', () => {
@@ -187,7 +202,9 @@ describe('Express AI & Streaming Module', () => {
     });
 
     it('returns 503 Service Unavailable when Redis/cache fails in guard', async () => {
-      mockCache.consumeAiRequest.mockRejectedValueOnce(new Error('Redis connection lost'));
+      mockCache.consumeAiRequest.mockRejectedValueOnce(
+        new Error('Redis connection lost'),
+      );
 
       const res = await fetch(`${baseUrl}/api/ai/chat`, {
         method: 'POST',
@@ -253,7 +270,9 @@ describe('Express AI & Streaming Module', () => {
       });
 
       expect(res.status).toBe(200);
-      const expectedHash = createHash('sha256').update('user:usr-verified-42').digest('hex');
+      const expectedHash = createHash('sha256')
+        .update('user:usr-verified-42')
+        .digest('hex');
       expect(mockCache.consumeAiRequest).toHaveBeenCalledWith(
         expectedHash,
         expect.any(Number),
@@ -290,7 +309,10 @@ describe('Express AI & Streaming Module', () => {
     });
 
     it('enforces 429 when concurrency limit is reached without leaking internal details', async () => {
-      mockCache.consumeAiRequest.mockResolvedValueOnce({ allowed: false, reason: 'concurrency' });
+      mockCache.consumeAiRequest.mockResolvedValueOnce({
+        allowed: false,
+        reason: 'concurrency',
+      });
 
       const res = await fetch(`${baseUrl}/api/ai/chat`, {
         method: 'POST',
@@ -420,7 +442,9 @@ describe('Express AI & Streaming Module', () => {
         callCount++;
         const auth = (init.headers as Record<string, string>)?.Authorization;
         if (auth?.includes(KEY_1)) {
-          return Promise.resolve(new Response(JSON.stringify({ error: 'invalid_key' }), { status: 401 }));
+          return Promise.resolve(
+            new Response(JSON.stringify({ error: 'invalid_key' }), { status: 401 }),
+          );
         }
         return Promise.resolve(
           new Response(

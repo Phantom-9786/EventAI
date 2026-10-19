@@ -1,118 +1,153 @@
 import Link from 'next/link';
-import { ArrowRight, CalendarDays, MapPin, Sparkles, Ticket } from 'lucide-react';
-import { buttonVariants } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-
-const features = [
-  {
-    icon: Sparkles,
-    title: 'AI-Powered Discovery',
-    description:
-      'Describe what you are in the mood for and let our AI assistant find the perfect event for you.',
-  },
-  {
-    icon: Ticket,
-    title: 'Instant Digital Tickets',
-    description:
-      'QR-coded digital tickets delivered the moment your booking is confirmed. No queues, no printing.',
-  },
-  {
-    icon: MapPin,
-    title: 'Venue Maps & Seating',
-    description:
-      'Explore venues on an interactive map and pick your seats with a live availability view.',
-  },
+import { SmartDiscovery } from '@/components/home/smart-search';
+import {
+  ArrowRight,
+  Sparkles,
+  CalendarDays,
+  Music,
+  Briefcase,
+  Utensils,
+  Palette,
+  Heart,
+  GraduationCap,
+  Grid2X2,
+} from 'lucide-react';
+import { getCategories, searchEvents } from '@/lib/api';
+import { EventCard } from '@/components/events/event-card';
+export const dynamic = 'force-dynamic';
+const categoryIcons = [
+  Music,
+  Briefcase,
+  Palette,
+  Utensils,
+  Heart,
+  GraduationCap,
+  CalendarDays,
 ];
-
-const categories = [
-  'Music',
-  'Tech',
-  'Sports',
-  'Food & Drink',
-  'Arts & Theatre',
-  'Business',
-];
-
-export default function HomePage() {
+export default async function HomePage() {
+  const [categories, result] = await Promise.all([
+    getCategories().catch(() => []),
+    searchEvents({ sortBy: 'date', sortDir: 'asc', limit: 8 }).catch(() => null),
+  ]);
+  const featured = result?.events ?? [];
   return (
-    <div className="animate-fade-in">
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div
-          className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,hsl(var(--accent)),transparent_60%)]"
-          aria-hidden
-        />
-        <div className="container flex flex-col items-center gap-6 py-24 text-center md:py-32">
-          <span className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs font-medium text-accent-foreground">
-            <Sparkles className="h-3.5 w-3.5" />
-            Your AI event concierge is here
+    <>
+      <SmartDiscovery categories={categories} />
+      <div className="wrap category-strip" aria-label="Event categories">
+        <Link href="/events" className="category active">
+          <span className="cat-symbol">
+            <Grid2X2 className="icon" />
           </span>
-          <h1 className="max-w-3xl text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
-            Discover. Book. <span className="text-primary">Experience.</span>
-          </h1>
-          <p className="max-w-2xl text-lg text-muted-foreground">
-            Find the best events around you, book tickets in seconds, and let AI
-            handle the rest — from recommendations to instant digital tickets.
-          </p>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link href="/events" className={cn(buttonVariants({ size: 'lg' }))}>
-              Explore Events
-              <ArrowRight className="ml-1 h-4 w-4" />
-            </Link>
+          All experiences
+        </Link>
+        {categories.slice(0, 7).map((c, i) => {
+          const Icon = categoryIcons[i % categoryIcons.length];
+          return (
             <Link
-              href="/ai"
-              className={cn(buttonVariants({ variant: 'outline', size: 'lg' }))}
+              href={'/events?category=' + encodeURIComponent(c.slug)}
+              key={c.id}
+              className="category"
             >
-              Ask the AI Assistant
+              <span className="cat-symbol">
+                <Icon className="icon" />
+              </span>
+              {c.name}
+            </Link>
+          );
+        })}
+      </div>
+      <section className="wrap section">
+        <div className="section-heading">
+          <div>
+            <p className="small-label">Your next good plan</p>
+            <h2>Something to look forward to</h2>
+            <p>A little music, a new perspective, a different kind of weekend.</p>
+          </div>
+          <Link className="text-link" href="/events">
+            Explore all
+            <ArrowRight className="icon" />
+          </Link>
+        </div>
+        <div className="ep-grid">
+          {featured.slice(0, 4).map((e) => (
+            <EventCard key={e.id} event={e} />
+          ))}
+        </div>
+        {!featured.length && (
+          <div className="empty">
+            <CalendarDays className="icon" />
+            <h2>
+              {result
+                ? 'Your next experience is on its way.'
+                : 'Events are temporarily unavailable.'}
+            </h2>
+            <p>
+              {result
+                ? 'Published events will appear here.'
+                : 'Please try discovery again shortly.'}
+            </p>
+            <Link href="/events" className="btn">
+              Discover events
             </Link>
           </div>
+        )}
+        <div className="ai-banner">
+          <div className="ai-art">
+            <Sparkles className="icon" />
+          </div>
+          <div className="ai-copy">
+            <p className="small-label">A little inspiration</p>
+            <h2>Not sure what you’re in the mood for?</h2>
+            <p>
+              Start with a feeling. Your next favourite experience might surprise you.
+            </p>
+          </div>
+          <Link className="btn outline" href="/ai">
+            Meet your event assistant
+            <ArrowRight className="icon" />
+          </Link>
         </div>
       </section>
-
-      {/* Features */}
-      <section className="container py-16">
-        <div className="grid gap-6 md:grid-cols-3">
-          {features.map((feature) => (
-            <div
-              key={feature.title}
-              className="rounded-lg border bg-card p-6 shadow-sm"
-            >
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <feature.icon className="h-5 w-5" />
-              </span>
-              <h2 className="mt-4 text-lg font-semibold">{feature.title}</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {feature.description}
-              </p>
+      <section className="wrap section">
+        <div className="section-heading">
+          <div>
+            <p className="small-label">Change the pace</p>
+            <h2>Make room for a little more</h2>
+          </div>
+        </div>
+        <div className="spotlight-grid">
+          <Link href="/events?category=music" className="spotlight">
+            <img
+              src="https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=85"
+              alt="Live music audience"
+              loading="lazy"
+            />
+            <div>
+              <span className="eyebrow">Find your sound</span>
+              <h3>Music. Better together.</h3>
+              <p>Small rooms, big stages, and everything in between.</p>
             </div>
-          ))}
+            <span className="round-arrow">
+              <ArrowRight className="icon" />
+            </span>
+          </Link>
+          <Link href="/events?category=health-wellness" className="spotlight">
+            <img
+              src="https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=900&q=85"
+              alt="Outdoor yoga practice"
+              loading="lazy"
+            />
+            <div>
+              <span className="eyebrow">A slower kind of Sunday</span>
+              <h3>Breathe. Reset. Begin.</h3>
+              <p>A little time for yourself.</p>
+            </div>
+            <span className="round-arrow">
+              <ArrowRight className="icon" />
+            </span>
+          </Link>
         </div>
       </section>
-
-      {/* Categories */}
-      <section className="container py-8 pb-20">
-        <h2 className="text-2xl font-semibold tracking-tight">
-          Browse by category
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          From concerts to conferences — there is something for everyone.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          {categories.map((category) => (
-            <Link
-              key={category}
-              href={`/events?category=${encodeURIComponent(category)}`}
-              className={cn(
-                buttonVariants({ variant: 'secondary', size: 'sm' }),
-                'rounded-full',
-              )}
-            >
-              <CalendarDays className="mr-1 h-3.5 w-3.5" />
-              {category}
-            </Link>
-          ))}
-        </div>
-      </section>
-    </div>
+    </>
   );
 }

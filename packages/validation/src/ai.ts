@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const aiChatSchema = z.object({
+  eventId: z.string().uuid().optional(),
   messages: z
     .array(
       z.object({

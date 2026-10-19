@@ -17,6 +17,15 @@ const SIMPLE_PATTERNS = [
 /** Deterministic, local-only classification of the latest user message. */
 export function classifyAiComplexity(text: string): AiComplexity {
   const message = text.trim();
+  const constraints = [
+    /\b(budget|under|below|rupees|rs|₹)\b/i,
+    /\b(friends?|people|group|bande|persons?)\b/i,
+    /\b(chill|relax|quiet|calm|mood|vibe|dance)\b/i,
+    /\b(today|tomorrow|weekend|date|free|january|february|march|april|may|june|july|august|september|october|november|december)\b/i,
+    /\b(not|avoid|without|dont|don't)\b/i,
+  ].filter((pattern) => pattern.test(message)).length;
+  if (constraints >= 3 || message.length > 450) return 'complex';
+  if (/^(?:music|sports|technology|comedy|business|food|arts|wellness)(?: events)?[.!?\s]*$/i.test(message)) return 'simple';
   if (COMPLEX_PATTERNS.some((pattern) => pattern.test(message))) return 'complex';
   if (MODERATE_PATTERNS.some((pattern) => pattern.test(message))) return 'moderate';
   if (SIMPLE_PATTERNS.some((pattern) => pattern.test(message))) return 'simple';

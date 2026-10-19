@@ -1,5 +1,10 @@
 import type { Metadata } from 'next';
-import { getCategories, searchEvents, type Category, type EventsSearchResult } from '@/lib/api';
+import {
+  getCategories,
+  searchEvents,
+  type Category,
+  type EventsSearchResult,
+} from '@/lib/api';
 import { EventsContainer } from '@/components/events/events-container';
 
 interface EventsPageProps {
@@ -10,7 +15,8 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Discover Events',
-  description: 'Browse and search upcoming events — concerts, conferences, sports and more.',
+  description:
+    'Browse and search upcoming events — concerts, conferences, sports and more.',
 };
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -18,6 +24,7 @@ function first(value: string | string[] | undefined): string | undefined {
 }
 
 export default async function EventsPage({ searchParams }: EventsPageProps) {
+  const aiFilters = first(searchParams.aiFilters);
   const query = first(searchParams.q);
   const category = first(searchParams.category);
   const city = first(searchParams.city);
@@ -25,17 +32,20 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   const [sortBy, sortDir] = sort.split(':') as [string, string];
   const page = Math.max(1, Number.parseInt(first(searchParams.page) ?? '1', 10) || 1);
 
-  const currentFilters = { q: query, category, city, sort, page: String(page) };
+  const filter = first(searchParams.filter);
+  const currentFilters = { q: query, category, city, sort, filter, aiFilters, page: String(page) };
 
   let categories: Category[] = [];
   let result: EventsSearchResult = { events: [], total: 0, page: 1, pages: 1 };
   let isMaintenanceBlocked = false;
   let maintenanceMessage: string | null = null;
+  let loadFailed = false;
 
   try {
     const [fetchedCategories, fetchedResult] = await Promise.all([
       getCategories().catch(() => []),
       searchEvents({
+        aiFilters,
         query,
         category,
         city,
@@ -61,24 +71,24 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
         maintenanceMessage = null;
       }
     } else {
-      result = { events: [], total: 0, page: 1, pages: 1 };
+      loadFailed = true;
     }
   }
 
   return (
-    <div className="container py-10">
-      <h1 className="text-3xl font-bold tracking-tight">Discover Events</h1>
-      {!isMaintenanceBlocked && (
-        <p className="mt-1 text-sm text-muted-foreground">
-          {result.total} event{result.total === 1 ? '' : 's'} found
-        </p>
-      )}
-
+    <div className="wrap ep-discovery-page">
+      <div className="discover-banner">
+        <div className="circle-art" aria-hidden="true" />
+        <p className="small-label">Find your kind of moment</p>
+        <h1>Discover something good.</h1>
+        <p>New experiences. Familiar favourites. All in one place.</p>
+      </div>
       <EventsContainer
         categories={categories}
         initialResult={result}
         initialMaintenanceBlocked={isMaintenanceBlocked}
         initialMaintenanceMessage={maintenanceMessage}
+        initialLoadFailed={loadFailed}
         currentFilters={currentFilters}
       />
     </div>

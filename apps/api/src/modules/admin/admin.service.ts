@@ -43,7 +43,10 @@ export class AdminService {
   /** Search bookings with explicitly limited customer, event and payment fields. */
   async listBookings(query: Partial<AdminBookingListInput> = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
-    const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20),
+    );
     const search = query.search?.trim();
     const status = query.status;
     const where = {
@@ -71,7 +74,9 @@ export class AdminService {
           createdAt: true,
           user: { select: { id: true, email: true, firstName: true, lastName: true } },
           event: { select: { id: true, title: true, startDate: true } },
-          payment: { select: { status: true, amount: true, refundAmount: true, updatedAt: true } },
+          payment: {
+            select: { status: true, amount: true, refundAmount: true, updatedAt: true },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -138,27 +143,33 @@ export class AdminService {
 
   /** Platform-wide aggregates for the admin dashboard. */
   async platformStats() {
-    const [users, organizers, verifiedOrganizers, eventGroups, bookingGroups, ticketGroups] =
-      await Promise.all([
-        this.prisma.user.count({
-          where: { NOT: { email: { endsWith: '@anonymized.eventai.local' } } },
-        }),
-        this.prisma.organizer.count(),
-        this.prisma.organizer.count({ where: { isVerified: true } }),
-        this.prisma.event.groupBy({
-          by: ['status'],
-          _count: { _all: true },
-        }),
-        this.prisma.booking.groupBy({
-          by: ['status'],
-          _count: { _all: true },
-          _sum: { totalAmount: true },
-        }),
-        this.prisma.ticket.groupBy({
-          by: ['status'],
-          _count: { _all: true },
-        }),
-      ]);
+    const [
+      users,
+      organizers,
+      verifiedOrganizers,
+      eventGroups,
+      bookingGroups,
+      ticketGroups,
+    ] = await Promise.all([
+      this.prisma.user.count({
+        where: { NOT: { email: { endsWith: '@anonymized.eventai.local' } } },
+      }),
+      this.prisma.organizer.count(),
+      this.prisma.organizer.count({ where: { isVerified: true } }),
+      this.prisma.event.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+      this.prisma.booking.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.ticket.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+    ]);
 
     const events: Record<string, number> = {
       total: 0,
@@ -206,7 +217,11 @@ export class AdminService {
       organizers: { total: organizers, verified: verifiedOrganizers },
       events,
       bookings,
-      revenue: { gross: grossRevenue, refunded: refundedAmount, net: grossRevenue - refundedAmount },
+      revenue: {
+        gross: grossRevenue,
+        refunded: refundedAmount,
+        net: grossRevenue - refundedAmount,
+      },
       tickets: { ...tickets, issued: ticketsIssued, checkedIn: tickets.USED },
     };
   }
@@ -215,7 +230,10 @@ export class AdminService {
 
   async listUsers(query: Partial<AdminUserListInput> & { status?: string } = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
-    const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20),
+    );
     const search = query.search?.trim();
     const role = query.role;
     const status = query.status?.toUpperCase()?.trim();
@@ -311,7 +329,11 @@ export class AdminService {
     };
   }
 
-  async setUserStatus(adminUserId: string, targetUserId: string, input: AdminSetUserStatusInput) {
+  async setUserStatus(
+    adminUserId: string,
+    targetUserId: string,
+    input: AdminSetUserStatusInput,
+  ) {
     if (adminUserId === targetUserId && !input.isActive) {
       throw new BadRequestException('You cannot deactivate your own admin account');
     }
@@ -366,7 +388,9 @@ export class AdminService {
       return u;
     });
 
-    this.logger.log(`Admin ${adminUserId} set user ${targetUserId} isActive=${input.isActive}`);
+    this.logger.log(
+      `Admin ${adminUserId} set user ${targetUserId} isActive=${input.isActive}`,
+    );
     return updated;
   }
 
@@ -374,7 +398,10 @@ export class AdminService {
 
   async listEvents(query: Partial<AdminEventListInput> = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
-    const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20),
+    );
     const search = query.search?.trim();
     const status = query.status;
     const where = {
@@ -425,6 +452,7 @@ export class AdminService {
       where: { id: eventId },
       include: {
         category: true,
+        faqs: { orderBy: { order: 'asc' } },
         venue: true,
         ticketTypes: {
           orderBy: { price: 'asc' },
@@ -452,7 +480,14 @@ export class AdminService {
       where: {
         entity: 'Event',
         entityId: event.id,
-        action: { in: ['EVENT_SUBMITTED', 'EVENT_APPROVED', 'EVENT_REJECTED', 'EVENT_MATERIAL_CHANGE'] },
+        action: {
+          in: [
+            'EVENT_SUBMITTED',
+            'EVENT_APPROVED',
+            'EVENT_REJECTED',
+            'EVENT_MATERIAL_CHANGE',
+          ],
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -472,28 +507,87 @@ export class AdminService {
             reviewedBy: latestAudit.userId,
           }
         : {
-            status: event.status === 'PUBLISHED' ? 'APPROVED' : 'DRAFT',
+            status: ['PUBLISHED', 'PAUSED', 'SOLDOUT'].includes(event.status)
+              ? 'APPROVED'
+              : 'DRAFT',
           },
     };
   }
 
-  async moderateEvent(adminUserId: string, eventId: string, input: AdminModerateEventInput) {
-    if (input.action !== 'CANCEL') {
-      throw new BadRequestException('Unsupported moderation action');
-    }
-
+  async moderateEvent(
+    adminUserId: string,
+    eventId: string,
+    input: AdminModerateEventInput,
+  ) {
     const event = await this.prisma.event.findUnique({
       where: { id: eventId },
-      select: { id: true, title: true, status: true },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        endDate: true,
+        organizer: { select: { userId: true } },
+      },
     });
-    if (!event) {
-      throw new NotFoundException('Event not found');
+    if (!event) throw new NotFoundException('Event not found');
+    if (input.action === 'PAUSE' || input.action === 'RESUME') {
+      const expected = input.action === 'PAUSE' ? 'PUBLISHED' : 'PAUSED';
+      if (event.status !== expected)
+        throw new ConflictException(
+          'Only ' +
+            expected.toLowerCase() +
+            ' events can be ' +
+            (input.action === 'PAUSE' ? 'paused' : 'resumed'),
+        );
+      if (event.endDate && event.endDate <= new Date())
+        throw new ConflictException('An ended event cannot be paused or resumed');
+      const nextStatus = input.action === 'PAUSE' ? 'PAUSED' : 'PUBLISHED';
+      const verb = input.action === 'PAUSE' ? 'paused' : 'resumed';
+      const result = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.event.update({
+          where: { id: eventId, status: expected },
+          data: { status: nextStatus },
+          select: { id: true, title: true, status: true },
+        });
+        await tx.auditLog.create({
+          data: {
+            userId: adminUserId,
+            action: 'EVENT_' + input.action + 'D_BY_ADMIN',
+            entity: 'EVENT',
+            entityId: eventId,
+            details: {
+              reason: input.reason ?? null,
+              previousStatus: expected,
+              status: nextStatus,
+            },
+          },
+        });
+        await tx.notification.create({
+          data: {
+            userId: event.organizer.userId,
+            type: 'EVENT_UPDATED',
+            title: 'Event ' + verb,
+            message:
+              'Your event "' +
+              event.title +
+              '" has been ' +
+              verb +
+              ' by an administrator.' +
+              (input.reason ? ' Reason: ' + input.reason : ''),
+            data: { eventId, action: input.action, link: '/organizer/events/' + eventId },
+          },
+        });
+        return updated;
+      });
+      await this.eventsService?.invalidateEventCache();
+      return result;
     }
-    if (event.status !== 'PUBLISHED') {
+    if (input.action !== 'CANCEL')
+      throw new BadRequestException('Unsupported moderation action');
+    if (!['PUBLISHED', 'PAUSED'].includes(event.status))
       throw new ConflictException(
-        `Only published events can be cancelled via moderation (current status: ${event.status})`,
+        'Only published or paused events can be cancelled via moderation',
       );
-    }
 
     const cancellationReason = input.reason
       ? `Event cancelled by administrator: ${input.reason}`
@@ -501,10 +595,25 @@ export class AdminService {
 
     const result = await this.prisma.$transaction(async (tx) => {
       const e = await tx.event.update({
-        where: { id: eventId },
+        where: { id: eventId, status: event.status },
         data: { status: 'CANCELLED' },
         select: { id: true, title: true, status: true },
       });
+
+      if (event.organizer?.userId)
+        await tx.notification.create({
+          data: {
+            userId: event.organizer.userId,
+            type: 'EVENT_CANCELLED',
+            title: 'Event cancelled',
+            message:
+              'Your event "' +
+              event.title +
+              '" has been cancelled by an administrator.' +
+              (input.reason ? ' Reason: ' + input.reason : ''),
+            data: { eventId, action: 'CANCEL', link: '/organizer/events/' + eventId },
+          },
+        });
 
       const now = new Date();
       const refundRequests = await tx.payment.updateMany({
@@ -581,7 +690,8 @@ export class AdminService {
         void this.notifications
           .sendEventCancellationNotice({
             to: attendee.user.email,
-            holderName: `${attendee.user.firstName} ${attendee.user.lastName}`.trim() || 'Attendee',
+            holderName:
+              `${attendee.user.firstName} ${attendee.user.lastName}`.trim() || 'Attendee',
             eventTitle: result.event.title,
             bookingId: attendee.id,
             paymentStatus: attendee.payment?.status ?? null,
@@ -605,7 +715,10 @@ export class AdminService {
 
   async listOrganizers(query: Partial<AdminOrganizerListInput> = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
-    const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20),
+    );
     const search = query.search?.trim();
     let isVerifiedFilter: boolean | undefined = undefined;
     if (query.isVerified !== undefined && (query.isVerified as unknown) !== '') {
@@ -702,7 +815,10 @@ export class AdminService {
 
   async listAuditLogs(query: Partial<AdminAuditLogListInput> = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
-    const limit = Math.min(100, Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20));
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(String(query.limit ?? '20'), 10) || 20),
+    );
     const search = query.search?.trim();
     const entity = query.entity;
     const action = query.action;
@@ -938,7 +1054,10 @@ export class AdminService {
 
     const normalizedEmail = input.email.trim().toLowerCase();
     const existingAdmin = await this.prisma.user.findFirst({
-      where: { email: { equals: normalizedEmail, mode: 'insensitive' }, role: UserRole.ADMIN },
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        role: UserRole.ADMIN,
+      },
     });
     if (existingAdmin) {
       throw new ConflictException('A team member with this email address already exists');
@@ -1257,7 +1376,10 @@ export class AdminService {
       }
     }
 
-    return { success: true, message: `Administrator access revoked for ${targetUser.email}` };
+    return {
+      success: true,
+      message: `Administrator access revoked for ${targetUser.email}`,
+    };
   }
 
   async deleteInvitationHistory(
@@ -1276,7 +1398,10 @@ export class AdminService {
     if (!invitation) {
       throw new NotFoundException('Invitation not found');
     }
-    if (invitation.status === AdminInvitationStatus.PENDING && invitation.expiresAt > new Date()) {
+    if (
+      invitation.status === AdminInvitationStatus.PENDING &&
+      invitation.expiresAt > new Date()
+    ) {
       throw new BadRequestException(
         'Active pending invitations cannot be deleted from history; revoke them instead',
       );
@@ -1365,7 +1490,11 @@ export class AdminService {
     if (!this.systemControlsService) {
       throw new BadRequestException('System controls service is not configured');
     }
-    return this.systemControlsService.unlinkMaintenanceTester(callerUserId, testEmail, meta);
+    return this.systemControlsService.unlinkMaintenanceTester(
+      callerUserId,
+      testEmail,
+      meta,
+    );
   }
 
   async listMaintenanceTesters(callerUserId: string) {
@@ -1390,7 +1519,9 @@ export class AdminService {
     });
 
     if (!invitation || invitation.status !== AdminInvitationStatus.PENDING) {
-      throw new BadRequestException('Invalid, revoked, or previously used invitation link');
+      throw new BadRequestException(
+        'Invalid, revoked, or previously used invitation link',
+      );
     }
 
     if (invitation.expiresAt < new Date()) {
@@ -1398,7 +1529,9 @@ export class AdminService {
         where: { id: invitation.id },
         data: { status: AdminInvitationStatus.EXPIRED },
       });
-      throw new BadRequestException('This invitation has expired. Please request a new invitation.');
+      throw new BadRequestException(
+        'This invitation has expired. Please request a new invitation.',
+      );
     }
 
     const user = await this.prisma.user.findUnique({
@@ -1455,4 +1588,3 @@ export class AdminService {
     };
   }
 }
-

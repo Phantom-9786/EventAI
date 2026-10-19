@@ -34,9 +34,41 @@ export class OrganizersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  async updateOwnProfile(
+    userId: string,
+    input: {
+      organizationName?: string;
+      description?: string | null;
+      website?: string | null;
+      phone?: string | null;
+    },
+  ) {
+    const profile = await this.prisma.organizer.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+    if (!profile) throw new NotFoundException('Organizer profile not found');
+    return this.prisma.organizer.update({
+      where: { id: profile.id },
+      data: {
+        ...(input.organizationName !== undefined && {
+          organizationName: input.organizationName,
+        }),
+        ...(input.description !== undefined && { description: input.description }),
+        ...(input.website !== undefined && { website: input.website }),
+        ...(input.phone !== undefined && { phone: input.phone }),
+      },
+    });
+  }
+
   async becomeOrganizer(
     userId: string,
-    input: { organizationName: string; description?: string; website?: string; phone?: string },
+    input: {
+      organizationName: string;
+      description?: string;
+      website?: string;
+      phone?: string;
+    },
   ) {
     const existing = await this.prisma.organizer.findUnique({
       where: { userId },
@@ -95,9 +127,7 @@ export class OrganizersService {
       select: { role: true },
     });
 
-    const txOps: any[] = [
-      this.prisma.organizer.delete({ where: { id: organizer.id } }),
-    ];
+    const txOps: any[] = [this.prisma.organizer.delete({ where: { id: organizer.id } })];
     if (user?.role !== 'ADMIN') {
       txOps.push(
         this.prisma.user.update({ where: { id: userId }, data: { role: 'CUSTOMER' } }),
@@ -229,9 +259,7 @@ export class OrganizersService {
     const id = await this.requireOwnedVenue(organizerId, venueId);
     const eventCount = await this.prisma.event.count({ where: { venueId: id } });
     if (eventCount > 0) {
-      throw new ConflictException(
-        'Venue has events attached and cannot be deleted',
-      );
+      throw new ConflictException('Venue has events attached and cannot be deleted');
     }
     // Seat sections cascade with the venue
     await this.prisma.venue.delete({ where: { id } });
@@ -345,7 +373,9 @@ export class OrganizersService {
       );
     }
     if (ticket.status !== 'VALID') {
-      throw new ConflictException(`Ticket is ${ticket.status.toLowerCase()} and cannot be accepted`);
+      throw new ConflictException(
+        `Ticket is ${ticket.status.toLowerCase()} and cannot be accepted`,
+      );
     }
 
     const updated = await this.prisma.ticket.update({
@@ -382,7 +412,12 @@ export class OrganizersService {
   }
 
   /** Attendee list (bookings) for one of your events, newest first. */
-  async eventAttendees(organizerId: string, eventId: string, page: number, limit: number) {
+  async eventAttendees(
+    organizerId: string,
+    eventId: string,
+    page: number,
+    limit: number,
+  ) {
     await this.requireOwnedEvent(organizerId, eventId);
     const where = { eventId };
     const [bookings, total] = await Promise.all([
@@ -471,6 +506,13 @@ export class OrganizersService {
       if (g.status === 'USED') checkedIn = g._count._all;
     }
 
-    return { events, revenue, confirmedBookings, refundedBookings, ticketsIssued, checkedIn };
+    return {
+      events,
+      revenue,
+      confirmedBookings,
+      refundedBookings,
+      ticketsIssued,
+      checkedIn,
+    };
   }
 }

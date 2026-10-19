@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Shield,
   ShieldCheck,
   UserPlus,
   Mail,
@@ -44,7 +43,9 @@ export function TeamAccessSection() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Invitation tab: 'pending' | 'accepted' | 'archived'
-  const [invitationTab, setInvitationTab] = useState<'pending' | 'accepted' | 'archived'>('pending');
+  const [invitationTab, setInvitationTab] = useState<'pending' | 'accepted' | 'archived'>(
+    'pending',
+  );
 
   // Modals state
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -54,11 +55,14 @@ export function TeamAccessSection() {
   const [inviteError, setInviteError] = useState<string | null>(null);
 
   // Revoke member access modal
-  const [revokeMemberTarget, setRevokeMemberTarget] = useState<AdminTeamMember | null>(null);
+  const [revokeMemberTarget, setRevokeMemberTarget] = useState<AdminTeamMember | null>(
+    null,
+  );
   const [revokeMemberLoading, setRevokeMemberLoading] = useState(false);
 
   // Revoke pending invitation modal
-  const [revokeInviteTarget, setRevokeInviteTarget] = useState<AdminInvitationSummary | null>(null);
+  const [revokeInviteTarget, setRevokeInviteTarget] =
+    useState<AdminInvitationSummary | null>(null);
   const [revokeInviteLoading, setRevokeInviteLoading] = useState(false);
 
   // Bulk clear accepted modal
@@ -66,7 +70,8 @@ export function TeamAccessSection() {
   const [bulkClearLoading, setBulkClearLoading] = useState(false);
 
   // Single clear record target
-  const [singleClearTarget, setSingleClearTarget] = useState<AdminInvitationSummary | null>(null);
+  const [singleClearTarget, setSingleClearTarget] =
+    useState<AdminInvitationSummary | null>(null);
   const [singleClearLoading, setSingleClearLoading] = useState(false);
 
   // Action loading indicators
@@ -91,6 +96,10 @@ export function TeamAccessSection() {
   }, [loadTeamData]);
 
   const isOwner = Boolean(data?.currentUser?.isOwner);
+  const deliveryWarning = Boolean(
+    successMessage &&
+    /email (could not be delivered|delivery failed)/.test(successMessage),
+  );
 
   // Handle invitation submission
   const handleInviteSubmit = async (e: React.FormEvent) => {
@@ -103,11 +112,15 @@ export function TeamAccessSection() {
     try {
       setInviteLoading(true);
       setInviteError(null);
-      await inviteAdminMember({
+      const result = await inviteAdminMember({
         email: inviteEmail.trim(),
         role: inviteRole,
       });
-      setSuccessMessage(`Invitation successfully sent to ${inviteEmail.trim()}`);
+      setSuccessMessage(
+        result.emailDeliveryFailed
+          ? 'Invitation created, but the email could not be delivered. Check the email service and resend.'
+          : `Invitation sent to ${inviteEmail.trim()}`,
+      );
       setInviteModalOpen(false);
       setInviteEmail('');
       setInviteRole('ADMIN');
@@ -125,8 +138,12 @@ export function TeamAccessSection() {
     try {
       setResendingInviteId(invitation.id);
       setError(null);
-      await resendAdminInvitation(invitation.id);
-      setSuccessMessage(`Invitation resent to ${invitation.email}`);
+      const result = await resendAdminInvitation(invitation.id);
+      setSuccessMessage(
+        result.emailDeliveryFailed
+          ? 'Invitation updated, but email delivery failed. Check the email service before resending.'
+          : `Invitation resent to ${invitation.email}`,
+      );
       await loadTeamData();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to resend invitation';
@@ -196,11 +213,14 @@ export function TeamAccessSection() {
       setBulkClearLoading(true);
       setError(null);
       const res = await clearAcceptedAdminInvitations();
-      setSuccessMessage(`Successfully cleared ${res.clearedCount} accepted invitation records from history.`);
+      setSuccessMessage(
+        `Successfully cleared ${res.clearedCount} accepted invitation records from history.`,
+      );
       setBulkClearModalOpen(false);
       await loadTeamData();
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Failed to clear accepted history';
+      const message =
+        err instanceof Error ? err.message : 'Failed to clear accepted history';
       setError(message);
     } finally {
       setBulkClearLoading(false);
@@ -219,21 +239,30 @@ export function TeamAccessSection() {
 
   // Invitations categorized
   const pendingInvitations = useMemo(() => {
-    const list = data?.pendingInvitations || data?.invitations.filter((i) => i.status === 'PENDING') || [];
+    const list =
+      data?.pendingInvitations ||
+      data?.invitations.filter((i) => i.status === 'PENDING') ||
+      [];
     if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase();
     return list.filter((i) => i.email.toLowerCase().includes(q));
   }, [data, searchQuery]);
 
   const acceptedInvitations = useMemo(() => {
-    const list = data?.acceptedInvitations || data?.invitations.filter((i) => i.status === 'ACCEPTED') || [];
+    const list =
+      data?.acceptedInvitations ||
+      data?.invitations.filter((i) => i.status === 'ACCEPTED') ||
+      [];
     if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase();
     return list.filter((i) => i.email.toLowerCase().includes(q));
   }, [data, searchQuery]);
 
   const historicalInvitations = useMemo(() => {
-    const list = data?.historicalInvitations || data?.invitations.filter((i) => i.status === 'REVOKED' || i.status === 'EXPIRED') || [];
+    const list =
+      data?.historicalInvitations ||
+      data?.invitations.filter((i) => i.status === 'REVOKED' || i.status === 'EXPIRED') ||
+      [];
     if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase();
     return list.filter((i) => i.email.toLowerCase().includes(q));
@@ -241,7 +270,10 @@ export function TeamAccessSection() {
 
   if (loading && !data) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-muted-foreground" role="status">
+      <div
+        className="flex flex-col items-center justify-center py-24 text-muted-foreground"
+        role="status"
+      >
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-3" />
         <p className="text-sm font-medium">Loading administrative team & access...</p>
       </div>
@@ -249,16 +281,12 @@ export function TeamAccessSection() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 ep-team-access">
       {/* Header and Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Shield className="h-5 w-5 text-primary" />
-            Team & Access Management
-          </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage administrative personnel, assign delegated roles, and control access permissions.
+            Invite administrators and manage access to the platform.
           </p>
         </div>
 
@@ -270,7 +298,7 @@ export function TeamAccessSection() {
                 setInviteError(null);
                 setInviteModalOpen(true);
               }}
-              className="gap-2 shadow-sm"
+              className="gap-2 shadow-sm ep-invite-admin-button"
               id="invite-admin-button"
             >
               <UserPlus className="h-4 w-4" />
@@ -288,8 +316,12 @@ export function TeamAccessSection() {
       {/* Success / Error Banners */}
       {successMessage && (
         <div
-          role="status"
-          className="flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400"
+          role={deliveryWarning ? 'alert' : 'status'}
+          className={
+            deliveryWarning
+              ? 'ep-delivery-warning flex items-center justify-between rounded-lg border px-4 py-3 text-sm'
+              : 'flex items-center justify-between rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400'
+          }
         >
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
@@ -335,8 +367,9 @@ export function TeamAccessSection() {
             {data?.members.length ?? 0}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {data?.members.filter((m) => m.adminRole === 'OWNER').length ?? 0} Platform Owners,{' '}
-            {data?.members.filter((m) => m.adminRole === 'ADMIN').length ?? 0} Delegated
+            Owners: {data?.members.filter((m) => m.adminRole === 'OWNER').length ?? 0} ·
+            Administrators:{' '}
+            {data?.members.filter((m) => m.adminRole === 'ADMIN').length ?? 0}
           </p>
         </div>
 
@@ -367,7 +400,7 @@ export function TeamAccessSection() {
             )}
           </div>
           <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">
-            {isOwner ? 'Platform Owner' : 'Delegated Admin'}
+            {isOwner ? 'Platform Owner' : 'Administrator'}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {isOwner
@@ -392,7 +425,9 @@ export function TeamAccessSection() {
       {/* Section 1: Active Administrators */}
       <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
         <div className="border-b px-6 py-4 bg-muted/20">
-          <h3 className="font-semibold text-base text-foreground">Active Administrators</h3>
+          <h3 className="font-semibold text-base text-foreground">
+            Active Administrators
+          </h3>
           <p className="text-xs text-muted-foreground mt-0.5">
             Accounts with active administrative access to the platform.
           </p>
@@ -405,7 +440,8 @@ export function TeamAccessSection() {
         ) : (
           <div className="divide-y divide-border">
             {filteredMembers.map((member) => {
-              const isCurrentUser = member.isCurrentUser || member.id === data?.currentUser?.id;
+              const isCurrentUser =
+                member.isCurrentUser || member.id === data?.currentUser?.id;
               const isMemberOwner = member.adminRole === 'OWNER' || member.isOwner;
 
               return (
@@ -415,7 +451,9 @@ export function TeamAccessSection() {
                 >
                   <div className="flex items-start sm:items-center gap-3.5">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
-                      {member.fullName ? member.fullName.charAt(0).toUpperCase() : member.email.charAt(0).toUpperCase()}
+                      {member.fullName
+                        ? member.fullName.charAt(0).toUpperCase()
+                        : member.email.charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -435,7 +473,7 @@ export function TeamAccessSection() {
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:text-blue-400">
                             <ShieldCheck className="h-3 w-3" />
-                            Delegated Admin
+                            Administrator
                           </span>
                         )}
                       </div>
@@ -465,13 +503,19 @@ export function TeamAccessSection() {
                       </Button>
                     )}
                     {isCurrentUser && (
-                      <span className="text-xs text-muted-foreground italic">Current session</span>
+                      <span className="text-xs text-muted-foreground italic">
+                        Current session
+                      </span>
                     )}
                     {!isCurrentUser && isMemberOwner && (
-                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Protected Owner</span>
+                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                        Protected Owner
+                      </span>
                     )}
                     {!isOwner && !isCurrentUser && !isMemberOwner && (
-                      <span className="text-xs text-muted-foreground italic">View only</span>
+                      <span className="text-xs text-muted-foreground italic">
+                        View only
+                      </span>
                     )}
                   </div>
                 </div>
@@ -485,9 +529,12 @@ export function TeamAccessSection() {
       <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
         <div className="border-b px-6 py-4 bg-muted/20 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h3 className="font-semibold text-base text-foreground">Invitations & History</h3>
+            <h3 className="font-semibold text-base text-foreground">
+              Invitations & History
+            </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Manage pending invitations and inspect historical administrative invitations.
+              Manage pending invitations and inspect historical administrative
+              invitations.
             </p>
           </div>
 
@@ -549,9 +596,11 @@ export function TeamAccessSection() {
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-foreground">{inv.email}</span>
+                          <span className="font-semibold text-sm text-foreground">
+                            {inv.email}
+                          </span>
                           <span className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted/50 font-medium">
-                            {inv.role === 'OWNER' ? 'Platform Owner' : 'Delegated Admin'}
+                            {inv.role === 'OWNER' ? 'Platform Owner' : 'Administrator'}
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
                             <Clock className="h-3 w-3" />
@@ -568,11 +617,15 @@ export function TeamAccessSection() {
                           )}
                         </div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
-                          <span>Invited by {inv.invitedBy.fullName || inv.invitedBy.email}</span>
+                          <span>
+                            Invited by {inv.invitedBy.fullName || inv.invitedBy.email}
+                          </span>
                           <span>•</span>
                           <span>Sent {new Date(inv.createdAt).toLocaleDateString()}</span>
                           <span>•</span>
-                          <span>Expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
+                          <span>
+                            Expires {new Date(inv.expiresAt).toLocaleDateString()}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -620,7 +673,8 @@ export function TeamAccessSection() {
           <div>
             <div className="px-6 py-3 bg-muted/10 border-b flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs text-muted-foreground">
               <span>
-                Accepted invitation history records. Clearing historical entries does <strong>not</strong> revoke administrator access or modify audit logs.
+                Accepted invitation history records. Clearing historical entries does{' '}
+                <strong>not</strong> revoke administrator access or modify audit logs.
               </span>
               {isOwner && acceptedInvitations.length > 0 && (
                 <Button
@@ -653,9 +707,11 @@ export function TeamAccessSection() {
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm text-foreground">{inv.email}</span>
+                          <span className="font-semibold text-sm text-foreground">
+                            {inv.email}
+                          </span>
                           <span className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted/50 font-medium">
-                            {inv.role === 'OWNER' ? 'Platform Owner' : 'Delegated Admin'}
+                            {inv.role === 'OWNER' ? 'Platform Owner' : 'Administrator'}
                           </span>
                           <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                             <CheckCircle2 className="h-3 w-3" />
@@ -663,19 +719,28 @@ export function TeamAccessSection() {
                           </span>
                         </div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
-                          <span>Invited by {inv.invitedBy.fullName || inv.invitedBy.email}</span>
+                          <span>
+                            Invited by {inv.invitedBy.fullName || inv.invitedBy.email}
+                          </span>
                           <span>•</span>
-                          <span>Invited {new Date(inv.createdAt).toLocaleDateString()}</span>
+                          <span>
+                            Invited {new Date(inv.createdAt).toLocaleDateString()}
+                          </span>
                           {inv.acceptedAt && (
                             <>
                               <span>•</span>
-                              <span>Accepted {new Date(inv.acceptedAt).toLocaleDateString()}</span>
+                              <span>
+                                Accepted {new Date(inv.acceptedAt).toLocaleDateString()}
+                              </span>
                             </>
                           )}
                           {inv.acceptedBy && (
                             <>
                               <span>•</span>
-                              <span>Claimed by {inv.acceptedBy.fullName || inv.acceptedBy.email}</span>
+                              <span>
+                                Claimed by{' '}
+                                {inv.acceptedBy.fullName || inv.acceptedBy.email}
+                              </span>
                             </>
                           )}
                         </div>
@@ -708,7 +773,8 @@ export function TeamAccessSection() {
         {invitationTab === 'archived' && (
           <div>
             <div className="px-6 py-3 bg-muted/10 border-b text-xs text-muted-foreground">
-              Historical records of invitations that expired or were cancelled before acceptance.
+              Historical records of invitations that expired or were cancelled before
+              acceptance.
             </div>
 
             {historicalInvitations.length === 0 ? (
@@ -730,9 +796,11 @@ export function TeamAccessSection() {
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-foreground">{inv.email}</span>
+                            <span className="font-semibold text-sm text-foreground">
+                              {inv.email}
+                            </span>
                             <span className="text-xs px-2 py-0.5 rounded-full border border-border bg-muted/50 font-medium">
-                              {inv.role === 'OWNER' ? 'Platform Owner' : 'Delegated Admin'}
+                              {inv.role === 'OWNER' ? 'Platform Owner' : 'Administrator'}
                             </span>
                             {isRevoked ? (
                               <span className="rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs font-semibold text-destructive">
@@ -745,11 +813,17 @@ export function TeamAccessSection() {
                             )}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
-                            <span>Invited by {inv.invitedBy.fullName || inv.invitedBy.email}</span>
+                            <span>
+                              Invited by {inv.invitedBy.fullName || inv.invitedBy.email}
+                            </span>
                             <span>•</span>
-                            <span>Created {new Date(inv.createdAt).toLocaleDateString()}</span>
+                            <span>
+                              Created {new Date(inv.createdAt).toLocaleDateString()}
+                            </span>
                             <span>•</span>
-                            <span>Expires {new Date(inv.expiresAt).toLocaleDateString()}</span>
+                            <span>
+                              Expires {new Date(inv.expiresAt).toLocaleDateString()}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -795,7 +869,10 @@ export function TeamAccessSection() {
           )}
 
           <div>
-            <label htmlFor="invite-email" className="block text-xs font-semibold text-foreground mb-1.5">
+            <label
+              htmlFor="invite-email"
+              className="block text-xs font-semibold text-foreground mb-1.5"
+            >
               Email Address
             </label>
             <input
@@ -808,7 +885,8 @@ export function TeamAccessSection() {
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
             <p className="text-[11px] text-muted-foreground mt-1">
-              If the colleague does not have an account yet, they can register with this email and accept.
+              If the colleague does not have an account yet, they can register with this
+              email and accept.
             </p>
           </div>
 
@@ -819,10 +897,11 @@ export function TeamAccessSection() {
             <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
               <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground">
                 <ShieldCheck className="h-4 w-4 text-blue-500" />
-                Administrator (Delegated Admin)
+                Administrator
               </div>
               <p className="text-[11px] text-muted-foreground mt-1">
-                Granted access to manage events, moderate users, view bookings, and inspect audit logs. Platform Owner status remains strictly reserved.
+                Granted access to manage events, moderate users, view bookings, and
+                inspect audit logs. Platform Owner status remains strictly reserved.
               </p>
             </div>
           </div>

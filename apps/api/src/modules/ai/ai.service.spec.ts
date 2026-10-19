@@ -30,15 +30,23 @@ const CATALOG_ROW = {
 function makePrismaMock(catalog: unknown[] = [], matched: unknown[] = []) {
   return {
     event: {
-      findMany: jest.fn().mockImplementation((args: { where: Record<string, unknown> }) =>
-        'slug' in args.where ? Promise.resolve(matched) : Promise.resolve(catalog),
-      ),
+      findMany: jest
+        .fn()
+        .mockImplementation((args: { where: Record<string, unknown> }) =>
+          'slug' in args.where ? Promise.resolve(matched) : Promise.resolve(catalog),
+        ),
     },
   };
 }
 
 async function makeService(
-  env: { key?: string; keys?: string; simple?: string; moderate?: string; complex?: string },
+  env: {
+    key?: string;
+    keys?: string;
+    simple?: string;
+    moderate?: string;
+    complex?: string;
+  },
   prisma = makePrismaMock(),
 ) {
   delete process.env.GROQ_API_KEY;
@@ -100,9 +108,11 @@ describe('AiService key management', () => {
 
   it('accepts a comma-separated GROQ_API_KEYS list and succeeds on the first key', async () => {
     process.env.GROQ_API_KEYS = `${KEY_A},${KEY_B}`;
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      groqResponse(200, { choices: [{ message: { content: 'Hello!' } }] }),
-    );
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        groqResponse(200, { choices: [{ message: { content: 'Hello!' } }] }),
+      );
     const service = await makeService({ keys: process.env.GROQ_API_KEYS });
     expect(service.isConfigured()).toBe(true);
     const result = await service.chat([{ role: 'user', content: 'hi' }]);
@@ -118,15 +128,21 @@ describe('AiService key management', () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(groqResponse(401, { error: { message: 'Invalid API Key' } }))
-      .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: 'Fallback!' } }] }));
+      .mockResolvedValueOnce(
+        groqResponse(200, { choices: [{ message: { content: 'Fallback!' } }] }),
+      );
     const service = await makeService({ keys: `${KEY_A},${KEY_B}` });
 
     const result = await service.chat([{ role: 'user', content: 'hi' }]);
 
     expect(result.reply).toBe('Fallback!');
     expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(authHeaderOf(fetchSpy.mock.calls[0] as unknown as [string, RequestInit])).toBe(`Bearer ${KEY_A}`);
-    expect(authHeaderOf(fetchSpy.mock.calls[1] as unknown as [string, RequestInit])).toBe(`Bearer ${KEY_B}`);
+    expect(authHeaderOf(fetchSpy.mock.calls[0] as unknown as [string, RequestInit])).toBe(
+      `Bearer ${KEY_A}`,
+    );
+    expect(authHeaderOf(fetchSpy.mock.calls[1] as unknown as [string, RequestInit])).toBe(
+      `Bearer ${KEY_B}`,
+    );
   });
 
   it('fails with 503 when every key is rejected', async () => {
@@ -147,11 +163,17 @@ describe('AiService key management', () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValue(
-        groqResponse(429, { error: { message: 'Rate limit reached' } }, { 'retry-after': '20' }),
+        groqResponse(
+          429,
+          { error: { message: 'Rate limit reached' } },
+          { 'retry-after': '20' },
+        ),
       );
     const service = await makeService({ keys: `${KEY_A},${KEY_B}` });
 
-    const err = await service.chat([{ role: 'user', content: 'hi' }]).catch((e: any) => e);
+    const err = await service
+      .chat([{ role: 'user', content: 'hi' }])
+      .catch((e: any) => e);
     expect(err).toBeInstanceOf(ServiceUnavailableException);
     expect(err.response.retryAfterSeconds).toBe(20);
     // Only ONE fetch: the same-org quota means rotation must not happen.
@@ -162,11 +184,17 @@ describe('AiService key management', () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValue(
-        groqResponse(429, { error: { message: 'Rate limit reached' } }, { 'retry-after': '30' }),
+        groqResponse(
+          429,
+          { error: { message: 'Rate limit reached' } },
+          { 'retry-after': '30' },
+        ),
       );
     const service = await makeService({ key: KEY_A });
 
-    await expect(service.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(ServiceUnavailableException);
+    await expect(service.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(
+      ServiceUnavailableException,
+    );
     await expect(service.chat([{ role: 'user', content: 'hi again' }])).rejects.toThrow(
       new ServiceUnavailableException(
         'The AI assistant is temporarily unavailable (all API keys exhausted). Please retry shortly.',
@@ -194,7 +222,9 @@ describe('AiService key management', () => {
     const fetchSpy = jest
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(groqResponse(500, { error: { message: 'boom' } }))
-      .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: 'Recovered' } }] }));
+      .mockResolvedValueOnce(
+        groqResponse(200, { choices: [{ message: { content: 'Recovered' } }] }),
+      );
     const service = await makeService({ key: KEY_A });
 
     await expect(service.chat([{ role: 'user', content: 'hi' }])).resolves.toMatchObject({
@@ -208,13 +238,21 @@ describe('AiService key management', () => {
       .spyOn(global, 'fetch')
       .mockResolvedValueOnce(groqResponse(503, {}))
       .mockResolvedValueOnce(groqResponse(503, {}))
-      .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: 'Recovered' } }] }));
+      .mockResolvedValueOnce(
+        groqResponse(200, { choices: [{ message: { content: 'Recovered' } }] }),
+      );
     const service = await makeService({ key: KEY_A });
-    await expect(service.chat([{ role: 'user', content: 'Hello' }])).resolves.toMatchObject({ reply: 'Recovered' });
-    const models = fetchSpy.mock.calls.map((call) =>
-      JSON.parse(String((call[1] as RequestInit).body)).model,
+    await expect(
+      service.chat([{ role: 'user', content: 'Hello' }]),
+    ).resolves.toMatchObject({ reply: 'Recovered' });
+    const models = fetchSpy.mock.calls.map(
+      (call) => JSON.parse(String((call[1] as RequestInit).body)).model,
     );
-    expect(models).toEqual(['openai/gpt-oss-20b', 'openai/gpt-oss-20b', 'openai/gpt-oss-120b']);
+    expect(models).toEqual([
+      'openai/gpt-oss-20b',
+      'openai/gpt-oss-20b',
+      'openai/gpt-oss-120b',
+    ]);
   });
 
   it('fails closed without querying Groq when shared cooldown storage is unavailable', async () => {
@@ -223,11 +261,20 @@ describe('AiService key management', () => {
       providers: [
         AiService,
         { provide: PrismaService, useValue: makePrismaMock() },
-        { provide: CacheService, useValue: { providerCooldownMs: jest.fn().mockRejectedValue(new Error('redis')) } },
+        {
+          provide: CacheService,
+          useValue: {
+            providerCooldownMs: jest.fn().mockRejectedValue(new Error('redis')),
+          },
+        },
       ],
-    }).compile().then((moduleRef) => moduleRef.get(AiService));
+    })
+      .compile()
+      .then((moduleRef) => moduleRef.get(AiService));
     const fetchSpy = jest.spyOn(global, 'fetch');
-    await expect(service.chat([{ role: 'user', content: 'Hello' }])).rejects.toThrow(ServiceUnavailableException);
+    await expect(service.chat([{ role: 'user', content: 'Hello' }])).rejects.toThrow(
+      ServiceUnavailableException,
+    );
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
@@ -260,7 +307,9 @@ describe('AiService key management', () => {
   it('rejects empty replies with 503', async () => {
     jest
       .spyOn(global, 'fetch')
-      .mockResolvedValue(groqResponse(200, { choices: [{ message: { content: '   ' } }] }));
+      .mockResolvedValue(
+        groqResponse(200, { choices: [{ message: { content: '   ' } }] }),
+      );
     const service = await makeService({ key: KEY_A });
 
     await expect(service.chat([{ role: 'user', content: 'hi' }])).rejects.toThrow(
@@ -286,24 +335,23 @@ describe('AiService structured event recommendations', () => {
     const prisma = makePrismaMock([], [CATALOG_ROW]);
     const service = await makeService({ key: KEY_A }, prisma);
     jest.spyOn(global, 'fetch').mockResolvedValue(
-      groqResponse(
-        200,
-        {
-          choices: [
-            {
-              message: {
-                content:
-                  'You could catch **Mumbai Indie Night** by the sea this month.\n\n**EVENTS:** mumbai-indie-night',
-              },
+      groqResponse(200, {
+        choices: [
+          {
+            message: {
+              content:
+                'You could catch **Mumbai Indie Night** by the sea this month.\n\n**EVENTS:** mumbai-indie-night',
             },
-          ],
-        },
-      ),
+          },
+        ],
+      }),
     );
 
     const result = await service.chat([{ role: 'user', content: 'recommend something' }]);
 
-    expect(result.reply).toBe('You could catch **Mumbai Indie Night** by the sea this month.');
+    expect(result.reply).toBe(
+      'Here are events matching your request. Select a card to explore.',
+    );
     expect(result.events).toHaveLength(1);
     expect(result.events[0]).toMatchObject({
       id: 'evt-1',
@@ -327,9 +375,11 @@ describe('AiService structured event recommendations', () => {
 
   it('returns no events when the reply has no EVENTS trailer', async () => {
     const service = await makeService({ key: KEY_A });
-    jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(groqResponse(200, { choices: [{ message: { content: 'Plan with **bold** and - lists' } }] }));
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      groqResponse(200, {
+        choices: [{ message: { content: 'Plan with **bold** and - lists' } }],
+      }),
+    );
 
     const result = await service.chat([{ role: 'user', content: 'hi' }]);
 
@@ -343,7 +393,11 @@ describe('AiService structured event recommendations', () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       groqResponse(200, {
         choices: [
-          { message: { content: 'Check out **Fake Fest**!\n\nEVENTS: fake-fest, never-happened' } },
+          {
+            message: {
+              content: 'Check out **Fake Fest**!\n\nEVENTS: fake-fest, never-happened',
+            },
+          },
         ],
       }),
     );
@@ -369,10 +423,15 @@ describe('AiService model routing', () => {
   it.each([
     ['Hello!', 'simple-model'],
     ['Which music events would you recommend?', 'moderate-model'],
-    ['Create a detailed step-by-step plan that compares options and includes contingencies.', 'complex-model'],
+    [
+      'Create a detailed step-by-step plan that compares options and includes contingencies.',
+      'complex-model',
+    ],
   ])('routes prompt to the %s task profile', async (prompt, expectedModel) => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
-      groqResponse(200, { choices: [{ message: { content: 'Here are some events.' } }] }),
+      groqResponse(200, {
+        choices: [{ message: { content: 'Here are some events.' } }],
+      }),
     );
     const service = await makeService({
       key: KEY_A,
@@ -383,7 +442,190 @@ describe('AiService model routing', () => {
     await service.chat([{ role: 'user', content: prompt }]);
     const request = JSON.parse(String((fetchSpy.mock.calls[0]?.[1] as RequestInit).body));
     expect(request.model).toBe(expectedModel);
-    expect(request.max_tokens).toBe(600);
+    expect(request.max_tokens).toBe(1400);
+    expect(request.response_format).toEqual({ type: 'json_object' });
     expect(request.messages[0].role).toBe('system');
+  });
+});
+
+describe('AiService event context', () => {
+  it('returns clickable catalog cards even when the model omits its EVENTS trailer', async () => {
+    const prisma = makePrismaMock([CATALOG_ROW], [CATALOG_ROW]);
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      groqResponse(200, {
+        choices: [
+          {
+            message: {
+              content: 'Try these:\n- **Mumbai Indie Night** — live music by the sea.',
+            },
+          },
+        ],
+      }),
+    );
+    const service = await makeService({ key: KEY_A }, prisma);
+    const result = await service.chat([{ role: 'user', content: 'Recommend music' }]);
+    expect(result.events.map((event: { slug: string }) => event.slug)).toEqual([
+      'mumbai-indie-night',
+    ]);
+    expect(result.reply).not.toContain('- **Mumbai Indie Night**');
+  });
+  afterEach(() => {
+    delete process.env.GROQ_API_KEY;
+    jest.restoreAllMocks();
+  });
+  it('uses published event facts in the assistant context', async () => {
+    const prisma = {
+      ...makePrismaMock(),
+      event: {
+        ...makePrismaMock().event,
+        findFirst: jest.fn().mockResolvedValue({
+          title: 'Context event',
+          description: 'Actual event facts',
+          policies: 'No outside food',
+          cancellationPolicy: 'No refunds',
+          ticketTypes: [],
+          faqs: [],
+        }),
+      },
+    };
+    const fetchSpy = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        groqResponse(200, { choices: [{ message: { content: 'Here are the facts.' } }] }),
+      );
+    const service = await makeService({ key: KEY_A }, prisma);
+    await service.chat([{ role: 'user', content: 'What is allowed?' }], 'event-context');
+    expect(prisma.event.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'event-context', status: 'PUBLISHED' } }),
+    );
+    const body = JSON.parse(fetchSpy.mock.calls[0][1]!.body as string);
+    expect(body.messages[0].content).toContain('No outside food');
+    expect(body.messages[0].content).toContain('No refunds');
+  });
+  it('does not send missing or unpublished event context to the provider', async () => {
+    const prisma = {
+      ...makePrismaMock(),
+      event: { ...makePrismaMock().event, findFirst: jest.fn().mockResolvedValue(null) },
+    };
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const service = await makeService({ key: KEY_A }, prisma);
+    await expect(
+      service.chat([{ role: 'user', content: 'Help' }], 'missing'),
+    ).rejects.toThrow('This published event is not available.');
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('AI catalog shortcuts', () => {
+  it('uses only available categories and does not call zero sales popular', async () => {
+    const service = await makeService({}, makePrismaMock([CATALOG_ROW]));
+    const result = await service.suggestions();
+    expect(result.suggestions.map((item: { title: string }) => item.title)).toEqual([
+      'Upcoming events',
+      'Music',
+    ]);
+  });
+  it('shows no fabricated shortcuts for an empty catalog', async () => {
+    const service = await makeService({});
+    expect(await service.suggestions()).toEqual({ suggestions: [] });
+  });
+  it('labels popularity only when paid ticket sales are present', async () => {
+    const prisma = makePrismaMock([{ ...CATALOG_ROW, _count: { tickets: 8 } }]);
+    const service = await makeService({}, prisma);
+    expect((await service.suggestions()).suggestions[0].title).toBe('Popular tickets');
+    expect(
+      prisma.event.findMany.mock.calls[0][0].select._count.select.tickets.where.booking
+        .payment,
+    ).toEqual({ status: 'CAPTURED', amount: { gt: 0 } });
+  });
+});
+
+describe('AI recommendation order', () => {
+  afterEach(() => jest.restoreAllMocks());
+  it('puts an artist match before a more popular generic music event', async () => {
+    const exact = {
+      ...CATALOG_ROW,
+      title: 'Travis Scott Music Night',
+      slug: 'travis-night',
+      description: 'Travis Scott hip-hop',
+      tags: ['hip-hop'],
+      _count: { tickets: 1 },
+    };
+    const popular = {
+      ...CATALOG_ROW,
+      title: 'Classical Orchestra',
+      slug: 'classical',
+      description: 'Classical music',
+      tags: ['classical'],
+      _count: { tickets: 100 },
+    };
+    const service = await makeService(
+      { key: KEY_A },
+      makePrismaMock([popular, exact], [popular, exact]),
+    );
+    jest.spyOn(global, 'fetch').mockResolvedValue(
+      groqResponse(200, {
+        choices: [
+          { message: { content: 'Choose a card.\nEVENTS: classical, travis-night' } },
+        ],
+      }),
+    );
+    const result = await service.chat([{ role: 'user', content: 'Travis Scott music' }]);
+    expect(result.events.map((event: { slug: string }) => event.slug)).toEqual([
+      'travis-night',
+    ]);
+  });
+});
+
+describe('AI recommendation presentation', () => {
+  afterEach(() => jest.restoreAllMocks());
+  it('returns one introduction instead of repeating event paragraphs alongside cards', async () => {
+    const service = await makeService(
+      { key: KEY_A },
+      makePrismaMock([CATALOG_ROW], [CATALOG_ROW]),
+    );
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        groqResponse(200, {
+          choices: [
+            {
+              message: {
+                content:
+                  'Here are some ideas.\n\n### Mumbai Indie Night\nAn evening of indie music by the sea.\nEVENTS: mumbai-indie-night',
+              },
+            },
+          ],
+        }),
+      );
+    const result = await service.chat([
+      { role: 'user', content: 'Suggest music events' },
+    ]);
+    expect(result.events).toHaveLength(1);
+    expect(result.reply).toBe(
+      'Here are events matching your request. Select a card to explore.',
+    );
+    expect(result.reply).not.toContain('Mumbai Indie Night');
+  });
+});
+
+
+describe('Structured discovery filters', () => {
+  afterEach(() => jest.restoreAllMocks());
+  it.each([
+    ['Show me all events', {}],
+    ['music', { category: 'music' }],
+  ])('keeps a complete Discover link for %s', async (prompt, search) => {
+    process.env.GROQ_API_KEY = KEY_A;
+    const database = { searchEvents: jest.fn().mockResolvedValue({ events: [CATALOG_ROW], total: 40 }) };
+    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
+    const provider = jest.spyOn(global, 'fetch').mockResolvedValue(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'Here are some ideas.', search, slugs: [] }) } }] }));
+    const result = await service.chat([{ role: 'user', content: String(prompt) }]);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(result.total).toBe(40);
+    expect(result.moreEventsUrl).toMatch(/^\/events\?/);
+    const filters = JSON.parse(new URL(result.moreEventsUrl!, 'http://localhost').searchParams.get('aiFilters')!);
+    expect(filters).toMatchObject(search);
+    expect(database.searchEvents).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 6, aiFilters: JSON.stringify(filters) }));
   });
 });

@@ -8,6 +8,7 @@ export enum EventStatus {
   CANCELLED = 'CANCELLED',
   COMPLETED = 'COMPLETED',
   SOLDOUT = 'SOLDOUT',
+  PAUSED = 'PAUSED',
 }
 
 export interface Event {

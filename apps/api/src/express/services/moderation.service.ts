@@ -441,7 +441,7 @@ export class ExpressModerationService {
         where: { id: eventId },
         select: { status: true },
       });
-      if (event && event.status === 'PUBLISHED') {
+      if (event && ['PUBLISHED','PAUSED','SOLDOUT'].includes(event.status)) {
         return { status: 'APPROVED' };
       }
       return { status: 'DRAFT' };

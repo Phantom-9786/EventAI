@@ -199,6 +199,12 @@ export class NotificationsService {
     return { success: true };
   }
 
+  async clearRead(userId: string) {
+    if (!this.prisma) return { success: true, count: 0 };
+    const result = await this.prisma.notification.deleteMany({ where: { userId, isRead: true } });
+    return { success: true, count: result.count };
+  }
+
   async clearAll(userId: string) {
     if (!this.prisma) return { success: true, count: 0 };
     const result = await this.prisma.notification.deleteMany({

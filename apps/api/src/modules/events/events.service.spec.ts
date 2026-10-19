@@ -360,7 +360,18 @@ describe('EventsService', () => {
     });
   });
 
-  describe('getPublishedEvent', () => {
+    describe('venue-scoped search', () => {
+      it('filters the exact venue using a bound parameter while preserving published visibility',async()=>{
+        prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([{total:0}]);
+        await service.searchEvents({venueId:'11111111-1111-4111-8111-111111111111',page:1,limit:20});
+        const sql=prisma.$queryRaw.mock.calls[0][0] as Prisma.Sql;
+        expect(sql.text).toContain('e.venue_id =');
+        expect(sql.text).toContain('PUBLISHED');
+        expect(sql.values).toContain('11111111-1111-4111-8111-111111111111');
+        expect(sql.text).not.toContain('::uuid');
+      });
+    });
+    describe('getPublishedEvent', () => {
     it('hides non-published events from the public route', async () => {
       prisma.event.findFirst.mockResolvedValue(null);
       await expect(service.getPublishedEvent('some-slug-or-id')).rejects.toThrow(NotFoundException);

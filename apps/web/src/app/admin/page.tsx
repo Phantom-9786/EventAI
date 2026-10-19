@@ -1,4 +1,5 @@
 'use client';
+import { RefreshButton } from '@/components/ui/refresh-button';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -8,24 +9,21 @@ import {
   Building2,
   CalendarDays,
   CheckCircle2,
-  ChevronRight,
   Clock,
   ExternalLink,
   Eye,
-  IndianRupee,
   Loader2,
   MapPin,
   Phone,
   Search,
   ShieldAlert,
-  Ticket,
   UserCheck,
   UserX,
-  Users,
   Sparkles,
   Power,
   Save,
 } from 'lucide-react';
+import { PreviewGallery } from '@/components/approved/gallery';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useAuth } from '@/components/auth/auth-provider';
@@ -42,6 +40,7 @@ import {
   listAdminOrganizers,
   listAdminUsers,
   moderateAdminEvent,
+  setAdminEventPaused,
   reviewAdminEvent,
   setAdminOrganizerVerification,
   setAdminUserStatus,
@@ -62,9 +61,19 @@ import {
   type SystemControlsSettings,
 } from '@/lib/admin';
 import { formatPrice } from '@/lib/api';
+import { PreviewHeading } from '@/components/approved/ui';
+import { AdminOverview } from '@/components/approved/admin-overview';
 import { TeamAccessSection } from '@/components/admin/team-access-section';
 
-type Tab = 'overview' | 'users' | 'events' | 'organizers' | 'bookings' | 'audit-logs' | 'system-controls' | 'team';
+type Tab =
+  | 'overview'
+  | 'users'
+  | 'events'
+  | 'organizers'
+  | 'bookings'
+  | 'audit-logs'
+  | 'system-controls'
+  | 'team';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -78,57 +87,14 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 const STATUS_COLORS: Record<string, string> = {
+  PAUSED: 'bg-amber-500/10 text-amber-700 border-amber-500/20',
   DRAFT: 'bg-muted text-muted-foreground border-border',
-  PUBLISHED: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
+  PUBLISHED:
+    'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20',
   CANCELLED: 'bg-destructive/10 text-destructive border-destructive/20',
   COMPLETED: 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20',
   SOLDOUT: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
 };
-
-function StatCard({
-  label,
-  value,
-  icon,
-  onClick,
-  targetTabName,
-}: {
-  label: string;
-  value: string;
-  icon: React.ReactNode;
-  onClick?: () => void;
-  targetTabName?: string;
-}) {
-  const isClickable = Boolean(onClick);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!isClickable}
-      aria-label={targetTabName ? `${label}: ${value}. Click to view ${targetTabName}` : `${label}: ${value}`}
-      className={`group relative w-full text-left rounded-xl border bg-card p-5 shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
-        isClickable
-          ? 'cursor-pointer hover:border-primary/50 hover:bg-accent/40 hover:shadow-md active:scale-[0.99]'
-          : 'cursor-default'
-      }`}
-    >
-      <div className="flex items-center justify-between">
-        <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground group-hover:text-primary transition-colors">
-          {icon}
-          {label}
-        </p>
-        {isClickable && (
-          <ChevronRight className="h-4 w-4 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
-        )}
-      </div>
-      <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">{value}</p>
-      {targetTabName && (
-        <span className="mt-1 block text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-          View {targetTabName} →
-        </span>
-      )}
-    </button>
-  );
-}
 
 function StatusBadge({ status }: { status: string }) {
   return (
@@ -144,7 +110,9 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
-  const { stats, categories, error, loading, reload } = useAdminData(user?.role === 'ADMIN');
+  const { stats, categories, error, loading, reload } = useAdminData(
+    user?.role === 'ADMIN',
+  );
   const [tab, setTab] = useState<Tab>('overview');
   const [name, setName] = useState('');
   const [color, setColor] = useState('#6366F1');
@@ -157,6 +125,7 @@ export default function AdminPage() {
       const url = new URL(window.location.href);
       url.searchParams.set('tab', selectedTab);
       window.history.pushState({}, '', url.toString());
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
   };
 
@@ -167,22 +136,46 @@ export default function AdminPage() {
       const tabParam = params.get('tab') as Tab | null;
       if (
         tabParam &&
-        ['overview', 'users', 'events', 'organizers', 'bookings', 'audit-logs', 'system-controls', 'team'].includes(
-          tabParam,
-        )
+        [
+          'overview',
+          'users',
+          'events',
+          'organizers',
+          'bookings',
+          'audit-logs',
+          'system-controls',
+          'team',
+        ].includes(tabParam)
       ) {
         setTab(tabParam);
+      } else {
+        setTab('overview');
       }
     };
 
     syncTabFromUrl();
+    const onWorkspaceNavigation = (event: Event) => {
+      const href = (event as CustomEvent<string>).detail;
+      const selected = new URL(href, window.location.origin).searchParams.get('tab');
+      if (TABS.some((t) => t.id === selected)) setTab(selected as Tab);
+    };
     window.addEventListener('popstate', syncTabFromUrl);
-    return () => window.removeEventListener('popstate', syncTabFromUrl);
+    window.addEventListener('eventpoint:workspace-navigation', onWorkspaceNavigation);
+    return () => {
+      window.removeEventListener('popstate', syncTabFromUrl);
+      window.removeEventListener(
+        'eventpoint:workspace-navigation',
+        onWorkspaceNavigation,
+      );
+    };
   }, []);
 
   if (authLoading) {
     return (
-      <div className="container flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground" role="status">
+      <div
+        className="container flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground"
+        role="status"
+      >
         <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
         <p className="text-sm font-medium">Checking sign-in…</p>
       </div>
@@ -195,9 +188,16 @@ export default function AdminPage() {
         <div className="rounded-full bg-primary/10 p-3 text-primary">
           <ShieldAlert className="h-8 w-8" />
         </div>
-        <h1 className="mt-4 text-2xl font-bold tracking-tight">Sign in as an admin to continue</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Please sign in with administrator credentials to view this area.</p>
-        <Link href="/signin" className="mt-6 rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow transition hover:bg-primary/90">
+        <h1 className="mt-4 text-2xl font-bold tracking-tight">
+          Sign in as an admin to continue
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Please sign in with administrator credentials to view this area.
+        </p>
+        <Link
+          href="/signin"
+          className="mt-6 rounded-md bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow transition hover:bg-primary/90"
+        >
           Sign In
         </Link>
       </div>
@@ -211,8 +211,13 @@ export default function AdminPage() {
           <ShieldAlert className="h-8 w-8" />
         </div>
         <h1 className="mt-4 text-2xl font-bold tracking-tight">Admins only</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Your account does not have platform administration rights.</p>
-        <Link href="/" className="mt-6 inline-block rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-accent">
+        <p className="mt-2 text-sm text-muted-foreground">
+          Your account does not have platform administration rights.
+        </p>
+        <Link
+          href="/"
+          className="mt-6 inline-block rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-accent"
+        >
           Return to Home
         </Link>
       </div>
@@ -221,7 +226,10 @@ export default function AdminPage() {
 
   if (loading && !stats) {
     return (
-      <div className="container flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground" role="status">
+      <div
+        className="container flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground"
+        role="status"
+      >
         <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
         <p className="text-sm font-medium">Loading admin dashboard…</p>
       </div>
@@ -242,48 +250,56 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="container py-8 sm:py-10">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-foreground">Platform admin</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Platform metrics, user governance, event review, organizer approvals, and payment oversight.
-          </p>
-        </div>
-        <div className="mt-3 sm:mt-0">
-          <Button variant="outline" size="sm" onClick={() => void reload()} disabled={busy || loading}>
-            {loading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-            Refresh Data
-          </Button>
-        </div>
-      </div>
-
-      <div role="tablist" aria-label="Admin sections" className="mt-6 flex overflow-x-auto border-b">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            role="tab"
-            aria-selected={tab === t.id}
-            onClick={() => handleSelectTab(t.id)}
-            className={`-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
-              tab === t.id
-                ? 'border-primary text-primary font-semibold'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+    <div className="ep-admin-content">
+      <PreviewHeading
+        eyebrow="Platform workspace"
+        title={
+          tab === 'overview'
+            ? 'A clear view of your platform.'
+            : TABS.find((t) => t.id === tab)?.label || 'Admin Dashboard'
+        }
+        sub={
+          tab === 'overview'
+            ? 'Platform activity, bookings and revenue at a glance.'
+            : tab === 'system-controls'
+              ? 'Manage availability and maintenance settings.'
+              : tab === 'team'
+                ? 'Manage your administrators and access permissions.'
+                : tab === 'users'
+                  ? 'Find accounts and manage platform access.'
+                  : tab === 'events'
+                    ? 'Review and manage published and submitted events.'
+                    : tab === 'organizers'
+                      ? 'Review organizer applications and profiles.'
+                      : tab === 'bookings'
+                        ? 'Review reservations, payments and refund requests.'
+                        : 'Review changes and administrative activity.'
+        }
+        action={
+          <RefreshButton
+            className="btn outline"
+            variant="outline"
+            onClick={() => reload()}
+            disabled={busy || loading}
+            refreshing={Boolean(busy || loading)}
+          />
+        }
+      />
 
       {error && (
-        <div role="alert" className="mt-6 flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive">
+        <div
+          role="alert"
+          className="mt-6 flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive"
+        >
           <AlertCircle className="h-5 w-5 shrink-0" />
           <p>{error}</p>
         </div>
       )}
       {actionError && (
-        <div role="alert" className="mt-4 flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive">
+        <div
+          role="alert"
+          className="mt-4 flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive"
+        >
           <AlertCircle className="h-5 w-5 shrink-0" />
           <p>{actionError}</p>
         </div>
@@ -292,68 +308,19 @@ export default function AdminPage() {
       {tab === 'overview' && (
         <div className="mt-8 space-y-8">
           {stats && (
-            <>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard
-                  label="Total Users"
-                  value={stats.users.toLocaleString()}
-                  icon={<Users className="h-4 w-4" />}
-                  onClick={() => setTab('users')}
-                  targetTabName="Users tab"
-                />
-                <StatCard
-                  label="Organizers"
-                  value={`${stats.organizers.verified} / ${stats.organizers.total} verified`}
-                  icon={<Building2 className="h-4 w-4" />}
-                  onClick={() => setTab('organizers')}
-                  targetTabName="Organizers & Applications"
-                />
-                <StatCard
-                  label="Total Events"
-                  value={stats.events.total.toLocaleString()}
-                  icon={<CalendarDays className="h-4 w-4" />}
-                  onClick={() => setTab('events')}
-                  targetTabName="Events tab"
-                />
-                <StatCard
-                  label="Net Revenue"
-                  value={formatPrice(stats.revenue.net)}
-                  icon={<IndianRupee className="h-4 w-4" />}
-                  onClick={() => setTab('bookings')}
-                  targetTabName="Bookings & Payments"
-                />
-              </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <StatCard
-                  label="Tickets Issued"
-                  value={stats.tickets.issued.toLocaleString()}
-                  icon={<Ticket className="h-4 w-4" />}
-                  onClick={() => setTab('bookings')}
-                  targetTabName="Bookings & Payments"
-                />
-                <StatCard
-                  label="Checked In"
-                  value={stats.tickets.checkedIn.toLocaleString()}
-                  icon={<Ticket className="h-4 w-4" />}
-                  onClick={() => setTab('bookings')}
-                  targetTabName="Bookings & Payments"
-                />
-                <StatCard
-                  label="Confirmed Bookings"
-                  value={String(stats.bookings.CONFIRMED ?? 0)}
-                  icon={<CalendarDays className="h-4 w-4" />}
-                  onClick={() => setTab('bookings')}
-                  targetTabName="Bookings & Payments"
-                />
-              </div>
-            </>
+            <AdminOverview
+              stats={stats}
+              categories={categories ?? []}
+              onSelect={handleSelectTab}
+            />
           )}
-
-          <div className="rounded-xl border bg-card p-6 shadow-sm">
+          <div className="rounded-2xl border border-border/80 bg-card/80 p-6 shadow-sm backdrop-blur-sm">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold tracking-tight">Event Categories</h2>
-                <p className="text-xs text-muted-foreground">Manage platform-wide event categorization tags.</p>
+                <p className="text-xs text-muted-foreground">
+                  Manage platform-wide event categorization tags.
+                </p>
               </div>
               <form
                 className="flex items-center gap-2"
@@ -396,13 +363,20 @@ export default function AdminPage() {
             ) : (
               <div className="mt-4 divide-y rounded-lg border">
                 {categories.map((cat) => (
-                  <div key={cat.id} className="flex items-center justify-between gap-3 p-3.5">
+                  <div
+                    key={cat.id}
+                    className="flex items-center justify-between gap-3 p-3.5"
+                  >
                     <div className="flex items-center gap-3">
-                      <span className="h-3.5 w-3.5 shrink-0 rounded-full" style={{ backgroundColor: cat.color ?? '#6366F1' }} />
+                      <span
+                        className="h-3.5 w-3.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: cat.color ?? '#6366F1' }}
+                      />
                       <div>
                         <p className="text-sm font-medium">{cat.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          /{cat.slug} · {cat.eventCount} published event{cat.eventCount === 1 ? '' : 's'}
+                          /{cat.slug} · {cat.eventCount} published event
+                          {cat.eventCount === 1 ? '' : 's'}
                         </p>
                       </div>
                     </div>
@@ -411,7 +385,9 @@ export default function AdminPage() {
                       size="sm"
                       className="text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                       disabled={busy}
-                      onClick={() => void runAction(() => deactivateAdminCategory(cat.id))}
+                      onClick={() =>
+                        void runAction(() => deactivateAdminCategory(cat.id))
+                      }
                     >
                       Deactivate
                     </Button>
@@ -636,13 +612,23 @@ function UsersTab({
 
       {pages > 1 && (
         <div className="flex items-center justify-end gap-2 text-sm pt-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
             Previous
           </Button>
           <span className="text-muted-foreground">
             Page {page} of {pages}
           </span>
-          <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pages}
+            onClick={() => setPage((p) => p + 1)}
+          >
             Next
           </Button>
         </div>
@@ -652,7 +638,9 @@ function UsersTab({
       <Modal
         isOpen={statusModal.isOpen}
         onClose={() => setStatusModal({ isOpen: false, user: null, targetActive: false })}
-        title={statusModal.targetActive ? 'Reactivate User Account' : 'Deactivate User Account'}
+        title={
+          statusModal.targetActive ? 'Reactivate User Account' : 'Deactivate User Account'
+        }
         description={
           statusModal.targetActive
             ? `Reactivate account for ${statusModal.user?.firstName} ${statusModal.user?.lastName} (${statusModal.user?.email})? They will be allowed to log in again.`
@@ -702,7 +690,8 @@ function EventPreviewModal({
         if (!isCancelled) setDetail(data);
       })
       .catch((err) => {
-        if (!isCancelled) setError(err instanceof Error ? err.message : 'Failed to load event details');
+        if (!isCancelled)
+          setError(err instanceof Error ? err.message : 'Failed to load event details');
       })
       .finally(() => {
         if (!isCancelled) setLoading(false);
@@ -744,12 +733,15 @@ function EventPreviewModal({
                 >
                   {detail.moderation?.status === 'PENDING_APPROVAL'
                     ? 'Pending Review'
-                    : detail.moderation?.status ?? 'No Moderation'}
+                    : (detail.moderation?.status ?? 'No Moderation')}
                 </span>
               )}
               {detail && <StatusBadge status={detail.status} />}
             </div>
-            <h2 id="preview-title" className="mt-1 text-xl font-bold tracking-tight text-foreground">
+            <h2
+              id="preview-title"
+              className="mt-1 text-xl font-bold tracking-tight text-foreground"
+            >
               {detail ? detail.title : 'Loading event preview…'}
             </h2>
           </div>
@@ -768,7 +760,9 @@ function EventPreviewModal({
           {loading && (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-3">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-sm font-medium">Fetching event details & ticket inventory…</p>
+              <p className="text-sm font-medium">
+                Fetching event details & ticket inventory…
+              </p>
             </div>
           )}
 
@@ -780,15 +774,20 @@ function EventPreviewModal({
 
           {detail && (
             <>
-              {/* Cover Image banner if present */}
-              {detail.coverImage && (
-                <div className="relative h-48 w-full overflow-hidden rounded-lg border bg-muted">
-                  <img
-                    src={detail.coverImage}
-                    alt={detail.title}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
+              <div className="ep-admin-event-preview">
+                <PreviewGallery
+                  key={detail.id}
+                  images={[
+                    ...(detail.images ?? []),
+                    ...(detail.coverImage ? [detail.coverImage] : []),
+                  ]}
+                  title={detail.title}
+                />
+              </div>
+              {detail.status === 'PUBLISHED' && (
+                <Link className="text-link" href={'/events/' + detail.slug}>
+                  Open event page <ExternalLink className="icon" />
+                </Link>
               )}
 
               {/* Meta Grid */}
@@ -807,7 +806,8 @@ function EventPreviewModal({
                     )}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Contact: {detail.organizer.user.firstName} {detail.organizer.user.lastName} ({detail.organizer.user.email})
+                    Contact: {detail.organizer.user.firstName}{' '}
+                    {detail.organizer.user.lastName} ({detail.organizer.user.email})
                   </p>
                   {detail.organizer.phone && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
@@ -822,19 +822,29 @@ function EventPreviewModal({
                     <MapPin className="h-3.5 w-3.5" /> Venue & Schedule
                   </p>
                   <p className="font-semibold text-foreground">
-                    {detail.venue ? `${detail.venue.name} (${detail.venue.city}, ${detail.venue.state})` : 'No venue configured'}
+                    {detail.venue
+                      ? `${detail.venue.name} (${detail.venue.city}, ${detail.venue.state})`
+                      : 'No venue configured'}
                   </p>
                   {detail.venue && (
                     <p className="text-xs text-muted-foreground">
                       {detail.venue.address}
-                      {detail.venue.capacity != null ? ` · Capacity: ${detail.venue.capacity.toLocaleString()}` : ''}
+                      {detail.venue.capacity != null
+                        ? ` · Capacity: ${detail.venue.capacity.toLocaleString()}`
+                        : ''}
                     </p>
                   )}
                   <p className="text-xs font-medium text-primary flex items-center gap-1">
                     <Clock className="h-3 w-3" />
-                    {new Date(detail.startDate).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                    {new Date(detail.startDate).toLocaleString('en-IN', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
                     {' – '}
-                    {new Date(detail.endDate).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                    {new Date(detail.endDate).toLocaleString('en-IN', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
                   </p>
                 </div>
               </div>
@@ -854,7 +864,10 @@ function EventPreviewModal({
                   </span>
                 )}
                 {detail.tags.map((tag) => (
-                  <span key={tag} className="rounded-md border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground font-mono">
+                  <span
+                    key={tag}
+                    className="rounded-md border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground font-mono"
+                  >
                     #{tag}
                   </span>
                 ))}
@@ -862,9 +875,13 @@ function EventPreviewModal({
 
               {/* Descriptions */}
               <div className="space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Event Description</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Event Description
+                </p>
                 {detail.shortDescription && (
-                  <p className="text-sm font-medium text-foreground italic">{detail.shortDescription}</p>
+                  <p className="text-sm font-medium text-foreground italic">
+                    {detail.shortDescription}
+                  </p>
                 )}
                 <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed rounded-lg border p-3 bg-muted/10">
                   {detail.description}
@@ -874,11 +891,23 @@ function EventPreviewModal({
               {/* Gallery Images if present */}
               {detail.images && detail.images.length > 0 && (
                 <div className="space-y-2">
-                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Gallery Media ({detail.images.length})</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Gallery Media ({detail.images.length})
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {detail.images.map((img, i) => (
-                      <a key={i} href={img} target="_blank" rel="noopener noreferrer" className="group relative h-20 w-28 overflow-hidden rounded-md border bg-muted">
-                        <img src={img} alt={`Gallery ${i + 1}`} className="h-full w-full object-cover transition-transform group-hover:scale-105" />
+                      <a
+                        key={i}
+                        href={img}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group relative h-20 w-28 overflow-hidden rounded-md border bg-muted"
+                      >
+                        <img
+                          src={img}
+                          alt={`Gallery ${i + 1}`}
+                          className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                        />
                       </a>
                     ))}
                   </div>
@@ -891,7 +920,9 @@ function EventPreviewModal({
                   Ticket Tiers & Inventory ({detail.ticketTypes.length})
                 </p>
                 {detail.ticketTypes.length === 0 ? (
-                  <p className="text-xs text-muted-foreground italic">No ticket tiers configured.</p>
+                  <p className="text-xs text-muted-foreground italic">
+                    No ticket tiers configured.
+                  </p>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border">
                     <table className="w-full text-xs">
@@ -910,16 +941,24 @@ function EventPreviewModal({
                           <tr key={t.id} className="hover:bg-muted/20">
                             <td className="px-3 py-2 font-medium text-foreground">
                               {t.name}
-                              {t.description && <p className="text-[10px] text-muted-foreground">{t.description}</p>}
+                              {t.description && (
+                                <p className="text-[10px] text-muted-foreground">
+                                  {t.description}
+                                </p>
+                              )}
                             </td>
-                            <td className="px-3 py-2 font-semibold text-primary">{formatPrice(t.price)}</td>
+                            <td className="px-3 py-2 font-semibold text-primary">
+                              {formatPrice(t.price)}
+                            </td>
                             <td className="px-3 py-2">{t.totalQuantity}</td>
                             <td className="px-3 py-2">{t.availableQuantity}</td>
                             <td className="px-3 py-2">{t.maxPerBooking}</td>
                             <td className="px-3 py-2">
                               <span
                                 className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                                  t.isActive ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : 'bg-muted text-muted-foreground'
+                                  t.isActive
+                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-muted text-muted-foreground'
                                 }`}
                               >
                                 {t.isActive ? 'Active' : 'Disabled'}
@@ -933,19 +972,40 @@ function EventPreviewModal({
                 )}
               </div>
 
+              {Boolean(detail.faqs?.length) && (
+                <section>
+                  <h3 className="font-semibold text-base mb-3">
+                    Frequently asked questions
+                  </h3>
+                  <div className="space-y-3">
+                    {detail.faqs!.map((faq) => (
+                      <div key={faq.id} className="rounded-lg border p-3">
+                        <h4 className="font-medium">{faq.question}</h4>
+                        <p className="mt-1 text-muted-foreground">{faq.answer}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
               {/* Policies if present */}
               {(detail.policies || detail.cancellationPolicy) && (
                 <div className="grid gap-3 sm:grid-cols-2 text-xs">
                   {detail.policies && (
                     <div className="rounded-lg border p-3 space-y-1">
                       <p className="font-semibold text-foreground">Event Policies</p>
-                      <p className="text-muted-foreground whitespace-pre-wrap">{detail.policies}</p>
+                      <p className="text-muted-foreground whitespace-pre-wrap">
+                        {detail.policies}
+                      </p>
                     </div>
                   )}
                   {detail.cancellationPolicy && (
                     <div className="rounded-lg border p-3 space-y-1">
-                      <p className="font-semibold text-foreground">Cancellation & Refund Policy</p>
-                      <p className="text-muted-foreground whitespace-pre-wrap">{detail.cancellationPolicy}</p>
+                      <p className="font-semibold text-foreground">
+                        Cancellation & Refund Policy
+                      </p>
+                      <p className="text-muted-foreground whitespace-pre-wrap">
+                        {detail.cancellationPolicy}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -954,8 +1014,12 @@ function EventPreviewModal({
               {/* Moderation History & Rejection notes */}
               {detail.moderation?.rejectionReason && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 space-y-1">
-                  <p className="text-xs font-semibold text-destructive">Previous Rejection Reason:</p>
-                  <p className="text-xs text-muted-foreground">{detail.moderation.rejectionReason}</p>
+                  <p className="text-xs font-semibold text-destructive">
+                    Previous Rejection Reason:
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {detail.moderation.rejectionReason}
+                  </p>
                 </div>
               )}
             </>
@@ -1051,7 +1115,7 @@ function EventsTab({
   // In-UI modal for event approval, rejection, and cancellation
   const [modModal, setModModal] = useState<{
     isOpen: boolean;
-    type: 'APPROVE' | 'REJECT' | 'CANCEL';
+    type: 'APPROVE' | 'REJECT' | 'CANCEL' | 'PAUSE' | 'RESUME';
     event: AdminEventRow | null;
     reason: string;
   }>({
@@ -1093,6 +1157,8 @@ function EventsTab({
         await reviewAdminEvent(event.id, 'APPROVE');
       } else if (type === 'REJECT') {
         await reviewAdminEvent(event.id, 'REJECT', reason.trim());
+      } else if (type === 'PAUSE' || type === 'RESUME') {
+        await setAdminEventPaused(event.id, type, reason.trim() || undefined);
       } else if (type === 'CANCEL') {
         await moderateAdminEvent(event.id, reason.trim() || undefined);
       }
@@ -1128,6 +1194,7 @@ function EventsTab({
           <option value="">All statuses</option>
           <option value="DRAFT">Draft</option>
           <option value="PUBLISHED">Published</option>
+          <option value="PAUSED">Paused</option>
           <option value="CANCELLED">Cancelled</option>
           <option value="COMPLETED">Completed</option>
           <option value="SOLDOUT">Sold out</option>
@@ -1137,7 +1204,7 @@ function EventsTab({
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
+      <div className="ep-moderation-list rounded-xl border bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead className="border-b bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
@@ -1152,18 +1219,25 @@ function EventsTab({
             {(events ?? []).map((ev) => (
               <tr key={ev.id} className="transition-colors hover:bg-muted/30">
                 <td className="px-4 py-3">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewEventId(ev.id)}
-                    className="text-left font-semibold text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:underline"
-                  >
-                    {ev.title}
-                  </button>
+                  {ev.status === 'PUBLISHED' && ev.slug ? (
+                    <Link
+                      href={'/events/' + encodeURIComponent(ev.slug)}
+                      className="ep-moderation-event-link font-semibold text-foreground hover:text-primary hover:underline"
+                    >
+                      {ev.title}
+                    </Link>
+                  ) : (
+                    <span className="font-semibold text-foreground">{ev.title}</span>
+                  )}
                   <p className="text-xs text-muted-foreground">
-                    {ev.venue ? `${ev.venue.name}, ${ev.venue.city}` : 'No venue configured'}
+                    {ev.venue
+                      ? `${ev.venue.name}, ${ev.venue.city}`
+                      : 'No venue configured'}
                   </p>
                 </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{ev.organizerEmail}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">
+                  {ev.organizerEmail}
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col gap-1 items-start">
                     <StatusBadge status={ev.status} />
@@ -1179,7 +1253,9 @@ function EventsTab({
                                 : 'bg-muted text-muted-foreground'
                         }`}
                       >
-                        {ev.moderation.status === 'PENDING_APPROVAL' ? 'Pending Review' : ev.moderation.status}
+                        {ev.moderation.status === 'PENDING_APPROVAL'
+                          ? 'Pending Review'
+                          : ev.moderation.status}
                       </span>
                     )}
                   </div>
@@ -1229,7 +1305,24 @@ function EventsTab({
                         </Button>
                       </>
                     )}
-                    {ev.status === 'PUBLISHED' && (
+                    {['PUBLISHED', 'PAUSED'].includes(ev.status) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() =>
+                          setModModal({
+                            isOpen: true,
+                            type: ev.status === 'PAUSED' ? 'RESUME' : 'PAUSE',
+                            event: ev,
+                            reason: '',
+                          })
+                        }
+                      >
+                        {ev.status === 'PAUSED' ? 'Resume' : 'Pause'}
+                      </Button>
+                    )}
+                    {['PUBLISHED', 'PAUSED'].includes(ev.status) && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -1264,13 +1357,23 @@ function EventsTab({
 
       {pages > 1 && (
         <div className="flex items-center justify-end gap-2 text-sm pt-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
             Previous
           </Button>
           <span className="text-muted-foreground">
             Page {page} of {pages}
           </span>
-          <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pages}
+            onClick={() => setPage((p) => p + 1)}
+          >
             Next
           </Button>
         </div>
@@ -1281,42 +1384,69 @@ function EventsTab({
         isOpen={modModal.isOpen}
         onClose={() => setModModal((prev) => ({ ...prev, isOpen: false }))}
         title={
-          modModal.type === 'APPROVE'
-            ? 'Approve Event for Publication'
-            : modModal.type === 'REJECT'
-              ? 'Reject Event Submission'
-              : 'Cancel Published Event'
+          modModal.type === 'PAUSE'
+            ? 'Pause Event'
+            : modModal.type === 'RESUME'
+              ? 'Resume Event'
+              : modModal.type === 'APPROVE'
+                ? 'Approve Event for Publication'
+                : modModal.type === 'REJECT'
+                  ? 'Reject Event Submission'
+                  : 'Cancel Event'
         }
         description={
-          modModal.type === 'APPROVE'
-            ? `Approve "${modModal.event?.title}"? The event will transition to APPROVED status and can be published immediately.`
-            : modModal.type === 'REJECT'
-              ? `Provide a required feedback reason for rejecting "${modModal.event?.title}". The organizer will see this note to submit revisions.`
-              : `Cancelling "${modModal.event?.title}" will invalidate all active tickets and create refund requests for captured bookings.`
+          modModal.type === 'PAUSE'
+            ? 'Temporarily stop new bookings and hide this event from discovery. Existing tickets and bookings stay intact. The organizer will be notified.'
+            : modModal.type === 'RESUME'
+              ? 'Restore discovery and new bookings. The organizer will be notified.'
+              : modModal.type === 'APPROVE'
+                ? `Approve "${modModal.event?.title}"? The event will transition to APPROVED status and can be published immediately.`
+                : modModal.type === 'REJECT'
+                  ? `Provide a required feedback reason for rejecting "${modModal.event?.title}". The organizer will see this note to submit revisions.`
+                  : `Cancelling "${modModal.event?.title}" will invalidate all active tickets and create refund requests for captured bookings.`
         }
         confirmLabel={
-          modModal.type === 'APPROVE'
-            ? 'Approve Event'
-            : modModal.type === 'REJECT'
-              ? 'Reject Submission'
-              : 'Cancel Event'
+          modModal.type === 'PAUSE'
+            ? 'Pause Event'
+            : modModal.type === 'RESUME'
+              ? 'Resume Event'
+              : modModal.type === 'APPROVE'
+                ? 'Approve Event'
+                : modModal.type === 'REJECT'
+                  ? 'Reject Submission'
+                  : 'Cancel Event'
         }
-        confirmVariant={modModal.type === 'APPROVE' ? 'default' : 'destructive'}
-        isConfirmDisabled={modModal.type === 'REJECT' && modModal.reason.trim().length === 0}
+        confirmVariant={
+          modModal.type === 'APPROVE' ||
+          modModal.type === 'PAUSE' ||
+          modModal.type === 'RESUME'
+            ? 'default'
+            : 'destructive'
+        }
+        isConfirmDisabled={
+          modModal.type === 'REJECT' && modModal.reason.trim().length === 0
+        }
         onConfirm={handleModerationSubmit}
         isLoading={busy}
       >
         {modModal.type !== 'APPROVE' && (
           <div className="mt-3 flex flex-col gap-1.5">
-            <label htmlFor="mod-reason" className="text-xs font-semibold uppercase text-muted-foreground">
-              {modModal.type === 'REJECT' ? 'Rejection Reason (Required)' : 'Reason for Cancellation (Optional)'}
+            <label
+              htmlFor="mod-reason"
+              className="text-xs font-semibold uppercase text-muted-foreground"
+            >
+              {modModal.type === 'REJECT'
+                ? 'Rejection Reason (Required)'
+                : 'Reason (Optional)'}
             </label>
             <textarea
               id="mod-reason"
               rows={3}
               required={modModal.type === 'REJECT'}
               value={modModal.reason}
-              onChange={(e) => setModModal((prev) => ({ ...prev, reason: e.target.value }))}
+              onChange={(e) =>
+                setModModal((prev) => ({ ...prev, reason: e.target.value }))
+              }
               placeholder={
                 modModal.type === 'REJECT'
                   ? 'e.g. Please clarify ticket cancellation policies and supply venue details.'
@@ -1404,7 +1534,11 @@ function OrganizersTab({
       const res = await listPendingOrganizerApplications();
       setApplications(res.applications);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load pending organizer applications');
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to load pending organizer applications',
+      );
     } finally {
       setPendingLoading(false);
     }
@@ -1487,7 +1621,9 @@ function OrganizersTab({
           {pendingCount > 0 && (
             <span
               className={`rounded-full px-2 py-0.2 text-xs font-bold ${
-                subTab === 'pending' ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-primary/10 text-primary'
+                subTab === 'pending'
+                  ? 'bg-primary-foreground/20 text-primary-foreground'
+                  : 'bg-primary/10 text-primary'
               }`}
             >
               {pendingCount}
@@ -1516,12 +1652,17 @@ function OrganizersTab({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-semibold text-foreground">Organizer Application Review Queue</h2>
+              <h2 className="text-base font-semibold text-foreground">
+                Organizer Application Review Queue
+              </h2>
               <p className="text-xs text-muted-foreground">
-                Review and approve organizations applying to create and host ticketed events.
+                Review and approve organizations applying to create and host ticketed
+                events.
               </p>
             </div>
-            {pendingLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            {pendingLoading && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
           </div>
 
           {!pendingLoading && (!applications || applications.length === 0) ? (
@@ -1529,9 +1670,12 @@ function OrganizersTab({
               <div className="rounded-full bg-emerald-500/10 p-3 text-emerald-600 dark:text-emerald-400">
                 <CheckCircle2 className="h-6 w-6" />
               </div>
-              <h3 className="mt-3 text-base font-semibold text-foreground">No Pending Applications</h3>
+              <h3 className="mt-3 text-base font-semibold text-foreground">
+                No Pending Applications
+              </h3>
               <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-                All organizer onboarding applications have been reviewed. New applications will appear here automatically.
+                All organizer onboarding applications have been reviewed. New applications
+                will appear here automatically.
               </p>
             </div>
           ) : (
@@ -1548,7 +1692,9 @@ function OrganizersTab({
                           {app.organizationName.charAt(0).toUpperCase()}
                         </span>
                         <div>
-                          <h3 className="font-semibold text-foreground">{app.organizationName}</h3>
+                          <h3 className="font-semibold text-foreground">
+                            {app.organizationName}
+                          </h3>
                           <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
                             <Clock className="h-3 w-3" /> Awaiting Review
                           </span>
@@ -1557,7 +1703,9 @@ function OrganizersTab({
                     </div>
 
                     {app.description && (
-                      <p className="line-clamp-3 text-xs text-muted-foreground">{app.description}</p>
+                      <p className="line-clamp-3 text-xs text-muted-foreground">
+                        {app.description}
+                      </p>
                     )}
 
                     <div className="space-y-1.5 rounded-lg bg-muted/40 p-2.5 text-xs text-muted-foreground">
@@ -1571,7 +1719,11 @@ function OrganizersTab({
                         <p className="flex items-center gap-1.5 truncate">
                           <ExternalLink className="h-3.5 w-3.5 shrink-0" />
                           <a
-                            href={app.website.startsWith('http') ? app.website : `https://${app.website}`}
+                            href={
+                              app.website.startsWith('http')
+                                ? app.website
+                                : `https://${app.website}`
+                            }
                             target="_blank"
                             rel="noopener noreferrer"
                             className="truncate text-primary hover:underline"
@@ -1642,7 +1794,9 @@ function OrganizersTab({
                 className="h-9 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             </div>
-            {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            {loading && (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
           </div>
 
           <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
@@ -1653,7 +1807,9 @@ function OrganizersTab({
                   <th className="px-4 py-3 font-semibold">Primary Contact</th>
                   <th className="px-4 py-3 font-semibold">Events</th>
                   <th className="px-4 py-3 font-semibold">Venues</th>
-                  <th className="px-4 py-3 text-right font-semibold">Verification Badge</th>
+                  <th className="px-4 py-3 text-right font-semibold">
+                    Verification Badge
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -1662,12 +1818,21 @@ function OrganizersTab({
                     <td className="px-4 py-3">
                       <p className="flex items-center gap-1.5 font-semibold text-foreground">
                         {o.organizationName}
-                        {o.isVerified && <BadgeCheck className="h-4 w-4 text-primary" aria-label="Verified" />}
+                        {o.isVerified && (
+                          <BadgeCheck
+                            className="h-4 w-4 text-primary"
+                            aria-label="Verified"
+                          />
+                        )}
                       </p>
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
                       {o.user.email}
-                      {!o.user.isActive && <span className="ml-1 text-destructive font-medium">(account deactivated)</span>}
+                      {!o.user.isActive && (
+                        <span className="ml-1 text-destructive font-medium">
+                          (account deactivated)
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-medium">{o.eventCount}</td>
                     <td className="px-4 py-3 font-medium">{o.venueCount}</td>
@@ -1692,7 +1857,10 @@ function OrganizersTab({
                 ))}
                 {!loading && (organizers ?? []).length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
+                    <td
+                      colSpan={5}
+                      className="px-4 py-10 text-center text-muted-foreground"
+                    >
                       No organizers found matching your search.
                     </td>
                   </tr>
@@ -1703,13 +1871,23 @@ function OrganizersTab({
 
           {pages > 1 && (
             <div className="flex items-center justify-end gap-2 text-sm pt-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
                 Previous
               </Button>
               <span className="text-muted-foreground">
                 Page {page} of {pages}
               </span>
-              <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= pages}
+                onClick={() => setPage((p) => p + 1)}
+              >
                 Next
               </Button>
             </div>
@@ -1749,13 +1927,18 @@ function OrganizersTab({
                 : 'Verify Organizer'
         }
         confirmVariant={modalState.type === 'reject_app' ? 'destructive' : 'default'}
-        isConfirmDisabled={modalState.type === 'reject_app' && modalState.reason.trim().length === 0}
+        isConfirmDisabled={
+          modalState.type === 'reject_app' && modalState.reason.trim().length === 0
+        }
         onConfirm={handleModalConfirm}
         isLoading={busy}
       >
         {modalState.type === 'reject_app' && (
           <div className="mt-3 flex flex-col gap-1.5">
-            <label htmlFor="app-rejection-reason" className="text-xs font-semibold uppercase text-muted-foreground">
+            <label
+              htmlFor="app-rejection-reason"
+              className="text-xs font-semibold uppercase text-muted-foreground"
+            >
               Rejection Reason (Required)
             </label>
             <textarea
@@ -1763,7 +1946,9 @@ function OrganizersTab({
               rows={3}
               required
               value={modalState.reason}
-              onChange={(e) => setModalState((prev) => ({ ...prev, reason: e.target.value }))}
+              onChange={(e) =>
+                setModalState((prev) => ({ ...prev, reason: e.target.value }))
+              }
               placeholder="e.g. Please provide a registered organization phone number and valid website."
               className="w-full rounded-md border border-input bg-background p-2.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
@@ -1821,7 +2006,8 @@ function BookingsTab() {
         setError(null);
       })
       .catch((err: unknown) => {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Failed to load bookings');
+        if (!controller.signal.aborted)
+          setError(err instanceof Error ? err.message : 'Failed to load bookings');
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -1858,7 +2044,12 @@ function BookingsTab() {
             ? item
             : {
                 ...item,
-                status: result.status === 'REFUNDED' ? 'REFUNDED' : result.outcome === 'failed' ? 'CONFIRMED' : item.status,
+                status:
+                  result.status === 'REFUNDED'
+                    ? 'REFUNDED'
+                    : result.outcome === 'failed'
+                      ? 'CONFIRMED'
+                      : item.status,
                 payment: item.payment
                   ? {
                       ...item.payment,
@@ -1909,7 +2100,8 @@ function BookingsTab() {
                 payment: item.payment
                   ? {
                       ...item.payment,
-                      status: result.status === 'REFUNDED' ? 'REFUNDED' : item.payment.status,
+                      status:
+                        result.status === 'REFUNDED' ? 'REFUNDED' : item.payment.status,
                     }
                   : null,
               },
@@ -1918,7 +2110,7 @@ function BookingsTab() {
       setActionMessage(
         result.status === 'REFUNDED'
           ? 'Refund was safely recovered and processed. Booking and tickets were updated.'
-          : result.message ?? `Recovery status: ${result.status}`,
+          : (result.message ?? `Recovery status: ${result.status}`),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Refund recovery failed');
@@ -1955,7 +2147,14 @@ function BookingsTab() {
           className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
         >
           <option value="">All booking statuses</option>
-          {['PENDING', 'PAYMENT_PENDING', 'CONFIRMED', 'CANCELLED', 'EXPIRED', 'REFUNDED'].map((val) => (
+          {[
+            'PENDING',
+            'PAYMENT_PENDING',
+            'CONFIRMED',
+            'CANCELLED',
+            'EXPIRED',
+            'REFUNDED',
+          ].map((val) => (
             <option key={val}>{val}</option>
           ))}
         </select>
@@ -1963,7 +2162,11 @@ function BookingsTab() {
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
-      {actionMessage && <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">{actionMessage}</p>}
+      {actionMessage && (
+        <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+          {actionMessage}
+        </p>
+      )}
 
       <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
         <table className="w-full text-sm">
@@ -1982,7 +2185,9 @@ function BookingsTab() {
               <tr key={booking.id} className="transition-colors hover:bg-muted/30">
                 <td className="px-4 py-3">
                   <p className="font-semibold text-foreground">{booking.event.title}</p>
-                  <p className="font-mono text-[11px] text-muted-foreground">{booking.id}</p>
+                  <p className="font-mono text-[11px] text-muted-foreground">
+                    {booking.id}
+                  </p>
                 </td>
                 <td className="px-4 py-3">
                   <p className="font-medium">
@@ -1996,7 +2201,9 @@ function BookingsTab() {
                 <td className="px-4 py-3 text-xs font-medium">
                   {booking.payment?.status ?? 'No payment record'}
                 </td>
-                <td className="px-4 py-3 font-semibold">{formatPrice(booking.totalAmount)}</td>
+                <td className="px-4 py-3 font-semibold">
+                  {formatPrice(booking.totalAmount)}
+                </td>
                 <td className="px-4 py-3 text-right">
                   <Button
                     size="sm"
@@ -2022,13 +2229,23 @@ function BookingsTab() {
 
       {pages > 1 && (
         <div className="flex items-center justify-end gap-2 text-sm pt-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
             Previous
           </Button>
           <span className="text-muted-foreground">
             Page {page} of {pages}
           </span>
-          <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pages}
+            onClick={() => setPage((p) => p + 1)}
+          >
             Next
           </Button>
         </div>
@@ -2042,10 +2259,15 @@ function BookingsTab() {
       )}
 
       {detail && (
-        <section aria-label="Booking detail" className="rounded-xl border bg-card p-6 shadow-sm">
+        <section
+          aria-label="Booking detail"
+          className="rounded-xl border bg-card p-6 shadow-sm"
+        >
           <div className="flex flex-wrap items-start justify-between gap-2 border-b pb-4">
             <div>
-              <h2 className="text-lg font-bold tracking-tight text-foreground">Booking Record</h2>
+              <h2 className="text-lg font-bold tracking-tight text-foreground">
+                Booking Record
+              </h2>
               <p className="font-mono text-xs text-muted-foreground">{detail.id}</p>
             </div>
             <Button size="sm" variant="ghost" onClick={() => setDetail(null)}>
@@ -2055,43 +2277,69 @@ function BookingsTab() {
 
           <div className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <p className="text-xs uppercase font-semibold text-muted-foreground">Customer</p>
-              <p className="mt-1 font-medium">{detail.user.firstName} {detail.user.lastName}</p>
+              <p className="text-xs uppercase font-semibold text-muted-foreground">
+                Customer
+              </p>
+              <p className="mt-1 font-medium">
+                {detail.user.firstName} {detail.user.lastName}
+              </p>
               <p className="text-xs text-muted-foreground">{detail.user.email}</p>
             </div>
             <div>
-              <p className="text-xs uppercase font-semibold text-muted-foreground">Event</p>
+              <p className="text-xs uppercase font-semibold text-muted-foreground">
+                Event
+              </p>
               <p className="mt-1 font-medium">{detail.event.title}</p>
             </div>
             <div>
-              <p className="text-xs uppercase font-semibold text-muted-foreground">Booking Status</p>
-              <p className="mt-1"><StatusBadge status={detail.status} /></p>
-            </div>
-            <div>
-              <p className="text-xs uppercase font-semibold text-muted-foreground">Payment Status</p>
-              <p className="mt-1 font-medium">{detail.payment?.status ?? 'No payment'}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase font-semibold text-muted-foreground">Total Paid</p>
-              <p className="mt-1 font-semibold">{formatPrice(detail.totalAmount)}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase font-semibold text-muted-foreground">Refunded</p>
-              <p className="mt-1 font-medium">
-                {detail.payment?.refundAmount == null ? '—' : formatPrice(detail.payment.refundAmount)}
+              <p className="text-xs uppercase font-semibold text-muted-foreground">
+                Booking Status
+              </p>
+              <p className="mt-1">
+                <StatusBadge status={detail.status} />
               </p>
             </div>
             <div>
-              <p className="text-xs uppercase font-semibold text-muted-foreground">Payment Method</p>
+              <p className="text-xs uppercase font-semibold text-muted-foreground">
+                Payment Status
+              </p>
+              <p className="mt-1 font-medium">{detail.payment?.status ?? 'No payment'}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase font-semibold text-muted-foreground">
+                Total Paid
+              </p>
+              <p className="mt-1 font-semibold">{formatPrice(detail.totalAmount)}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase font-semibold text-muted-foreground">
+                Refunded
+              </p>
+              <p className="mt-1 font-medium">
+                {detail.payment?.refundAmount == null
+                  ? '—'
+                  : formatPrice(detail.payment.refundAmount)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs uppercase font-semibold text-muted-foreground">
+                Payment Method
+              </p>
               <p className="mt-1">{detail.payment?.method ?? '—'}</p>
             </div>
             <div>
-              <p className="text-xs uppercase font-semibold text-muted-foreground">Refund Reference</p>
+              <p className="text-xs uppercase font-semibold text-muted-foreground">
+                Refund Reference
+              </p>
               <p className="mt-1 font-mono text-xs">{detail.payment?.refundId ?? '—'}</p>
             </div>
             <div>
-              <p className="text-xs uppercase font-semibold text-muted-foreground">Created</p>
-              <p className="mt-1 text-xs">{new Date(detail.createdAt).toLocaleString()}</p>
+              <p className="text-xs uppercase font-semibold text-muted-foreground">
+                Created
+              </p>
+              <p className="mt-1 text-xs">
+                {new Date(detail.createdAt).toLocaleString()}
+              </p>
             </div>
           </div>
 
@@ -2099,8 +2347,13 @@ function BookingsTab() {
             <h3 className="text-sm font-semibold text-foreground">Items and Tickets</h3>
             <ul className="mt-2 space-y-1.5 text-sm">
               {detail.items.map((item, index) => (
-                <li key={`${item.ticketType.name}-${index}`} className="flex justify-between border-b pb-1 text-xs sm:text-sm">
-                  <span>{item.ticketType.name} × {item.quantity}</span>
+                <li
+                  key={`${item.ticketType.name}-${index}`}
+                  className="flex justify-between border-b pb-1 text-xs sm:text-sm"
+                >
+                  <span>
+                    {item.ticketType.name} × {item.quantity}
+                  </span>
                   <span className="font-semibold">{formatPrice(item.totalPrice)}</span>
                 </li>
               ))}
@@ -2113,34 +2366,44 @@ function BookingsTab() {
             </p>
             {detail.cancellationReason && (
               <p className="mt-3 rounded-md bg-muted/40 p-2.5 text-xs text-muted-foreground">
-                <span className="font-semibold">Cancellation reason:</span> {detail.cancellationReason}
+                <span className="font-semibold">Cancellation reason:</span>{' '}
+                {detail.cancellationReason}
               </p>
             )}
           </div>
 
           {detail.payment?.status === 'REFUND_PENDING' && (
             <div className="mt-6 space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
-              {detail.payment?.refundRequestStatus === 'APPROVED' && !detail.payment?.refundId && (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex-1">
-                    <p className="text-xs font-semibold text-primary">Approved Refund Awaiting Recovery</p>
-                    <p className="text-xs text-muted-foreground">
-                      This refund was approved but paused before provider creation. Safe recovery verifies payment state, acquires an atomic claim, and executes without duplicating.
-                    </p>
+              {detail.payment?.refundRequestStatus === 'APPROVED' &&
+                !detail.payment?.refundId && (
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-primary">
+                        Approved Refund Awaiting Recovery
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        This refund was approved but paused before provider creation. Safe
+                        recovery verifies payment state, acquires an atomic claim, and
+                        executes without duplicating.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      disabled={recovering || reconciling}
+                      onClick={() => setActionModal({ isOpen: true, type: 'recover' })}
+                    >
+                      {recovering && (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      )}
+                      {recovering ? 'Recovering refund…' : 'Recover Refund'}
+                    </Button>
                   </div>
-                  <Button
-                    size="sm"
-                    disabled={recovering || reconciling}
-                    onClick={() => setActionModal({ isOpen: true, type: 'recover' })}
-                  >
-                    {recovering && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                    {recovering ? 'Recovering refund…' : 'Recover Refund'}
-                  </Button>
-                </div>
-              )}
+                )}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                 <div className="flex-1">
-                  <p className="text-xs font-semibold text-foreground">Authoritative Provider Status Check</p>
+                  <p className="text-xs font-semibold text-foreground">
+                    Authoritative Provider Status Check
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Verifies Razorpay refund state without issuing another transaction.
                   </p>
@@ -2164,13 +2427,19 @@ function BookingsTab() {
       <Modal
         isOpen={actionModal.isOpen}
         onClose={() => setActionModal((prev) => ({ ...prev, isOpen: false }))}
-        title={actionModal.type === 'recover' ? 'Recover Approved Refund' : 'Reconcile Refund Status'}
+        title={
+          actionModal.type === 'recover'
+            ? 'Recover Approved Refund'
+            : 'Reconcile Refund Status'
+        }
         description={
           actionModal.type === 'recover'
             ? 'Safe recovery will inspect provider records and execute an idempotent atomic claim. This will not duplicate refunds.'
             : 'Check authoritative provider status for this booking? This inspects Razorpay and reconciles local ticket inventory without creating a new payment or refund.'
         }
-        confirmLabel={actionModal.type === 'recover' ? 'Proceed with Recovery' : 'Reconcile Status'}
+        confirmLabel={
+          actionModal.type === 'recover' ? 'Proceed with Recovery' : 'Reconcile Status'
+        }
         onConfirm={actionModal.type === 'recover' ? handleRecover : handleReconcile}
         isLoading={recovering || reconciling}
       />
@@ -2196,29 +2465,32 @@ function AuditLogsTab() {
     return () => window.clearTimeout(timer);
   }, [search]);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true);
-    try {
-      const body = await listAdminAuditLogs({
-        search: debouncedSearch || undefined,
-        entity: entity || undefined,
-        action: action || undefined,
-        page,
-        signal,
-      });
-      setLogs(body.logs);
-      setPages(body.pages);
-      setError(null);
-    } catch (err) {
-      if (!signal?.aborted) {
-        setError(err instanceof Error ? err.message : 'Failed to load audit logs');
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      setLoading(true);
+      try {
+        const body = await listAdminAuditLogs({
+          search: debouncedSearch || undefined,
+          entity: entity || undefined,
+          action: action || undefined,
+          page,
+          signal,
+        });
+        setLogs(body.logs);
+        setPages(body.pages);
+        setError(null);
+      } catch (err) {
+        if (!signal?.aborted) {
+          setError(err instanceof Error ? err.message : 'Failed to load audit logs');
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setLoading(false);
+        }
       }
-    } finally {
-      if (!signal?.aborted) {
-        setLoading(false);
-      }
-    }
-  }, [debouncedSearch, entity, action, page]);
+    },
+    [debouncedSearch, entity, action, page],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2269,9 +2541,15 @@ function AuditLogsTab() {
           <option value="">All actions</option>
           <option value="USER_ACTIVATED">USER_ACTIVATED</option>
           <option value="USER_DEACTIVATED">USER_DEACTIVATED</option>
-          <option value="ORGANIZER_APPLICATION_SUBMITTED">ORGANIZER_APPLICATION_SUBMITTED</option>
-          <option value="ORGANIZER_APPLICATION_APPROVED">ORGANIZER_APPLICATION_APPROVED</option>
-          <option value="ORGANIZER_APPLICATION_REJECTED">ORGANIZER_APPLICATION_REJECTED</option>
+          <option value="ORGANIZER_APPLICATION_SUBMITTED">
+            ORGANIZER_APPLICATION_SUBMITTED
+          </option>
+          <option value="ORGANIZER_APPLICATION_APPROVED">
+            ORGANIZER_APPLICATION_APPROVED
+          </option>
+          <option value="ORGANIZER_APPLICATION_REJECTED">
+            ORGANIZER_APPLICATION_REJECTED
+          </option>
           <option value="EVENT_CANCELLED_BY_ADMIN">EVENT_CANCELLED_BY_ADMIN</option>
         </select>
         {loading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -2301,10 +2579,16 @@ function AuditLogsTab() {
                   <span className="rounded bg-secondary px-1.5 py-0.5 text-[11px] font-semibold text-secondary-foreground">
                     {log.entity}
                   </span>
-                  {log.entityId && <span className="ml-1 text-muted-foreground">({log.entityId.slice(0, 8)})</span>}
+                  {log.entityId && (
+                    <span className="ml-1 text-muted-foreground">
+                      ({log.entityId.slice(0, 8)})
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 font-sans text-xs">
-                  {log.user ? `${log.user.firstName} ${log.user.lastName} (${log.user.email})` : 'System'}
+                  {log.user
+                    ? `${log.user.firstName} ${log.user.lastName} (${log.user.email})`
+                    : 'System'}
                 </td>
                 <td className="px-4 py-3 max-w-xs truncate text-muted-foreground">
                   {log.details ? JSON.stringify(log.details) : '—'}
@@ -2313,7 +2597,10 @@ function AuditLogsTab() {
             ))}
             {!loading && (logs ?? []).length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center font-sans text-muted-foreground">
+                <td
+                  colSpan={5}
+                  className="px-4 py-10 text-center font-sans text-muted-foreground"
+                >
                   No audit logs found matching your filters.
                 </td>
               </tr>
@@ -2324,13 +2611,23 @@ function AuditLogsTab() {
 
       {pages > 1 && (
         <div className="flex items-center justify-end gap-2 text-sm pt-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+          >
             Previous
           </Button>
           <span className="text-muted-foreground">
             Page {page} of {pages}
           </span>
-          <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= pages}
+            onClick={() => setPage((p) => p + 1)}
+          >
             Next
           </Button>
         </div>
@@ -2426,21 +2723,26 @@ function SystemControlsTab() {
   return (
     <div className="space-y-6 pt-4 max-w-4xl">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">System Controls</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage platform availability and maintenance switches. All toggles persist in the database and apply across API instances immediately.
+          Manage website availability, booking access and assistant maintenance.
         </p>
       </div>
 
       {error && (
-        <div role="alert" className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+        <div
+          role="alert"
+          className="flex items-start gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"
+        >
           <AlertCircle className="h-5 w-5 shrink-0" />
           <p>{error}</p>
         </div>
       )}
 
       {success && (
-        <div role="status" className="flex items-start gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-300">
+        <div
+          role="status"
+          className="flex items-start gap-2.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-800 dark:text-emerald-300"
+        >
           <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
           <p>{success}</p>
         </div>
@@ -2448,26 +2750,35 @@ function SystemControlsTab() {
 
       <div className="grid gap-6">
         {/* Control 1: Website Maintenance Mode */}
-        <div className={`rounded-xl border p-6 transition-all shadow-sm ${
-          controls?.websiteMaintenance ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10' : 'border-border bg-card'
-        }`}>
+        <div
+          className={`rounded-xl border p-6 transition-all shadow-sm ${
+            controls?.websiteMaintenance
+              ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10'
+              : 'border-border bg-card'
+          }`}
+        >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2.5">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
                   <ShieldAlert className="h-4 w-4" />
                 </span>
-                <h3 className="text-lg font-semibold text-foreground">Website Maintenance Mode</h3>
-                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  controls?.websiteMaintenance
-                    ? 'bg-amber-500 text-amber-950 font-bold animate-pulse'
-                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
-                }`}>
+                <h3 className="text-lg font-semibold text-foreground">
+                  Website Maintenance Mode
+                </h3>
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                    controls?.websiteMaintenance
+                      ? 'bg-amber-500 text-amber-950 font-bold animate-pulse'
+                      : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                  }`}
+                >
                   {controls?.websiteMaintenance ? 'ACTIVE (RESTRICTED)' : 'NORMAL (LIVE)'}
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-muted-foreground pt-1 leading-relaxed max-w-2xl">
-                Restricts public website access. Public visitors are shown the maintenance page. Direct API calls from non-administrators are rejected. Admin recovery access and payment webhooks remain fully preserved.
+                Show visitors a maintenance notice while administrators retain access.
+                Existing payment updates continue to be processed.
               </p>
             </div>
 
@@ -2484,12 +2795,17 @@ function SystemControlsTab() {
               ) : (
                 <Power className="mr-1.5 h-4 w-4" />
               )}
-              {controls?.websiteMaintenance ? 'Disable Maintenance' : 'Enable Maintenance'}
+              {controls?.websiteMaintenance
+                ? 'Disable Maintenance'
+                : 'Enable Maintenance'}
             </Button>
           </div>
 
           <div className="mt-5 border-t border-border/60 pt-4">
-            <label htmlFor="website-msg" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+            <label
+              htmlFor="website-msg"
+              className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5"
+            >
               Public Maintenance Notice Message
             </label>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -2504,11 +2820,23 @@ function SystemControlsTab() {
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={savingKey === 'website-msg' || websiteMsg === controls?.websiteMaintenanceMessage}
-                onClick={() => handleUpdate({ websiteMaintenanceMessage: websiteMsg.trim() }, 'website-msg')}
+                disabled={
+                  savingKey === 'website-msg' ||
+                  websiteMsg === controls?.websiteMaintenanceMessage
+                }
+                onClick={() =>
+                  handleUpdate(
+                    { websiteMaintenanceMessage: websiteMsg.trim() },
+                    'website-msg',
+                  )
+                }
                 className="shrink-0"
               >
-                {savingKey === 'website-msg' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                {savingKey === 'website-msg' ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="mr-1.5 h-3.5 w-3.5" />
+                )}
                 Save message
               </Button>
             </div>
@@ -2516,26 +2844,37 @@ function SystemControlsTab() {
         </div>
 
         {/* Control 2: AI Assistant Maintenance Mode */}
-        <div className={`rounded-xl border p-6 transition-all shadow-sm ${
-          controls?.aiMaintenance ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10' : 'border-border bg-card'
-        }`}>
+        <div
+          className={`rounded-xl border p-6 transition-all shadow-sm ${
+            controls?.aiMaintenance
+              ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10'
+              : 'border-border bg-card'
+          }`}
+        >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2.5">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Sparkles className="h-4 w-4" />
                 </span>
-                <h3 className="text-lg font-semibold text-foreground">AI Assistant Maintenance Mode</h3>
-                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  controls?.aiMaintenance
-                    ? 'bg-amber-500 text-amber-950 font-bold'
-                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
-                }`}>
+                <h3 className="text-lg font-semibold text-foreground">
+                  AI Assistant Maintenance Mode
+                </h3>
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                    controls?.aiMaintenance
+                      ? 'bg-amber-500 text-amber-950 font-bold'
+                      : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                  }`}
+                >
                   {controls?.aiMaintenance ? 'MAINTENANCE (OFFLINE)' : 'ONLINE'}
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-muted-foreground pt-1 leading-relaxed max-w-2xl">
-                Temporarily disables the AI Assistant chat interface and rejects AI generation requests at the backend (503). Calls to paid AI providers are paused. All event browsing, ticket purchasing, and bookings continue to work normally.
+                Temporarily disables the AI Assistant chat interface and rejects AI
+                generation requests at the backend (503). Calls to paid AI providers are
+                paused. All event browsing, ticket purchasing, and bookings continue to
+                work normally.
               </p>
             </div>
 
@@ -2544,7 +2883,9 @@ function SystemControlsTab() {
               variant={controls?.aiMaintenance ? 'destructive' : 'default'}
               size="sm"
               disabled={savingKey === 'ai'}
-              onClick={() => handleUpdate({ aiMaintenance: !controls?.aiMaintenance }, 'ai')}
+              onClick={() =>
+                handleUpdate({ aiMaintenance: !controls?.aiMaintenance }, 'ai')
+              }
               className="shrink-0"
             >
               {savingKey === 'ai' ? (
@@ -2557,7 +2898,10 @@ function SystemControlsTab() {
           </div>
 
           <div className="mt-5 border-t border-border/60 pt-4">
-            <label htmlFor="ai-msg" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+            <label
+              htmlFor="ai-msg"
+              className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5"
+            >
               AI Assistant Offline Message
             </label>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -2572,11 +2916,19 @@ function SystemControlsTab() {
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={savingKey === 'ai-msg' || aiMsg === controls?.aiMaintenanceMessage}
-                onClick={() => handleUpdate({ aiMaintenanceMessage: aiMsg.trim() }, 'ai-msg')}
+                disabled={
+                  savingKey === 'ai-msg' || aiMsg === controls?.aiMaintenanceMessage
+                }
+                onClick={() =>
+                  handleUpdate({ aiMaintenanceMessage: aiMsg.trim() }, 'ai-msg')
+                }
                 className="shrink-0"
               >
-                {savingKey === 'ai-msg' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                {savingKey === 'ai-msg' ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="mr-1.5 h-3.5 w-3.5" />
+                )}
                 Save message
               </Button>
             </div>
@@ -2584,26 +2936,37 @@ function SystemControlsTab() {
         </div>
 
         {/* Control 3: Event Creation Maintenance Mode */}
-        <div className={`rounded-xl border p-6 transition-all shadow-sm ${
-          controls?.eventCreationMaintenance ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10' : 'border-border bg-card'
-        }`}>
+        <div
+          className={`rounded-xl border p-6 transition-all shadow-sm ${
+            controls?.eventCreationMaintenance
+              ? 'border-amber-500/50 bg-amber-500/5 dark:bg-amber-500/10'
+              : 'border-border bg-card'
+          }`}
+        >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2.5">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
                   <CalendarDays className="h-4 w-4" />
                 </span>
-                <h3 className="text-lg font-semibold text-foreground">Event Creation Maintenance Mode</h3>
-                <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  controls?.eventCreationMaintenance
-                    ? 'bg-amber-500 text-amber-950 font-bold'
-                    : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
-                }`}>
-                  {controls?.eventCreationMaintenance ? 'CREATION PAUSED' : 'CREATION ACTIVE'}
+                <h3 className="text-lg font-semibold text-foreground">
+                  Event Creation Maintenance Mode
+                </h3>
+                <span
+                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                    controls?.eventCreationMaintenance
+                      ? 'bg-amber-500 text-amber-950 font-bold'
+                      : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
+                  }`}
+                >
+                  {controls?.eventCreationMaintenance
+                    ? 'CREATION PAUSED'
+                    : 'CREATION ACTIVE'}
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-muted-foreground pt-1 leading-relaxed max-w-2xl">
-                Temporarily prevents organizers from creating or submitting new events. Existing events, public discovery, ticket purchases, check-in, and organizer management remain fully operational.
+                Pause new event creation and submissions. Existing events, bookings and
+                check-in remain available.
               </p>
             </div>
 
@@ -2612,7 +2975,12 @@ function SystemControlsTab() {
               variant={controls?.eventCreationMaintenance ? 'destructive' : 'default'}
               size="sm"
               disabled={savingKey === 'eventCreation'}
-              onClick={() => handleUpdate({ eventCreationMaintenance: !controls?.eventCreationMaintenance }, 'eventCreation')}
+              onClick={() =>
+                handleUpdate(
+                  { eventCreationMaintenance: !controls?.eventCreationMaintenance },
+                  'eventCreation',
+                )
+              }
               className="shrink-0"
             >
               {savingKey === 'eventCreation' ? (
@@ -2620,12 +2988,17 @@ function SystemControlsTab() {
               ) : (
                 <Power className="mr-1.5 h-4 w-4" />
               )}
-              {controls?.eventCreationMaintenance ? 'Resume Event Creation' : 'Pause Event Creation'}
+              {controls?.eventCreationMaintenance
+                ? 'Resume Event Creation'
+                : 'Pause Event Creation'}
             </Button>
           </div>
 
           <div className="mt-5 border-t border-border/60 pt-4">
-            <label htmlFor="event-creation-msg" className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+            <label
+              htmlFor="event-creation-msg"
+              className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5"
+            >
               Event Creation Paused Notice Message
             </label>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -2640,11 +3013,23 @@ function SystemControlsTab() {
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={savingKey === 'event-creation-msg' || eventCreationMsg === controls?.eventCreationMaintenanceMessage}
-                onClick={() => handleUpdate({ eventCreationMaintenanceMessage: eventCreationMsg.trim() }, 'event-creation-msg')}
+                disabled={
+                  savingKey === 'event-creation-msg' ||
+                  eventCreationMsg === controls?.eventCreationMaintenanceMessage
+                }
+                onClick={() =>
+                  handleUpdate(
+                    { eventCreationMaintenanceMessage: eventCreationMsg.trim() },
+                    'event-creation-msg',
+                  )
+                }
                 className="shrink-0"
               >
-                {savingKey === 'event-creation-msg' ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1.5 h-3.5 w-3.5" />}
+                {savingKey === 'event-creation-msg' ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="mr-1.5 h-3.5 w-3.5" />
+                )}
                 Save message
               </Button>
             </div>
@@ -2665,4 +3050,3 @@ function SystemControlsTab() {
     </div>
   );
 }
-

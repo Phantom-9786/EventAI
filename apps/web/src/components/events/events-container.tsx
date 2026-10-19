@@ -1,14 +1,27 @@
 'use client';
+import { RefreshButton } from '@/components/ui/refresh-button';
 
 import * as React from 'react';
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Search, SlidersHorizontal, UserCheck, ArrowRight, Loader2, RefreshCw } from 'lucide-react';
+import {
+  Search,
+  SlidersHorizontal,
+  UserCheck,
+  ArrowRight,
+  Loader2,
+  RefreshCw,
+  LayoutGrid,
+  List,
+  Heart,
+  Ticket as TicketIcon,
+} from 'lucide-react';
 import { EventCard } from '@/components/events/event-card';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/components/auth/auth-provider';
+import { useFavorites } from '@/lib/favorites';
 import { getAccessToken, setAccessToken, switchTesterSession } from '@/lib/auth';
 import { getMaintenanceTesters, type MaintenanceTester } from '@/lib/admin';
 import type { Category, EventsSearchResult, EventSummary } from '@/lib/api';
@@ -39,11 +52,14 @@ export interface EventsContainerProps {
   initialResult: EventsSearchResult;
   initialMaintenanceBlocked: boolean;
   initialMaintenanceMessage: string | null;
+  initialLoadFailed?: boolean;
   currentFilters: {
+    aiFilters?: string;
     q?: string;
     category?: string;
     city?: string;
     sort?: string;
+    filter?: string;
     page: string;
   };
 }
@@ -53,18 +69,32 @@ export function EventsContainer({
   initialResult,
   initialMaintenanceBlocked,
   initialMaintenanceMessage,
+  initialLoadFailed = false,
   currentFilters,
 }: EventsContainerProps) {
   const router = useRouter();
   const { user, loading: authLoading, completeSignIn } = useAuth();
+  const { isFavorite, count: favoriteCount } = useFavorites();
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const [result, setResult] = useState<EventsSearchResult>(initialResult);
-  const [isMaintenanceBlocked, setIsMaintenanceBlocked] = useState(initialMaintenanceBlocked);
-  const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(initialMaintenanceMessage);
+  const [isMaintenanceBlocked, setIsMaintenanceBlocked] = useState(
+    initialMaintenanceBlocked,
+  );
+  const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(
+    initialMaintenanceMessage,
+  );
   const [isReFetching, setIsReFetching] = useState(false);
   const [testers, setTesters] = useState<MaintenanceTester[]>([]);
   const [switchingTester, setSwitchingTester] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // A refresh or filter navigation supplies a new server result without remounting.
+  useEffect(() => {
+    setResult(initialResult);
+    setIsMaintenanceBlocked(initialMaintenanceBlocked);
+    setMaintenanceMessage(initialMaintenanceMessage);
+  }, [initialResult, initialMaintenanceBlocked, initialMaintenanceMessage]);
 
   const query = currentFilters.q;
   const category = currentFilters.category;
@@ -74,6 +104,11 @@ export function EventsContainer({
 
   const isAdmin = user?.role === 'ADMIN';
   const isAuthorizedTester = Boolean(user?.isMaintenanceTester);
+
+  const isSavedFilterActive = currentFilters.filter === 'saved';
+  const displayedEvents = isSavedFilterActive
+    ? result.events.filter((event) => isFavorite(event.id))
+    : result.events;
 
   // Client-side fetch of events with explicit Bearer token
   const fetchEventsWithAuth = useCallback(async () => {
@@ -89,6 +124,7 @@ export function EventsContainer({
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
       const [sortBy, sortDir] = sort.split(':') as [string, string];
       const params = new URLSearchParams();
+      if (currentFilters.aiFilters) params.set('aiFilters', currentFilters.aiFilters);
       if (query) params.set('query', query);
       if (category) params.set('category', category);
       if (city) params.set('city', city);
@@ -122,7 +158,7 @@ export function EventsContainer({
       setIsReFetching(false);
     }
     return false;
-  }, [category, city, page, query, sort]);
+  }, [category, city, page, query, sort, currentFilters.aiFilters]);
 
   // Load linked testers if user is an administrator
   useEffect(() => {
@@ -143,7 +179,13 @@ export function EventsContainer({
     if (!authLoading && isMaintenanceBlocked && (isAdmin || isAuthorizedTester)) {
       void fetchEventsWithAuth();
     }
-  }, [authLoading, isMaintenanceBlocked, isAdmin, isAuthorizedTester, fetchEventsWithAuth]);
+  }, [
+    authLoading,
+    isMaintenanceBlocked,
+    isAdmin,
+    isAuthorizedTester,
+    fetchEventsWithAuth,
+  ]);
 
   // Switch session to linked attendee testing account without re-entering credentials
   const handleSwitchToTester = async (targetEmail: string) => {
@@ -165,74 +207,126 @@ export function EventsContainer({
 
   return (
     <div>
-      {/* Search and Filters */}
-      <form action="/events" method="get" className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            name="q"
-            defaultValue={query}
-            placeholder="Search events…"
-            aria-label="Search events"
-            className="h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
-        <input
-          type="text"
-          name="city"
-          defaultValue={city}
-          placeholder="City"
-          aria-label="Filter by city"
-          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-44"
-        />
-        <select
-          name="sort"
-          defaultValue={sort}
-          aria-label="Sort events"
-          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-52"
-        >
-          {sortOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        {category && <input type="hidden" name="category" value={category} />}
-        <button type="submit" className={cn(buttonVariants(), 'h-10 shrink-0')}>
-          <SlidersHorizontal className="mr-1 h-4 w-4" />
-          Apply
-        </button>
-      </form>
-
-      {/* Category chips */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div
+        className="category-strip ep-discovery-categories"
+        aria-label="Event categories"
+      >
         <Link
-          href={`/events${buildQuery(currentFilters, { category: undefined, page: undefined })}`}
-          className={cn(
-            buttonVariants({ variant: category ? 'outline' : 'default', size: 'sm' }),
-            'rounded-full',
-          )}
+          href={
+            '/events' +
+            buildQuery(currentFilters, {
+              category: undefined,
+              filter: undefined,
+              page: undefined,
+            })
+          }
+          className={'category ' + (!category && !currentFilters.filter ? 'active' : '')}
         >
-          All
+          <span className="cat-symbol">
+            <LayoutGrid className="icon" />
+          </span>
+          All experiences
+        </Link>
+        <Link
+          href={
+            '/events' +
+            buildQuery(currentFilters, {
+              filter: isSavedFilterActive ? undefined : 'saved',
+              page: undefined,
+            })
+          }
+          className={'category ' + (isSavedFilterActive ? 'active' : '')}
+        >
+          <span className="cat-symbol">
+            <Heart className="icon" />
+          </span>
+          Saved ({favoriteCount})
         </Link>
         {categories.map((c) => (
           <Link
             key={c.id}
-            href={`/events${buildQuery(currentFilters, { category: c.slug, page: undefined })}`}
-            className={cn(
-              buttonVariants({
-                variant: category === c.slug ? 'default' : 'outline',
-                size: 'sm',
-              }),
-              'rounded-full',
-            )}
+            href={
+              '/events' +
+              buildQuery(currentFilters, {
+                category: c.slug,
+                filter: undefined,
+                page: undefined,
+              })
+            }
+            className={'category ' + (category === c.slug ? 'active' : '')}
           >
+            <span className="cat-symbol">
+              <TicketIcon className="icon" />
+            </span>
             {c.name}
           </Link>
         ))}
       </div>
-
+      <form action="/events" method="get" className="filter-bar">
+        <label>
+          <Search className="icon" />
+          <input
+            name="q"
+            type="search"
+            defaultValue={query}
+            aria-label="Search events"
+            placeholder="Search events, artists or experiences…"
+          />
+        </label>
+        <input
+          name="city"
+          type="text"
+          defaultValue={city}
+          aria-label="Filter by city"
+          placeholder="All cities"
+          className="ep-city-filter"
+        />
+        <select name="sort" defaultValue={sort} aria-label="Sort events">
+          {sortOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {category && <input type="hidden" name="category" value={category} />}
+        {currentFilters.aiFilters && <input type="hidden" name="aiFilters" value={currentFilters.aiFilters} />}
+        <button className="btn">
+          Search
+          <ArrowRight className="icon" />
+        </button>
+      </form>
+      {currentFilters.aiFilters && (
+        <p className="ep-ai-filter-note">Showing matches for your AI search. <Link href="/ai">Back to conversation →</Link></p>
+      )}
+      <div className="result-line">
+        <span>
+          {!initialLoadFailed && !isMaintenanceBlocked && (
+            <strong>
+              {isSavedFilterActive
+                ? displayedEvents.length + ' saved events'
+                : result.total + ' experiences'}
+            </strong>
+          )}{' '}
+          to make your next plan
+        </span>
+        <div className="ep-actions">
+          <button
+            type="button"
+            aria-label="Grid view"
+            onClick={() => setViewMode('grid')}
+          >
+            <LayoutGrid className="icon" />
+          </button>
+          <button
+            type="button"
+            aria-label="List view"
+            onClick={() => setViewMode('list')}
+          >
+            <List className="icon" />
+          </button>
+          <Link href="/events">Clear filters</Link>
+        </div>
+      </div>
       {/* Admin Attendee Testing Banner & Switcher */}
       {isAdmin && (
         <div className="mt-6 rounded-lg border border-primary/20 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm">
@@ -241,7 +335,8 @@ export function EventsContainer({
             <div>
               <span className="font-semibold text-foreground">Admin Testing Access:</span>{' '}
               <span className="text-muted-foreground">
-                You are viewing the attendee experience with platform admin privileges ({user?.email}).
+                You are viewing the attendee experience with platform admin privileges (
+                {user?.email}).
               </span>
             </div>
           </div>
@@ -275,18 +370,21 @@ export function EventsContainer({
           <div className="flex items-center gap-2">
             <UserCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span className="text-muted-foreground">
-              Signed in as <strong className="text-foreground">{user?.email}</strong> (Authorized Maintenance Tester — {user?.role === 'ORGANIZER' ? 'Organizer' : 'Attendee'})
+              Signed in as <strong className="text-foreground">{user?.email}</strong>{' '}
+              (Authorized Maintenance Tester —{' '}
+              {user?.role === 'ORGANIZER' ? 'Organizer' : 'Attendee'})
             </span>
           </div>
-          <button
+          <RefreshButton
             type="button"
-            onClick={() => void fetchEventsWithAuth()}
+            onClick={() => fetchEventsWithAuth()}
             disabled={isReFetching}
-            className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'h-8 text-xs gap-1')}
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', isReFetching && 'animate-spin')} />
-            Refresh
-          </button>
+            className={cn(
+              buttonVariants({ variant: 'ghost', size: 'sm' }),
+              'h-8 text-xs gap-1',
+            )}
+            refreshing={Boolean(isReFetching)}
+          />
         </div>
       )}
 
@@ -328,7 +426,10 @@ export function EventsContainer({
                   <button
                     type="button"
                     onClick={() => void fetchEventsWithAuth()}
-                    className={cn(buttonVariants(), 'h-9 px-4 text-xs font-semibold gap-1.5')}
+                    className={cn(
+                      buttonVariants(),
+                      'h-9 px-4 text-xs font-semibold gap-1.5',
+                    )}
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
                     Load Events
@@ -336,7 +437,10 @@ export function EventsContainer({
                 )}
                 <Link
                   href="/"
-                  className={cn(buttonVariants({ variant: 'outline' }), 'h-9 px-4 text-xs')}
+                  className={cn(
+                    buttonVariants({ variant: 'outline' }),
+                    'h-9 px-4 text-xs',
+                  )}
                 >
                   Return Home
                 </Link>
@@ -361,27 +465,100 @@ export function EventsContainer({
             </div>
           )}
         </div>
-      ) : result.events.length === 0 ? (
-        <div className="mt-16 rounded-lg border border-dashed p-12 text-center">
-          <p className="text-lg font-medium">No events found</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Try different search terms or clear your filters.
+      ) : isReFetching ? (
+        <div
+          className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+          role="status"
+        >
+          {[...Array(8)].map((_, i) => (
+            <div
+              key={i}
+              className="flex flex-col rounded-2xl border border-border/60 bg-card p-4 shadow-sm animate-pulse"
+            >
+              <div className="h-44 w-full rounded-xl bg-muted" />
+              <div className="mt-4 h-5 w-3/4 rounded bg-muted" />
+              <div className="mt-2 h-4 w-1/2 rounded bg-muted" />
+              <div className="mt-6 flex justify-between pt-3 border-t">
+                <div className="h-4 w-1/3 rounded bg-muted" />
+                <div className="h-4 w-1/4 rounded bg-muted" />
+              </div>
+            </div>
+          ))}
+          <span className="sr-only">Loading events…</span>
+        </div>
+      ) : initialLoadFailed ? (
+        <div
+          className="mx-auto my-12 max-w-lg rounded-2xl border bg-card p-8 text-center"
+          role="alert"
+        >
+          <RefreshCw className="mx-auto mb-4 h-7 w-7 text-primary" aria-hidden />
+          <h2 className="text-xl font-semibold">Events are temporarily unavailable</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            We couldn&apos;t connect to the event service. Please try again shortly.
           </p>
-          <Link href="/events" className={cn(buttonVariants({ variant: 'outline' }), 'mt-4')}>
-            Clear filters
-          </Link>
+          <button
+            type="button"
+            onClick={() => router.refresh()}
+            className={cn(buttonVariants({ variant: 'outline' }), 'mt-5')}
+          >
+            Try again
+          </button>
+        </div>
+      ) : displayedEvents.length === 0 ? (
+        <div className="mt-14 rounded-3xl border border-dashed border-border/80 bg-card/40 p-12 text-center max-w-lg mx-auto shadow-sm">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 mb-4">
+            {isSavedFilterActive ? (
+              <Heart className="h-7 w-7 text-rose-500" />
+            ) : (
+              <Search className="h-7 w-7" />
+            )}
+          </div>
+          <h3 className="text-lg font-bold tracking-tight text-foreground">
+            {isSavedFilterActive ? 'No saved events yet' : 'No events found'}
+          </h3>
+          <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+            {isSavedFilterActive
+              ? "You haven't bookmarked any events yet. Tap the heart icon on any event to save it here."
+              : "We couldn't find any events matching your current filters. Try searching for something else or reset your criteria."}
+          </p>
+          <div className="mt-6">
+            <Link
+              href="/events"
+              className={cn(
+                buttonVariants({
+                  variant: isSavedFilterActive ? 'gradient' : 'outline',
+                  size: 'sm',
+                }),
+                'rounded-xl',
+              )}
+            >
+              {isSavedFilterActive ? 'Explore Events' : 'Clear All Filters'}
+            </Link>
+          </div>
         </div>
       ) : (
-        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {result.events.map((event: EventSummary) => (
-            <EventCard key={event.id} event={event} />
+        <div
+          className={cn(
+            'mt-8',
+            viewMode === 'grid' ? 'ep-grid' : 'flex flex-col gap-4 max-w-4xl mx-auto',
+          )}
+        >
+          {displayedEvents.map((event: EventSummary) => (
+            <EventCard
+              key={event.id}
+              event={event}
+              showDescription={viewMode === 'list'}
+            />
           ))}
         </div>
       )}
 
       {/* Pagination */}
       {!isMaintenanceBlocked && result.pages > 1 && (
-        <nav className="mt-10 flex items-center justify-center gap-2" aria-label="Pagination">
+        <nav
+          className="mt-10 flex items-center justify-center gap-2"
+          aria-label="Pagination"
+        >
           {page > 1 && (
             <Link
               href={`/events${buildQuery(currentFilters, { page: String(page - 1) })}`}

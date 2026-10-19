@@ -41,6 +41,8 @@ export function createAiRouter({
     }
   };
 
+  router.get('/suggestions', aiMaintenanceGuard, controller.suggestions);
+
   router.post(
     '/chat',
     aiMaintenanceGuard,

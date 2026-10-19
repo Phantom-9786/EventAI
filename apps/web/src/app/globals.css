@@ -4,44 +4,58 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --primary: 262 83% 58%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 262 83% 96%;
-    --accent-foreground: 262 83% 30%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 243 75% 59%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 214 32% 93%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 221 83% 94%;
+    --accent-foreground: 243 75% 40%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 262 83% 58%;
-    --radius: 0.625rem;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 243 75% 59%;
+    --radius: 0.875rem;
+
+    --brand-indigo: #4F46E5;
+    --brand-blue: #2563EB;
+    --brand-purple: #7C3AED;
+    --brand-cyan: #06B6D4;
+    --brand-emerald: #10B981;
+    --brand-light-bg: #F8FAFC;
+    --pin-cutout: #FFFFFF;
   }
 
   .dark {
+    /* Pure deep obsidian black canvas - NO BLUE SHADE */
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
-    --card: 240 10% 5.9%;
+    --card: 240 6% 7.8%;
     --card-foreground: 0 0% 98%;
-    --primary: 263 70% 66%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 3.7% 15.9%;
+    --popover: 240 6% 9.5%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 243 75% 62%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 13.5%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 263 40% 20%;
-    --accent-foreground: 263 70% 85%;
-    --destructive: 0 62.8% 30.6%;
+    --muted: 240 5% 13%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 240 6% 14%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 263 70% 66%;
+    --border: 240 5% 15.5%;
+    --input: 240 5% 15.5%;
+    --ring: 243 75% 62%;
+    --pin-cutout: #090A0F;
   }
 
   * {
@@ -49,7 +63,41 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased selection:bg-indigo-500/20 selection:text-indigo-400;
+  }
+
+  :root { color-scheme: light; }
+  .dark { color-scheme: dark; }
+
+  /* Custom sleek scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.25);
+    border-radius: 9999px;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, 0.4);
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -66,8 +114,59 @@
     textarea,
     select {
       transition-property: background-color, border-color, color;
-      transition-duration: 200ms;
+      transition-duration: 180ms;
       transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     }
   }
 }
+
+@layer utilities {
+  .glass-card {
+    background: hsl(var(--card) / 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.7);
+  }
+
+  .glass-card-elevated {
+    background: hsl(var(--card) / 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid hsl(var(--border) / 0.9);
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3);
+  }
+
+  .glow-subtle {
+    box-shadow: 0 0 40px -10px rgba(79, 70, 229, 0.15);
+  }
+
+  .card-hover-effect {
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .card-hover-effect:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.25);
+    border-color: rgba(79, 70, 229, 0.35);
+  }
+
+  @media print {
+    header, footer, nav, button, form {
+      display: none !important;
+    }
+    body {
+      background: white !important;
+      color: black !important;
+    }
+  }
+}
+
+
+/* Approved EventPoint workspace foundation. */
+.dark{--background:0 0% 6.3%;--card:0 0% 9.8%;--popover:0 0% 9.8%;--secondary:0 0% 14%;--muted:0 0% 14%;--muted-foreground:0 0% 69%;--border:0 0% 20%;--input:0 0% 20%;--accent:0 0% 14%;--pin-cutout:#191919}
+.eventpoint-workspace{display:grid;grid-template-columns:235px minmax(0,1fr);gap:24px;max-width:1560px;margin:28px auto;padding:0 24px;align-items:start;transition:grid-template-columns .25s ease}
+.eventpoint-sidebar{position:sticky;top:88px;border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:16px;padding:12px;overflow:hidden;box-shadow:0 4px 18px -14px #0003}
+.sidebar-collapse{display:flex;align-items:center;gap:10px;width:100%;padding:10px;border:1px solid hsl(var(--border));border-radius:10px;background:hsl(var(--muted));font-size:13px;color:hsl(var(--muted-foreground))}
+.workspace-nav-link{display:flex;align-items:center;gap:11px;padding:12px 10px;margin:3px 0;border-radius:10px;font-size:14px;color:hsl(var(--muted-foreground));white-space:nowrap}
+.workspace-nav-link:hover{background:hsl(var(--muted));color:hsl(var(--foreground))}.workspace-nav-link.active{background:hsl(var(--primary));color:hsl(var(--primary-foreground))}.is-collapsed{grid-template-columns:76px minmax(0,1fr)}.is-collapsed .sidebar-label{display:none}.is-collapsed .workspace-nav-link,.is-collapsed .sidebar-collapse{justify-content:center;padding:12px 5px}.eventpoint-workspace .container{max-width:100%;padding-left:0;padding-right:0}.workspace-nav-link:focus-visible,.sidebar-collapse:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}
+@media(max-width:900px){.eventpoint-workspace,.eventpoint-workspace.is-collapsed{grid-template-columns:minmax(0,1fr);padding:0 16px;gap:16px}.eventpoint-sidebar{position:static;display:flex;align-items:center;gap:8px;overflow:auto}.eventpoint-sidebar>p{display:none}.eventpoint-sidebar nav{display:flex;gap:6px}.sidebar-collapse{width:auto;flex-shrink:0}.sidebar-collapse .sidebar-label{display:none}.workspace-nav-link{flex-shrink:0}}
+@media(prefers-reduced-motion:no-preference){.workspace-nav-link,.sidebar-collapse,a,button{transition:background-color .2s ease,border-color .2s ease,color .2s ease,box-shadow .2s ease}.eventpoint-workspace>div{animation:eventpoint-arrive .22s ease both}@keyframes eventpoint-arrive{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}}

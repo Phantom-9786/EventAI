@@ -83,6 +83,8 @@ export interface EventsSearchResult extends Paginated {
 }
 
 export interface EventSearchFilters {
+  aiFilters?: string;
+  venueId?: string;
   query?: string;
   category?: string;
   city?: string;
@@ -151,9 +153,11 @@ export async function searchEvents(
   filters: EventSearchFilters = {},
 ): Promise<EventsSearchResult> {
   const params = new URLSearchParams();
+  if (filters.venueId) params.set('venueId', filters.venueId);
   if (filters.query) params.set('query', filters.query);
   if (filters.category) params.set('category', filters.category);
   if (filters.city) params.set('city', filters.city);
+  if (filters.aiFilters) params.set('aiFilters', filters.aiFilters);
   if (filters.sortBy) params.set('sortBy', filters.sortBy);
   if (filters.sortDir) params.set('sortDir', filters.sortDir);
   if (filters.page) params.set('page', String(filters.page));

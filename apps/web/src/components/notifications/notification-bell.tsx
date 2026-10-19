@@ -1,16 +1,12 @@
 'use client';
+import { RefreshButton } from '@/components/ui/refresh-button';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import {
-  Bell,
-  Check,
-  CheckCheck,
-  ExternalLink,
-  Trash2,
-} from 'lucide-react';
+import { Bell, Check, CheckCheck, ExternalLink, Trash2 } from 'lucide-react';
 import {
   clearAllNotifications,
+  clearReadNotifications,
   clearNotification,
   getNotifications,
   markAllNotificationsAsRead,
@@ -34,9 +30,9 @@ function timeAgo(dateString: string): string {
   return date.toLocaleDateString();
 }
 
-export function NotificationBell() {
+export function NotificationBell({ inline = false }: { inline?: boolean } = {}) {
   const { user } = useAuth();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(inline);
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
@@ -45,14 +41,19 @@ export function NotificationBell() {
   const [actionError, setActionError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
+  const [refreshing, setRefreshing] = useState(false);
   const fetchItems = useCallback(async () => {
     if (!user) return;
+    setRefreshing(true);
     try {
       const data = await getNotifications();
       setNotifications(data.notifications);
       setUnreadCount(data.unreadCount);
+      setActionError(null);
     } catch {
-      // silently tolerate background poll failure
+      setActionError('Unable to refresh notifications. Please try again.');
+    } finally {
+      setRefreshing(false);
     }
   }, [user]);
 
@@ -110,7 +111,9 @@ export function NotificationBell() {
       setUnreadCount(0);
       setClearDialogOpen(false);
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Failed to clear notifications');
+      setActionError(
+        err instanceof Error ? err.message : 'Failed to clear notifications',
+      );
     } finally {
       setIsClearing(false);
     }
@@ -136,26 +139,34 @@ export function NotificationBell() {
 
   return (
     <div className="relative" ref={panelRef}>
-      <button
-        type="button"
-        onClick={() => {
-          setOpen((prev) => !prev);
-          if (!open) void fetchItems();
-        }}
-        className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-        aria-label="Notifications"
-        aria-expanded={open}
-      >
-        <Bell className="h-4 w-4" />
-        {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground shadow">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
-        )}
-      </button>
+      {!inline && (
+        <button
+          type="button"
+          onClick={() => {
+            setOpen((prev) => !prev);
+            if (!open) void fetchItems();
+          }}
+          className="relative inline-flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          aria-label="Notifications"
+          aria-expanded={open}
+        >
+          <Bell className="h-4 w-4" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground shadow">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
+        </button>
+      )}
 
-      {open && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border bg-card p-0 shadow-lg ring-1 ring-black/5 z-50 animate-in fade-in-50 zoom-in-95">
+      {(inline || open) && (
+        <div
+          className={
+            inline
+              ? 'ep-notification-center panel'
+              : 'absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border bg-card p-0 shadow-lg ring-1 ring-black/5 z-50 animate-in fade-in-50 zoom-in-95'
+          }
+        >
           <div className="flex items-center justify-between border-b px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-sm">Notifications</span>
@@ -165,7 +176,36 @@ export function NotificationBell() {
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <RefreshButton
+                type="button"
+                aria-label="Refresh notifications"
+                disabled={refreshing}
+                onClick={() => fetchItems()}
+                className="text-sm text-muted-foreground disabled:opacity-50"
+                refreshing={Boolean(refreshing)}
+                iconOnly
+              />
+              {notifications.some((n) => n.isRead) && (
+                <button
+                  type="button"
+                  disabled={isClearing}
+                  className="text-xs text-muted-foreground"
+                  onClick={async () => {
+                    setIsClearing(true);
+                    try {
+                      await clearReadNotifications();
+                      await fetchItems();
+                    } catch {
+                      setActionError('Unable to clear read notifications.');
+                    } finally {
+                      setIsClearing(false);
+                    }
+                  }}
+                >
+                  Clear read
+                </button>
+              )}
               {unreadCount > 0 && (
                 <button
                   type="button"
@@ -207,7 +247,9 @@ export function NotificationBell() {
               <div className="p-8 text-center text-sm text-muted-foreground">
                 <Bell className="mx-auto mb-2 h-7 w-7 opacity-30" />
                 <p className="font-medium text-foreground">No notifications yet</p>
-                <p className="text-xs mt-1">Updates on your bookings, tickets, and refunds will appear here.</p>
+                <p className="text-xs mt-1">
+                  Updates on your bookings, tickets, and refunds will appear here.
+                </p>
               </div>
             ) : (
               notifications.map((n) => {
@@ -216,8 +258,8 @@ export function NotificationBell() {
                   (user.role === 'ADMIN'
                     ? '/admin'
                     : user.role === 'ORGANIZER'
-                    ? '/organizer/events'
-                    : '/tickets');
+                      ? '/organizer/events'
+                      : '/tickets');
                 return (
                   <div
                     key={n.id}
@@ -231,7 +273,12 @@ export function NotificationBell() {
                     )}
                     <div className="flex-1 space-y-1 pl-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className={cn('font-semibold text-xs text-foreground', !n.isRead && 'text-primary')}>
+                        <p
+                          className={cn(
+                            'font-semibold text-xs text-foreground',
+                            !n.isRead && 'text-primary',
+                          )}
+                        >
                           {n.title}
                         </p>
                         <span className="text-[10px] text-muted-foreground shrink-0">

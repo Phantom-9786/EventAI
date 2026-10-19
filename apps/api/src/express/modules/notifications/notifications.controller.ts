@@ -57,6 +57,14 @@ export class ExpressNotificationsController {
     }
   };
 
+  clearRead = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.authUser?.id ?? req.user?.id;
+      if (!userId) throw new UnauthorizedError('Unauthorized');
+      res.status(200).json(await this.notificationsService.clearRead(userId));
+    } catch (err) { next(err); }
+  };
+
   clearAll = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const userId = req.authUser?.id ?? req.user?.id;

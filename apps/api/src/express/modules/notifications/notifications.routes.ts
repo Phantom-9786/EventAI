@@ -18,6 +18,7 @@ export function createNotificationsRouter({
   router.patch('/:id/read', controller.markRead);
   router.post('/read-all', controller.markAllRead);
   router.delete('/', controller.clearAll);
+  router.delete('/read', controller.clearRead);
   router.delete('/:id', controller.clearNotification);
 
   return router;

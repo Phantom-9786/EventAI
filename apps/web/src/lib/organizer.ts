@@ -4,7 +4,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { authFetch } from './auth';
 
 export interface OrganizerStats {
-  events: { total: number; DRAFT: number; PUBLISHED: number; CANCELLED: number; COMPLETED: number; SOLDOUT?: number };
+  events: {
+    total: number;
+    DRAFT: number;
+    PUBLISHED: number;
+    CANCELLED: number;
+    COMPLETED: number;
+    SOLDOUT?: number;
+  };
   revenue: number;
   confirmedBookings: number;
   refundedBookings: number;
@@ -13,6 +20,8 @@ export interface OrganizerStats {
 }
 
 export interface OrganizerEventRow {
+  coverImage?: string | null;
+  images?: string[];
   id: string;
   slug: string;
   title: string;
@@ -40,7 +49,13 @@ export interface OrganizerEventDetail extends OrganizerEventRow {
   cancellationPolicy: string | null;
   coverImage: string | null;
   images: string[];
-  category: { id: string; name: string; slug: string; icon?: string | null; color?: string | null };
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+    icon?: string | null;
+    color?: string | null;
+  };
   venue: { id: string; name: string; address: string; city: string; state: string };
   ticketTypes: OrganizerTicketType[];
 }
@@ -164,8 +179,13 @@ export async function getOrganizerVenues(): Promise<OrganizerVenue[]> {
   return body.venues;
 }
 
-export async function createOrganizerVenue(input: OrganizerVenueInput): Promise<OrganizerVenue> {
-  const res = await authFetch('/organizers/venues', { method: 'POST', body: JSON.stringify(input) });
+export async function createOrganizerVenue(
+  input: OrganizerVenueInput,
+): Promise<OrganizerVenue> {
+  const res = await authFetch('/organizers/venues', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
   if (!res.ok) throw await readApiError(res, 'Failed to create venue');
   const body = (await res.json()) as { venue: OrganizerVenue };
   return body.venue;
@@ -178,7 +198,9 @@ export async function getOrganizerEvent(idOrSlug: string): Promise<OrganizerEven
   return body.event;
 }
 
-export async function createOrganizerEvent(input: OrganizerEventInput): Promise<OrganizerEventDetail> {
+export async function createOrganizerEvent(
+  input: OrganizerEventInput,
+): Promise<OrganizerEventDetail> {
   const res = await authFetch('/events', { method: 'POST', body: JSON.stringify(input) });
   if (!res.ok) throw await readApiError(res, 'Failed to create event');
   const body = (await res.json()) as { event: OrganizerEventDetail };
@@ -201,20 +223,30 @@ export async function updateOrganizerEvent(
 export async function submitOrganizerEventForReview(
   idOrSlug: string,
 ): Promise<{ message: string; eventId: string; moderation: { status: string } }> {
-  const res = await authFetch(`/events/${encodeURIComponent(idOrSlug)}/submit`, { method: 'POST' });
+  const res = await authFetch(`/events/${encodeURIComponent(idOrSlug)}/submit`, {
+    method: 'POST',
+  });
   if (!res.ok) throw await readApiError(res, 'Failed to submit event for review');
   return res.json();
 }
 
-export async function publishOrganizerEvent(idOrSlug: string): Promise<OrganizerEventDetail> {
-  const res = await authFetch(`/events/${encodeURIComponent(idOrSlug)}/publish`, { method: 'POST' });
+export async function publishOrganizerEvent(
+  idOrSlug: string,
+): Promise<OrganizerEventDetail> {
+  const res = await authFetch(`/events/${encodeURIComponent(idOrSlug)}/publish`, {
+    method: 'POST',
+  });
   if (!res.ok) throw await readApiError(res, 'Failed to publish event');
   const body = (await res.json()) as { event: OrganizerEventDetail };
   return body.event;
 }
 
-export async function cancelOrganizerEvent(idOrSlug: string): Promise<CancelledOrganizerEvent> {
-  const res = await authFetch(`/events/${encodeURIComponent(idOrSlug)}/cancel`, { method: 'POST' });
+export async function cancelOrganizerEvent(
+  idOrSlug: string,
+): Promise<CancelledOrganizerEvent> {
+  const res = await authFetch(`/events/${encodeURIComponent(idOrSlug)}/cancel`, {
+    method: 'POST',
+  });
   if (!res.ok) throw await readApiError(res, 'Failed to cancel event');
   return res.json();
 }
@@ -246,7 +278,9 @@ export async function updateOrganizerTicketType(
 }
 
 export async function deleteOrganizerTicketType(id: string): Promise<void> {
-  const res = await authFetch(`/ticket-types/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const res = await authFetch(`/ticket-types/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
   if (!res.ok) throw await readApiError(res, 'Failed to delete ticket type');
 }
 
@@ -261,7 +295,9 @@ export async function becomeOrganizer(input: {
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { message?: string | string[] };
     throw new Error(
-      Array.isArray(body.message) ? body.message.join(', ') : (body.message ?? `Failed (${res.status})`),
+      Array.isArray(body.message)
+        ? body.message.join(', ')
+        : (body.message ?? `Failed (${res.status})`),
     );
   }
 }
@@ -281,8 +317,18 @@ export interface AttendeeBooking {
   totalAmount: number;
   createdAt: string;
   user: { id: string; firstName: string | null; lastName: string | null; email: string };
-  items: { quantity: number; unitPrice: number; ticketType: { id: string; name: string } }[];
-  tickets: { id: string; ticketCode: string; status: string; holderName: string; ticketType: { id: string; name: string } }[];
+  items: {
+    quantity: number;
+    unitPrice: number;
+    ticketType: { id: string; name: string };
+  }[];
+  tickets: {
+    id: string;
+    ticketCode: string;
+    status: string;
+    holderName: string;
+    ticketType: { id: string; name: string };
+  }[];
 }
 
 export interface OrganizerRefundRequest {
@@ -303,8 +349,19 @@ export interface OrganizerRefundRequest {
     totalAmount: number;
     status?: string;
     createdAt: string;
-    user: { id: string; firstName: string | null; lastName: string | null; email: string };
-    event: { id: string; title: string; slug: string; startDate: string; status?: string };
+    user: {
+      id: string;
+      firstName: string | null;
+      lastName: string | null;
+      email: string;
+    };
+    event: {
+      id: string;
+      title: string;
+      slug: string;
+      startDate: string;
+      status?: string;
+    };
     items: { quantity: number; ticketType: { name: string } }[];
   };
 }
@@ -420,7 +477,9 @@ export async function getEventAttendees(
   page = 1,
   limit = 20,
 ): Promise<{ bookings: AttendeeBooking[]; total: number; page: number; pages: number }> {
-  const res = await authFetch(`/organizers/events/${eventId}/bookings?page=${page}&limit=${limit}`);
+  const res = await authFetch(
+    `/organizers/events/${eventId}/bookings?page=${page}&limit=${limit}`,
+  );
   if (!res.ok) throw new Error(`Failed to load attendees (${res.status})`);
   return res.json();
 }
@@ -434,11 +493,19 @@ export interface ValidateResult {
     validatedAt: string | null;
     ticketType: { id: string; name: string };
   };
-  holder: { id: string; firstName: string | null; lastName: string | null; email: string };
+  holder: {
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string;
+  };
 }
 
 /** Validates (checks in) a ticket code; throws an Error with the API reason on refusal. */
-export async function validateTicketCode(eventId: string, ticketCode: string): Promise<ValidateResult> {
+export async function validateTicketCode(
+  eventId: string,
+  ticketCode: string,
+): Promise<ValidateResult> {
   const res = await authFetch(`/organizers/events/${eventId}/tickets/validate`, {
     method: 'POST',
     body: JSON.stringify({ ticketCode: ticketCode.trim() }),
@@ -446,7 +513,9 @@ export async function validateTicketCode(eventId: string, ticketCode: string): P
   const body = (await res.json().catch(() => ({}))) as { message?: string | string[] };
   if (!res.ok) {
     throw new Error(
-      Array.isArray(body.message) ? body.message.join(', ') : (body.message ?? `Failed (${res.status})`),
+      Array.isArray(body.message)
+        ? body.message.join(', ')
+        : (body.message ?? `Failed (${res.status})`),
     );
   }
   return body as unknown as ValidateResult;
@@ -454,6 +523,8 @@ export async function validateTicketCode(eventId: string, ticketCode: string): P
 
 /** Returns the organizer profile or null when the user has none yet. */
 export interface OrganizerProfile {
+  description?: string | null;
+  website?: string | null;
   id: string;
   organizationName: string;
   phone: string | null;
@@ -511,7 +582,10 @@ export function useOrganizerDashboard(enabled: boolean) {
   return { stats, events, profile, error, loading, reload: load };
 }
 
-export async function uploadOrganizerMedia(file: File, eventId?: string): Promise<string> {
+export async function uploadOrganizerMedia(
+  file: File,
+  eventId?: string,
+): Promise<string> {
   const formData = new FormData();
   formData.append('file', file);
   const endpoint = eventId ? `/events/${eventId}/images` : '/events/upload-image';
@@ -526,7 +600,10 @@ export async function uploadOrganizerMedia(file: File, eventId?: string): Promis
   return body.url;
 }
 
-export async function deleteOrganizerMedia(eventId: string, mediaUrl: string): Promise<void> {
+export async function deleteOrganizerMedia(
+  eventId: string,
+  mediaUrl: string,
+): Promise<void> {
   const res = await authFetch(`/events/${eventId}/images`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
@@ -568,5 +645,3 @@ export async function getUploadConfig(): Promise<UploadConfig> {
     };
   }
 }
-
-

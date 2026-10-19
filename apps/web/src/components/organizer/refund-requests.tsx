@@ -1,4 +1,5 @@
 'use client';
+import { RefreshButton } from '@/components/ui/refresh-button';
 
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -140,7 +141,8 @@ export function OrganizerRefundRequests() {
         );
       }
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : `Failed to ${decision} refund request`;
+      const errMsg =
+        err instanceof Error ? err.message : `Failed to ${decision} refund request`;
       if (errMsg.includes('pending provider reconciliation')) {
         setMessage(
           `Refund approved for ${request.booking.event.title}. Provider outcome is pending reconciliation; use the Reconcile button to verify status.`,
@@ -165,13 +167,25 @@ export function OrganizerRefundRequests() {
       } else if (res.outcome === 'failed') {
         setMessage('Provider reconciliation complete: refund settlement failed.');
       } else if (res.outcome === 'missing_configuration') {
-        setError(res.message || 'Payment provider keys (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET) are missing in configuration.');
+        setError(
+          res.message ||
+            'Payment provider keys (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET) are missing in configuration.',
+        );
       } else if (res.outcome === 'provider_error') {
-        setError(res.message || 'Payment provider authentication failed: invalid or expired Razorpay API keys.');
+        setError(
+          res.message ||
+            'Payment provider authentication failed: invalid or expired Razorpay API keys.',
+        );
       } else if (res.outcome === 'provider_unavailable') {
-        setError(res.message || 'Payment provider is temporarily unreachable. The refund remains safely pending settlement.');
+        setError(
+          res.message ||
+            'Payment provider is temporarily unreachable. The refund remains safely pending settlement.',
+        );
       } else {
-        setMessage(res.message || 'Provider settlement is still in progress. Please check back shortly.');
+        setMessage(
+          res.message ||
+            'Provider settlement is still in progress. Please check back shortly.',
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reconcile refund');
@@ -187,17 +201,20 @@ export function OrganizerRefundRequests() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Refund requests</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Review attendee requests. Razorpay is contacted only after you approve a request.
+            Review attendee requests. Razorpay is contacted only after you approve a
+            request.
           </p>
         </div>
-        <button
+        <RefreshButton
           type="button"
-          onClick={() => void load(activeTab, page)}
+          onClick={() => load(activeTab, page)}
           disabled={requests === null}
-          className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'self-start sm:self-auto')}
-        >
-          <RefreshCw className="mr-2 h-4 w-4" /> Refresh
-        </button>
+          className={cn(
+            buttonVariants({ variant: 'outline', size: 'sm' }),
+            'self-start sm:self-auto',
+          )}
+          refreshing={Boolean(requests === null)}
+        />
       </div>
 
       {/* Filter Tabs with real counts */}
@@ -249,7 +266,10 @@ export function OrganizerRefundRequests() {
       )}
 
       {message && (
-        <p role="status" className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-primary">
+        <p
+          role="status"
+          className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm text-primary"
+        >
           {message}
         </p>
       )}
@@ -292,7 +312,9 @@ export function OrganizerRefundRequests() {
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-base font-semibold">{request.booking.event.title}</h2>
+                      <h2 className="text-base font-semibold">
+                        {request.booking.event.title}
+                      </h2>
                       {statusBadge(request.refundRequestStatus, request.status)}
                       {request.status && (
                         <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground font-mono">
@@ -309,18 +331,22 @@ export function OrganizerRefundRequests() {
                       {attendee} · {request.booking.user.email}
                     </p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      Event date: {formatEventDate(request.booking.event.startDate)} · Booking ID:{' '}
-                      <span className="font-mono">{request.bookingId}</span>
+                      Event date: {formatEventDate(request.booking.event.startDate)} ·
+                      Booking ID: <span className="font-mono">{request.bookingId}</span>
                     </p>
                   </div>
                   <div className="text-right">
                     <p className="text-lg font-bold">{formatPrice(request.amount)}</p>
                     <p className="text-xs text-muted-foreground">
-                      Requested: {request.refundRequestedAt ? new Date(request.refundRequestedAt).toLocaleDateString() : 'recently'}
+                      Requested:{' '}
+                      {request.refundRequestedAt
+                        ? new Date(request.refundRequestedAt).toLocaleDateString()
+                        : 'recently'}
                     </p>
                     {request.refundReviewedAt && (
                       <p className="text-xs text-muted-foreground">
-                        Reviewed: {new Date(request.refundReviewedAt).toLocaleDateString()}
+                        Reviewed:{' '}
+                        {new Date(request.refundReviewedAt).toLocaleDateString()}
                       </p>
                     )}
                   </div>
@@ -334,7 +360,9 @@ export function OrganizerRefundRequests() {
                       .join(', ')}
                   </p>
                   <p className="mt-1">
-                    <span className="font-medium text-muted-foreground">Attendee reason: </span>
+                    <span className="font-medium text-muted-foreground">
+                      Attendee reason:{' '}
+                    </span>
                     {request.refundRequestReason?.trim() || 'No reason provided'}
                   </p>
                 </div>
@@ -346,7 +374,10 @@ export function OrganizerRefundRequests() {
                         type="button"
                         disabled={actionId !== null}
                         onClick={() => void decide(request, 'approve')}
-                        className={cn(buttonVariants({ size: 'sm' }), 'disabled:opacity-60')}
+                        className={cn(
+                          buttonVariants({ size: 'sm' }),
+                          'disabled:opacity-60',
+                        )}
                       >
                         {actionId === request.bookingId && (
                           <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
@@ -372,7 +403,10 @@ export function OrganizerRefundRequests() {
                       type="button"
                       disabled={actionId !== null}
                       onClick={() => void handleReconcile(request.bookingId)}
-                      className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'gap-1.5')}
+                      className={cn(
+                        buttonVariants({ variant: 'outline', size: 'sm' }),
+                        'gap-1.5',
+                      )}
                     >
                       {actionId === request.bookingId ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -398,7 +432,10 @@ export function OrganizerRefundRequests() {
                   type="button"
                   disabled={page <= 1}
                   onClick={() => handlePageChange(page - 1)}
-                  className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'disabled:opacity-50')}
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'disabled:opacity-50',
+                  )}
                 >
                   Previous
                 </button>
@@ -406,7 +443,10 @@ export function OrganizerRefundRequests() {
                   type="button"
                   disabled={page >= totalPages}
                   onClick={() => handlePageChange(page + 1)}
-                  className={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'disabled:opacity-50')}
+                  className={cn(
+                    buttonVariants({ variant: 'outline', size: 'sm' }),
+                    'disabled:opacity-50',
+                  )}
                 >
                   Next
                 </button>

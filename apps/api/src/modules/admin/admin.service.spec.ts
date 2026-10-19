@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '../../common/exceptions';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '../../common/exceptions';
 import { UserRole, AdminRoleType } from '@eventai/types';
 import { Test } from '../../common/testing';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -11,8 +16,19 @@ describe('AdminService', () => {
   let service: AdminService;
   let systemControlsService: { purgeTesterEntitlementsForUser: jest.Mock };
   let prisma: {
-    user: { count: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; findFirst: jest.Mock; update: jest.Mock };
-    organizer: { count: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock; update: jest.Mock };
+    user: {
+      count: jest.Mock;
+      findMany: jest.Mock;
+      findUnique: jest.Mock;
+      findFirst: jest.Mock;
+      update: jest.Mock;
+    };
+    organizer: {
+      count: jest.Mock;
+      findMany: jest.Mock;
+      findUnique: jest.Mock;
+      update: jest.Mock;
+    };
     event: {
       groupBy: jest.Mock;
       count: jest.Mock;
@@ -38,10 +54,23 @@ describe('AdminService', () => {
 
   beforeEach(async () => {
     prisma = {
-      user: { count: jest.fn().mockResolvedValue(42), findMany: jest.fn(), findUnique: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
-      organizer: { count: jest.fn().mockResolvedValue(7), findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+      user: {
+        count: jest.fn().mockResolvedValue(42),
+        findMany: jest.fn(),
+        findUnique: jest.fn(),
+        findFirst: jest.fn(),
+        update: jest.fn(),
+      },
+      organizer: {
+        count: jest.fn().mockResolvedValue(7),
+        findMany: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
       event: {
-        groupBy: jest.fn().mockResolvedValue([{ status: 'PUBLISHED', _count: { _all: 5 } }]),
+        groupBy: jest
+          .fn()
+          .mockResolvedValue([{ status: 'PUBLISHED', _count: { _all: 5 } }]),
         count: jest.fn().mockResolvedValue(5),
         findMany: jest.fn(),
         findUnique: jest.fn(),
@@ -68,7 +97,9 @@ describe('AdminService', () => {
     };
 
     eventsService = { invalidateEventCache: jest.fn().mockResolvedValue(undefined) };
-    notificationsService = { sendEventCancellationNotice: jest.fn().mockResolvedValue(undefined) };
+    notificationsService = {
+      sendEventCancellationNotice: jest.fn().mockResolvedValue(undefined),
+    };
     systemControlsService = {
       purgeTesterEntitlementsForUser: jest.fn().mockResolvedValue({ removedCount: 1 }),
     };
@@ -89,17 +120,32 @@ describe('AdminService', () => {
   describe('booking oversight', () => {
     it('searches bookings with customer/event filters and paginates', async () => {
       prisma.$transaction.mockResolvedValue([[{ id: 'b1', status: 'CONFIRMED' }], 1]);
-      const result = await service.listBookings({ page: 2, limit: 10, search: 'person@example.test', status: 'CONFIRMED' });
+      const result = await service.listBookings({
+        page: 2,
+        limit: 10,
+        search: 'person@example.test',
+        status: 'CONFIRMED',
+      });
 
       const args = prisma.booking.findMany.mock.calls[0][0];
-      expect(args.where).toEqual({ AND: [
-        { status: 'CONFIRMED' },
-        { OR: [
-          { id: { equals: 'person@example.test' } },
-          { user: { email: { contains: 'person@example.test', mode: 'insensitive' } } },
-          { event: { title: { contains: 'person@example.test', mode: 'insensitive' } } },
-        ] },
-      ] });
+      expect(args.where).toEqual({
+        AND: [
+          { status: 'CONFIRMED' },
+          {
+            OR: [
+              { id: { equals: 'person@example.test' } },
+              {
+                user: { email: { contains: 'person@example.test', mode: 'insensitive' } },
+              },
+              {
+                event: {
+                  title: { contains: 'person@example.test', mode: 'insensitive' },
+                },
+              },
+            ],
+          },
+        ],
+      });
       expect(args.skip).toBe(10);
       expect(args.take).toBe(10);
       expect(result).toMatchObject({ bookings: [{ id: 'b1' }], total: 1, page: 2 });
@@ -107,7 +153,12 @@ describe('AdminService', () => {
 
     it('returns a safe detail projection without payment signatures or ticket codes', async () => {
       prisma.booking.findUnique.mockResolvedValue({
-        id: 'b1', user: {}, event: {}, items: [], payment: null, tickets: [{ status: 'VALID' }],
+        id: 'b1',
+        user: {},
+        event: {},
+        items: [],
+        payment: null,
+        tickets: [{ status: 'VALID' }],
       });
       const result = await service.getBooking('b1');
       const select = prisma.booking.findUnique.mock.calls[0][0].select;
@@ -132,10 +183,7 @@ describe('AdminService', () => {
 
   describe('listUsers', () => {
     it('queries with search/role/isActive filters and paginates', async () => {
-      prisma.$transaction.mockResolvedValue([
-        [{ id: 'u1', _count: { bookings: 3 } }],
-        1,
-      ]);
+      prisma.$transaction.mockResolvedValue([[{ id: 'u1', _count: { bookings: 3 } }], 1]);
 
       const result = await service.listUsers({
         page: 2,
@@ -161,7 +209,12 @@ describe('AdminService', () => {
       });
       expect(findManyArgs.skip).toBe(10);
       expect(findManyArgs.take).toBe(10);
-      expect(result).toMatchObject({ users: [{ id: 'u1', bookingCount: 3 }], total: 1, page: 2, pages: 1 });
+      expect(result).toMatchObject({
+        users: [{ id: 'u1', bookingCount: 3 }],
+        total: 1,
+        page: 2,
+        pages: 1,
+      });
     });
 
     it('omits filters that are not provided', async () => {
@@ -175,14 +228,20 @@ describe('AdminService', () => {
   describe('setUserStatus', () => {
     it('deactivates a user, revokes sessions, and records audit log in one transaction', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 'u1', isActive: true });
-      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
-        fn({
-          user: { update: prisma.user.update },
-          session: { deleteMany: prisma.session.deleteMany },
-          auditLog: { create: prisma.auditLog.create },
-        }),
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            user: { update: prisma.user.update },
+            session: { deleteMany: prisma.session.deleteMany },
+            auditLog: { create: prisma.auditLog.create },
+          }),
       );
-      prisma.user.update.mockResolvedValue({ id: 'u1', email: 'a@b.c', role: 'CUSTOMER', isActive: false });
+      prisma.user.update.mockResolvedValue({
+        id: 'u1',
+        email: 'a@b.c',
+        role: 'CUSTOMER',
+        isActive: false,
+      });
 
       const result = await service.setUserStatus('admin-1', 'u1', { isActive: false });
 
@@ -201,14 +260,20 @@ describe('AdminService', () => {
 
     it('does not revoke sessions when reactivating', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 'u1', isActive: false });
-      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
-        fn({
-          user: { update: prisma.user.update },
-          session: { deleteMany: prisma.session.deleteMany },
-          auditLog: { create: prisma.auditLog.create },
-        }),
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            user: { update: prisma.user.update },
+            session: { deleteMany: prisma.session.deleteMany },
+            auditLog: { create: prisma.auditLog.create },
+          }),
       );
-      prisma.user.update.mockResolvedValue({ id: 'u1', email: 'a@b.c', role: 'CUSTOMER', isActive: true });
+      prisma.user.update.mockResolvedValue({
+        id: 'u1',
+        email: 'a@b.c',
+        role: 'CUSTOMER',
+        isActive: true,
+      });
 
       await service.setUserStatus('admin-1', 'u1', { isActive: true });
 
@@ -232,9 +297,9 @@ describe('AdminService', () => {
 
     it('404s for an unknown user', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
-      await expect(service.setUserStatus('admin-1', 'ghost', { isActive: false })).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.setUserStatus('admin-1', 'ghost', { isActive: false }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -253,18 +318,34 @@ describe('AdminService', () => {
         1,
       ]);
 
-      const result = await service.listEvents({ page: 1, limit: 20, status: 'PUBLISHED' });
+      const result = await service.listEvents({
+        page: 1,
+        limit: 20,
+        status: 'PUBLISHED',
+      });
 
       const findManyArgs = prisma.event.findMany.mock.calls[0][0];
       expect(findManyArgs.where).toEqual({ AND: [{}, { status: 'PUBLISHED' }] });
-      expect(result.events[0]).toMatchObject({ id: 'e1', organizerEmail: 'o@x.y', bookingCount: 4 });
+      expect(result.events[0]).toMatchObject({
+        id: 'e1',
+        organizerEmail: 'o@x.y',
+        bookingCount: 4,
+      });
     });
   });
 
   describe('moderateEvent', () => {
     it('cancels a published event and executes full cascade (refunds, bookings, tickets, cache, notifications)', async () => {
-      prisma.event.findUnique.mockResolvedValue({ id: 'e1', title: 'T', status: 'PUBLISHED' });
-      prisma.event.update.mockResolvedValue({ id: 'e1', title: 'T', status: 'CANCELLED' });
+      prisma.event.findUnique.mockResolvedValue({
+        id: 'e1',
+        title: 'T',
+        status: 'PUBLISHED',
+      });
+      prisma.event.update.mockResolvedValue({
+        id: 'e1',
+        title: 'T',
+        status: 'CANCELLED',
+      });
       prisma.payment.updateMany.mockResolvedValue({ count: 2 });
       prisma.booking.updateMany.mockResolvedValue({ count: 3 });
       prisma.ticket.updateMany.mockResolvedValue({ count: 5 });
@@ -277,20 +358,27 @@ describe('AdminService', () => {
       ]);
       prisma.auditLog.create.mockResolvedValue({ id: 'a1' });
 
-      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
-        fn({
-          event: { update: prisma.event.update },
-          payment: { updateMany: prisma.payment.updateMany },
-          booking: { updateMany: prisma.booking.updateMany, findMany: prisma.booking.findMany },
-          ticket: { updateMany: prisma.ticket.updateMany },
-          auditLog: { create: prisma.auditLog.create },
-        }),
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            event: { update: prisma.event.update },
+            payment: { updateMany: prisma.payment.updateMany },
+            booking: {
+              updateMany: prisma.booking.updateMany,
+              findMany: prisma.booking.findMany,
+            },
+            ticket: { updateMany: prisma.ticket.updateMany },
+            auditLog: { create: prisma.auditLog.create },
+          }),
       );
 
-      const result = await service.moderateEvent('admin-1', 'e1', { action: 'CANCEL', reason: 'Fraud' });
+      const result = await service.moderateEvent('admin-1', 'e1', {
+        action: 'CANCEL',
+        reason: 'Fraud',
+      });
 
       expect(prisma.event.update).toHaveBeenCalledWith({
-        where: { id: 'e1' },
+        where: { id: 'e1', status: 'PUBLISHED' },
         data: { status: 'CANCELLED' },
         select: { id: true, title: true, status: true },
       });
@@ -310,7 +398,10 @@ describe('AdminService', () => {
         }),
       });
       expect(prisma.booking.updateMany).toHaveBeenCalledWith({
-        where: { eventId: 'e1', status: { in: ['PENDING', 'PAYMENT_PENDING', 'CONFIRMED'] } },
+        where: {
+          eventId: 'e1',
+          status: { in: ['PENDING', 'PAYMENT_PENDING', 'CONFIRMED'] },
+        },
         data: expect.objectContaining({
           status: 'CANCELLED',
           cancellationReason: 'Event cancelled by administrator: Fraud',
@@ -347,18 +438,22 @@ describe('AdminService', () => {
     });
 
     it('refuses to cancel a non-published event', async () => {
-      prisma.event.findUnique.mockResolvedValue({ id: 'e1', title: 'T', status: 'DRAFT' });
-      await expect(service.moderateEvent('admin-1', 'e1', { action: 'CANCEL' })).rejects.toThrow(
-        ConflictException,
-      );
+      prisma.event.findUnique.mockResolvedValue({
+        id: 'e1',
+        title: 'T',
+        status: 'DRAFT',
+      });
+      await expect(
+        service.moderateEvent('admin-1', 'e1', { action: 'CANCEL' }),
+      ).rejects.toThrow(ConflictException);
       expect(prisma.event.update).not.toHaveBeenCalled();
     });
 
     it('404s for an unknown event', async () => {
       prisma.event.findUnique.mockResolvedValue(null);
-      await expect(service.moderateEvent('admin-1', 'ghost', { action: 'CANCEL' })).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.moderateEvent('admin-1', 'ghost', { action: 'CANCEL' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -371,7 +466,11 @@ describe('AdminService', () => {
         1,
       ]);
 
-      const result = await service.listOrganizers({ page: 1, limit: 20, search: 'o@x.y' });
+      const result = await service.listOrganizers({
+        page: 1,
+        limit: 20,
+        search: 'o@x.y',
+      });
 
       const findManyArgs = prisma.organizer.findMany.mock.calls[0][0];
       expect(findManyArgs.where).toEqual({
@@ -385,22 +484,37 @@ describe('AdminService', () => {
           {},
         ],
       });
-      expect(result.organizers[0]).toMatchObject({ id: 'o1', eventCount: 5, venueCount: 2 });
+      expect(result.organizers[0]).toMatchObject({
+        id: 'o1',
+        eventCount: 5,
+        venueCount: 2,
+      });
     });
   });
 
   describe('setOrganizerVerification', () => {
     it('toggles the verified badge and records audit log', async () => {
-      prisma.organizer.findUnique.mockResolvedValue({ id: 'o1', organizationName: 'Acme', isVerified: false });
-      prisma.organizer.update.mockResolvedValue({ id: 'o1', organizationName: 'Acme', isVerified: true });
-      prisma.$transaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) =>
-        fn({
-          organizer: { update: prisma.organizer.update },
-          auditLog: { create: prisma.auditLog.create },
-        }),
+      prisma.organizer.findUnique.mockResolvedValue({
+        id: 'o1',
+        organizationName: 'Acme',
+        isVerified: false,
+      });
+      prisma.organizer.update.mockResolvedValue({
+        id: 'o1',
+        organizationName: 'Acme',
+        isVerified: true,
+      });
+      prisma.$transaction.mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) =>
+          fn({
+            organizer: { update: prisma.organizer.update },
+            auditLog: { create: prisma.auditLog.create },
+          }),
       );
 
-      const result = await service.setOrganizerVerification('admin-1', 'o1', { isVerified: true });
+      const result = await service.setOrganizerVerification('admin-1', 'o1', {
+        isVerified: true,
+      });
 
       expect(prisma.organizer.update).toHaveBeenCalledWith({
         where: { id: 'o1' },
@@ -413,7 +527,11 @@ describe('AdminService', () => {
           action: 'ORGANIZER_VERIFIED',
           entity: 'ORGANIZER',
           entityId: 'o1',
-          details: { organizationName: 'Acme', previousVerified: false, newVerified: true },
+          details: {
+            organizationName: 'Acme',
+            previousVerified: false,
+            newVerified: true,
+          },
         }),
       });
       expect(result.isVerified).toBe(true);
@@ -440,7 +558,12 @@ describe('AdminService', () => {
             entityId: 'u1',
             details: { email: 'test@example.com' },
             createdAt: new Date('2026-10-14T08:00:00Z'),
-            user: { id: 'admin-1', email: 'admin@eventai.test', firstName: 'Admin', lastName: 'User' },
+            user: {
+              id: 'admin-1',
+              email: 'admin@eventai.test',
+              firstName: 'Admin',
+              lastName: 'User',
+            },
           },
         ],
         1,
@@ -455,11 +578,7 @@ describe('AdminService', () => {
 
       const findManyArgs = prisma.auditLog.findMany.mock.calls[0][0];
       expect(findManyArgs.where).toEqual({
-        AND: [
-          { entity: 'USER' },
-          { action: 'USER_DEACTIVATED' },
-          {},
-        ],
+        AND: [{ entity: 'USER' }, { action: 'USER_DEACTIVATED' }, {}],
       });
       expect(result.logs[0].id).toBe('log-1');
       expect(result.total).toBe(1);
@@ -469,22 +588,62 @@ describe('AdminService', () => {
       prisma.$transaction.mockResolvedValue([[], 0]);
 
       // listAuditLogs with empty object and string pagination
-      const auditResult = await service.listAuditLogs({ page: '1' as any, limit: '20' as any });
-      expect(auditResult).toMatchObject({ logs: [], total: 0, page: 1, limit: 20, pages: 1 });
+      const auditResult = await service.listAuditLogs({
+        page: '1' as any,
+        limit: '20' as any,
+      });
+      expect(auditResult).toMatchObject({
+        logs: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+        pages: 1,
+      });
 
       // listBookings with empty object
       const bookingsResult = await service.listBookings({} as any);
-      expect(bookingsResult).toMatchObject({ bookings: [], total: 0, page: 1, limit: 20, pages: 1 });
+      expect(bookingsResult).toMatchObject({
+        bookings: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+        pages: 1,
+      });
 
       // listUsers with string boolean and empty query
-      const usersResult = await service.listUsers({ page: '1' as any, limit: '20' as any, isActive: 'true' as any });
-      expect(usersResult).toMatchObject({ users: [], total: 0, page: 1, limit: 20, pages: 1 });
-      const userArgs = prisma.user.findMany.mock.calls[prisma.user.findMany.mock.calls.length - 1][0];
+      const usersResult = await service.listUsers({
+        page: '1' as any,
+        limit: '20' as any,
+        isActive: 'true' as any,
+      });
+      expect(usersResult).toMatchObject({
+        users: [],
+        total: 0,
+        page: 1,
+        limit: 20,
+        pages: 1,
+      });
+      const userArgs =
+        prisma.user.findMany.mock.calls[prisma.user.findMany.mock.calls.length - 1][0];
       expect(userArgs.where.AND[2]).toEqual({ isActive: true });
 
       // listEvents with null organizer and user relations
       prisma.$transaction.mockResolvedValueOnce([
-        [{ id: 'evt-1', title: 'Test', slug: 'test', status: 'PUBLISHED', startDate: new Date(), endDate: new Date(), createdAt: new Date(), category: null, venue: null, organizer: null, _count: { bookings: 0 } }],
+        [
+          {
+            id: 'evt-1',
+            title: 'Test',
+            slug: 'test',
+            status: 'PUBLISHED',
+            startDate: new Date(),
+            endDate: new Date(),
+            createdAt: new Date(),
+            category: null,
+            venue: null,
+            organizer: null,
+            _count: { bookings: 0 },
+          },
+        ],
         1,
       ]);
       const eventsResult = await service.listEvents({} as any);
@@ -494,11 +653,26 @@ describe('AdminService', () => {
 
       // listOrganizers with string boolean and null user
       prisma.$transaction.mockResolvedValueOnce([
-        [{ id: 'org-1', organizationName: 'Org 1', isVerified: false, createdAt: new Date(), user: null, _count: { events: 0, venues: 0 } }],
+        [
+          {
+            id: 'org-1',
+            organizationName: 'Org 1',
+            isVerified: false,
+            createdAt: new Date(),
+            user: null,
+            _count: { events: 0, venues: 0 },
+          },
+        ],
         1,
       ]);
-      const organizersResult = await service.listOrganizers({ isVerified: 'false' as any });
-      expect(organizersResult.organizers[0].user).toEqual({ id: '', email: 'Unknown', isActive: false });
+      const organizersResult = await service.listOrganizers({
+        isVerified: 'false' as any,
+      });
+      expect(organizersResult.organizers[0].user).toEqual({
+        id: '',
+        email: 'Unknown',
+        isActive: false,
+      });
       expect(organizersResult.page).toBe(1);
       expect(organizersResult.limit).toBe(20);
     });
@@ -630,5 +804,3 @@ describe('AdminService', () => {
     });
   });
 });
-
-

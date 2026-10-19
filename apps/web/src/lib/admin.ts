@@ -6,10 +6,24 @@ import { authFetch } from './auth';
 export interface AdminStats {
   users: number;
   organizers: { total: number; verified: number };
-  events: { total: number; DRAFT: number; PUBLISHED: number; CANCELLED: number; COMPLETED: number; SOLDOUT: number };
+  events: {
+    total: number;
+    DRAFT: number;
+    PUBLISHED: number;
+    CANCELLED: number;
+    COMPLETED: number;
+    SOLDOUT: number;
+  };
   bookings: Record<string, number>;
   revenue: { gross: number; refunded: number; net: number };
-  tickets: { VALID: number; USED: number; CANCELLED: number; EXPIRED: number; issued: number; checkedIn: number };
+  tickets: {
+    VALID: number;
+    USED: number;
+    CANCELLED: number;
+    EXPIRED: number;
+    issued: number;
+    checkedIn: number;
+  };
 }
 
 export interface AdminCategory {
@@ -30,7 +44,12 @@ export interface AdminBookingRow {
   createdAt: string;
   user: { id: string; email: string; firstName: string; lastName: string };
   event: { id: string; title: string; startDate: string };
-  payment: { status: string; amount: number; refundAmount: number | null; updatedAt: string } | null;
+  payment: {
+    status: string;
+    amount: number;
+    refundAmount: number | null;
+    updatedAt: string;
+  } | null;
 }
 
 export interface AdminBookingDetail extends AdminBookingRow {
@@ -38,29 +57,51 @@ export interface AdminBookingDetail extends AdminBookingRow {
   confirmedAt: string | null;
   cancelledAt: string | null;
   cancellationReason: string | null;
-  items: { quantity: number; unitPrice: number; totalPrice: number; ticketType: { name: string } }[];
-  payment: (NonNullable<AdminBookingRow['payment']> & {
-    currency: string;
-    method: string | null;
-    refundId: string | null;
-    refundRequestStatus?: string | null;
-    refundRequestReason?: string | null;
-    refundRequestedAt?: string | null;
-    failureReason: string | null;
-    createdAt: string;
-  }) | null;
+  items: {
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    ticketType: { name: string };
+  }[];
+  payment:
+    | (NonNullable<AdminBookingRow['payment']> & {
+        currency: string;
+        method: string | null;
+        refundId: string | null;
+        refundRequestStatus?: string | null;
+        refundRequestReason?: string | null;
+        refundRequestedAt?: string | null;
+        failureReason: string | null;
+        createdAt: string;
+      })
+    | null;
   ticketCounts: Record<string, number>;
 }
 
-export async function listAdminBookings(params: { search?: string; status?: string; page?: number; limit?: number; signal?: AbortSignal } = {}) {
+export async function listAdminBookings(
+  params: {
+    search?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+    signal?: AbortSignal;
+  } = {},
+) {
   const qs = new URLSearchParams();
   qs.set('page', String(params.page ?? 1));
   qs.set('limit', String(params.limit ?? 20));
   if (params.search) qs.set('search', params.search);
   if (params.status) qs.set('status', params.status);
-  const res = await authFetch(`/admin/bookings?${qs.toString()}`, { signal: params.signal });
+  const res = await authFetch(`/admin/bookings?${qs.toString()}`, {
+    signal: params.signal,
+  });
   if (!res.ok) throw new Error(`Failed to load bookings (${res.status})`);
-  return res.json() as Promise<{ bookings: AdminBookingRow[]; total: number; page: number; pages: number }>;
+  return res.json() as Promise<{
+    bookings: AdminBookingRow[];
+    total: number;
+    page: number;
+    pages: number;
+  }>;
 }
 
 export async function getAdminBooking(id: string): Promise<AdminBookingDetail> {
@@ -76,7 +117,9 @@ export async function reconcileAdminRefund(bookingId: string): Promise<{
   status: string;
   outcome: 'processed' | 'failed' | 'unknown' | 'provider_unavailable' | 'not_pending';
 }> {
-  const res = await authFetch(`/admin/bookings/${bookingId}/refund/reconcile`, { method: 'POST' });
+  const res = await authFetch(`/admin/bookings/${bookingId}/refund/reconcile`, {
+    method: 'POST',
+  });
   const body = (await res.json().catch(() => ({}))) as {
     bookingId?: string;
     refundId?: string;
@@ -85,7 +128,11 @@ export async function reconcileAdminRefund(bookingId: string): Promise<{
     message?: string | string[];
   };
   if (!res.ok) {
-    throw new Error(Array.isArray(body.message) ? body.message.join(', ') : body.message ?? `Refund reconciliation failed (${res.status})`);
+    throw new Error(
+      Array.isArray(body.message)
+        ? body.message.join(', ')
+        : (body.message ?? `Refund reconciliation failed (${res.status})`),
+    );
   }
   return {
     bookingId: body.bookingId ?? bookingId,
@@ -101,7 +148,9 @@ export async function recoverAdminRefund(bookingId: string): Promise<{
   outcome?: string;
   message?: string;
 }> {
-  const res = await authFetch(`/admin/bookings/${bookingId}/refund/recover`, { method: 'POST' });
+  const res = await authFetch(`/admin/bookings/${bookingId}/refund/recover`, {
+    method: 'POST',
+  });
   const body = (await res.json().catch(() => ({}))) as {
     bookingId?: string;
     status?: string;
@@ -111,7 +160,9 @@ export async function recoverAdminRefund(bookingId: string): Promise<{
   };
   if (!res.ok) {
     throw new Error(
-      Array.isArray(body.message) ? body.message.join(', ') : body.message ?? `Refund recovery failed (${res.status})`,
+      Array.isArray(body.message)
+        ? body.message.join(', ')
+        : (body.message ?? `Refund recovery failed (${res.status})`),
     );
   }
   return {
@@ -145,7 +196,14 @@ export interface AdminUser {
 }
 
 export async function listAdminUsers(
-  params: { search?: string; role?: string; isActive?: string; status?: string; page?: number; limit?: number } = {},
+  params: {
+    search?: string;
+    role?: string;
+    isActive?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+  } = {},
 ): Promise<{ users: AdminUser[]; total: number; page: number; pages: number }> {
   const qs = new URLSearchParams();
   qs.set('page', String(params.page ?? 1));
@@ -183,6 +241,7 @@ export interface AdminEventRow {
 }
 
 export interface AdminEventDetail extends AdminEventRow {
+  faqs?: { id: string; question: string; answer: string }[];
   description: string;
   shortDescription: string | null;
   endDate: string;
@@ -191,8 +250,21 @@ export interface AdminEventDetail extends AdminEventRow {
   tags: string[];
   policies: string | null;
   cancellationPolicy: string | null;
-  category: { id: string; name: string; slug?: string; color?: string | null; icon?: string | null };
-  venue: { id: string; name: string; address: string; city: string; state: string; capacity?: number } | null;
+  category: {
+    id: string;
+    name: string;
+    slug?: string;
+    color?: string | null;
+    icon?: string | null;
+  };
+  venue: {
+    id: string;
+    name: string;
+    address: string;
+    city: string;
+    state: string;
+    capacity?: number;
+  } | null;
   ticketTypes: {
     id: string;
     name: string;
@@ -241,7 +313,11 @@ export const moderateAdminEvent = (id: string, reason?: string) =>
     ...(reason && { reason }),
   });
 
-export const reviewAdminEvent = (id: string, action: 'APPROVE' | 'REJECT', reason?: string) =>
+export const reviewAdminEvent = (
+  id: string,
+  action: 'APPROVE' | 'REJECT',
+  reason?: string,
+) =>
   adminMutation(`/admin/events/${id}/review`, 'POST', {
     action,
     ...(reason && { reason }),
@@ -261,7 +337,12 @@ export interface AdminOrganizerRow {
 
 export async function listAdminOrganizers(
   params: { search?: string; isVerified?: string; page?: number; limit?: number } = {},
-): Promise<{ organizers: AdminOrganizerRow[]; total: number; page: number; pages: number }> {
+): Promise<{
+  organizers: AdminOrganizerRow[];
+  total: number;
+  page: number;
+  pages: number;
+}> {
   const qs = new URLSearchParams();
   qs.set('page', String(params.page ?? 1));
   qs.set('limit', String(params.limit ?? 20));
@@ -289,9 +370,12 @@ export interface OrganizerApplication {
   reviewedBy?: string;
 }
 
-export async function listPendingOrganizerApplications(): Promise<{ applications: OrganizerApplication[] }> {
+export async function listPendingOrganizerApplications(): Promise<{
+  applications: OrganizerApplication[];
+}> {
   const res = await authFetch('/admin/organizers/applications/pending');
-  if (!res.ok) throw new Error(`Failed to load pending organizer applications (${res.status})`);
+  if (!res.ok)
+    throw new Error(`Failed to load pending organizer applications (${res.status})`);
   return res.json();
 }
 
@@ -305,7 +389,15 @@ export async function listAdminCategories(): Promise<AdminCategory[]> {
   const res = await authFetch('/categories');
   if (!res.ok) throw new Error(`Failed to load categories (${res.status})`);
   const body = (await res.json()) as {
-    categories: { id: string; name: string; slug: string; description: string | null; icon: string | null; color: string | null; _count: { events: number } }[];
+    categories: {
+      id: string;
+      name: string;
+      slug: string;
+      description: string | null;
+      icon: string | null;
+      color: string | null;
+      _count: { events: number };
+    }[];
   };
   return body.categories.map((c) => ({ ...c, eventCount: c._count.events }));
 }
@@ -318,15 +410,21 @@ async function adminMutation(url: string, method: string, body?: unknown): Promi
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { message?: string | string[] };
     throw new Error(
-      Array.isArray(err.message) ? err.message.join(', ') : (err.message ?? `Failed (${res.status})`),
+      Array.isArray(err.message)
+        ? err.message.join(', ')
+        : (err.message ?? `Failed (${res.status})`),
     );
   }
 }
 
-export const createAdminCategory = (input: { name: string; description?: string; color?: string }) =>
-  adminMutation('/categories', 'POST', input);
+export const createAdminCategory = (input: {
+  name: string;
+  description?: string;
+  color?: string;
+}) => adminMutation('/categories', 'POST', input);
 
-export const deactivateAdminCategory = (id: string) => adminMutation(`/categories/${id}`, 'DELETE');
+export const deactivateAdminCategory = (id: string) =>
+  adminMutation(`/categories/${id}`, 'DELETE');
 
 export function useAdminData(enabled: boolean) {
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -383,7 +481,9 @@ export async function listAdminAuditLogs(
   if (params.search) qs.set('search', params.search);
   if (params.entity) qs.set('entity', params.entity);
   if (params.action) qs.set('action', params.action);
-  const res = await authFetch(`/admin/audit-logs?${qs.toString()}`, { signal: params.signal });
+  const res = await authFetch(`/admin/audit-logs?${qs.toString()}`, {
+    signal: params.signal,
+  });
   if (!res.ok) throw new Error(`Failed to load audit logs (${res.status})`);
   return res.json();
 }
@@ -472,7 +572,12 @@ export async function listAdminTeam(): Promise<AdminTeamResponse> {
 export async function inviteAdminMember(data: {
   email: string;
   role: AdminRoleType;
-}): Promise<{ success: boolean; invitation: AdminInvitationSummary }> {
+}): Promise<{
+  success: boolean;
+  emailDeliveryFailed?: boolean;
+  message?: string;
+  invitation: AdminInvitationSummary;
+}> {
   const res = await authFetch('/admin/team/invitations', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -484,7 +589,9 @@ export async function inviteAdminMember(data: {
   return res.json();
 }
 
-export async function resendAdminInvitation(id: string): Promise<{ success: boolean }> {
+export async function resendAdminInvitation(
+  id: string,
+): Promise<{ success: boolean; emailDeliveryFailed?: boolean; message?: string }> {
   const res = await authFetch(`/admin/team/invitations/${id}/resend`, {
     method: 'POST',
   });
@@ -533,24 +640,33 @@ export async function acceptAdminInvitation(token: string): Promise<{
   return res.json();
 }
 
-export async function deleteAdminInvitationHistory(id: string): Promise<{ success: boolean }> {
+export async function deleteAdminInvitationHistory(
+  id: string,
+): Promise<{ success: boolean }> {
   const res = await authFetch(`/admin/team/invitations/${id}`, {
     method: 'DELETE',
   });
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
-    throw new Error(errorBody.message || `Failed to clear invitation record (${res.status})`);
+    throw new Error(
+      errorBody.message || `Failed to clear invitation record (${res.status})`,
+    );
   }
   return res.json();
 }
 
-export async function clearAcceptedAdminInvitations(): Promise<{ success: boolean; clearedCount: number }> {
+export async function clearAcceptedAdminInvitations(): Promise<{
+  success: boolean;
+  clearedCount: number;
+}> {
   const res = await authFetch('/admin/team/invitations/clear-accepted', {
     method: 'POST',
   });
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
-    throw new Error(errorBody.message || `Failed to clear accepted invitations (${res.status})`);
+    throw new Error(
+      errorBody.message || `Failed to clear accepted invitations (${res.status})`,
+    );
   }
   return res.json();
 }
@@ -570,5 +686,12 @@ export async function getMaintenanceTesters(): Promise<MaintenanceTester[]> {
   return res.json();
 }
 
-
-
+export const setAdminEventPaused = (
+  id: string,
+  action: 'PAUSE' | 'RESUME',
+  reason?: string,
+) =>
+  adminMutation('/admin/events/' + id + '/moderate', 'POST', {
+    action,
+    ...(reason ? { reason } : {}),
+  });

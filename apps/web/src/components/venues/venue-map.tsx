@@ -1,46 +1,80 @@
 'use client';
-
-import { useEffect } from 'react';
-import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
-/** Small pin icon drawn inline so no image assets are needed. */
-const pinIcon = L.divIcon({
-  className: '',
-  html: `<svg width="28" height="40" viewBox="0 0 28 40" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 26 14 26s14-15.5 14-26C28 6.27 21.73 0 14 0z" fill="#7c3aed"/>
-    <circle cx="14" cy="14" r="5.5" fill="#ffffff"/>
-  </svg>`,
-  iconSize: [28, 40],
-  iconAnchor: [14, 40],
-  popupAnchor: [0, -40],
-});
-
-function Recenter({ lat, lng }: { lat: number; lng: number }) {
-  const map = useMap();
+import dynamic from 'next/dynamic';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Maximize2, X } from 'lucide-react';
+const ClientMap = dynamic(
+  () => import('./venue-map-client').then((module) => module.VenueMapClient),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="ep-map-loading" role="status" style={{ height: 150 }}>
+        Loading venue map…
+      </div>
+    ),
+  },
+);
+export function VenueMap(props: { lat: number; lng: number; name: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    map.setView([lat, lng], map.getZoom());
-  }, [lat, lng, map]);
-  return null;
-}
-
-export function VenueMap({ lat, lng, name }: { lat: number; lng: number; name: string }) {
+    if (!expanded) return;
+    const node = dialog.current;
+    const triggerButton = trigger.current;
+    node?.showModal();
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      node?.close();
+      triggerButton?.focus();
+      document.body.style.overflow = previous;
+    };
+  }, [expanded]);
   return (
-    <div className="overflow-hidden rounded-lg border" role="img" aria-label={`Map showing ${name}`}>
-      <MapContainer
-        center={[lat, lng]}
-        zoom={15}
-        scrollWheelZoom={false}
-        style={{ height: 320, width: '100%' }}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <Marker position={[lat, lng]} icon={pinIcon} title={name} />
-        <Recenter lat={lat} lng={lng} />
-      </MapContainer>
-    </div>
+    <>
+      <div className="ep-map-preview">
+        <ClientMap {...props} />
+        <button
+          type="button"
+          ref={trigger}
+          className="ep-map-expand"
+          aria-label="Enlarge venue map"
+          title="Enlarge map"
+          onClick={() => setExpanded(true)}
+        >
+          <Maximize2 size={17} />
+        </button>
+      </div>
+      {expanded &&
+        createPortal(
+          <dialog
+            className="ep-map-dialog"
+            ref={dialog}
+            aria-label={'Map of ' + props.name}
+            onCancel={() => setExpanded(false)}
+            onClose={() => setExpanded(false)}
+            onClick={(event) => {
+              if (event.target === event.currentTarget) setExpanded(false);
+            }}
+          >
+            <header>
+              <h2>{props.name}</h2>
+              <button
+                type="button"
+                autoFocus
+                aria-label="Close enlarged map"
+                onClick={() => setExpanded(false)}
+              >
+                <X size={20} />
+              </button>
+            </header>
+            <div className="ep-map-expanded-content">
+              <ClientMap {...props} />
+            </div>
+          </dialog>,
+          document.body,
+        )}
+    </>
   );
 }

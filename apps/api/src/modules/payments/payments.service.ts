@@ -73,6 +73,10 @@ export class PaymentsService {
 
   async createOrder(userId: string, bookingId: string) {
     const booking = await this.loadOwnBooking(userId, bookingId);
+    if (booking.event?.status === 'PAUSED')
+      throw new ConflictException(
+        'This event is paused. New payments are temporarily unavailable.',
+      );
 
     if (booking.status === 'CONFIRMED' || booking.status === 'REFUNDED') {
       throw new ConflictException('This booking is already paid');
@@ -90,7 +94,11 @@ export class PaymentsService {
 
     if (existing && (existing.status === 'CREATED' || existing.status === 'PENDING')) {
       // Retry path: reuse the same open order (idempotent)
-      return this.orderResponse(existing.razorpayOrderId, booking.totalAmount, existing.currency);
+      return this.orderResponse(
+        existing.razorpayOrderId,
+        booking.totalAmount,
+        existing.currency,
+      );
     }
 
     let order: RazorpayOrder;
@@ -198,7 +206,9 @@ export class PaymentsService {
       this.logger.log(`Booking ${booking.id} confirmed via checkout verification`);
       this.notifyConfirmation(booking, confirmed);
     } else {
-      this.logger.warn(`Late capture for closed booking ${booking.id}; organizer approval is required for a refund`);
+      this.logger.warn(
+        `Late capture for closed booking ${booking.id}; organizer approval is required for a refund`,
+      );
     }
     return { booking: confirmed };
   }
@@ -226,7 +236,9 @@ export class PaymentsService {
       };
     };
     try {
-      parsed = JSON.parse(typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8'));
+      parsed = JSON.parse(
+        typeof rawBody === 'string' ? rawBody : rawBody.toString('utf8'),
+      );
     } catch {
       throw new BadRequestException('Webhook body is not valid JSON');
     }
@@ -292,7 +304,9 @@ export class PaymentsService {
         this.logger.log(`Booking ${payment.bookingId} confirmed via webhook capture`);
         this.notifyConfirmation(payment.booking, webhookConfirmed);
       } else {
-        this.logger.warn(`Late capture for closed booking ${payment.bookingId}; organizer approval is required for a refund`);
+        this.logger.warn(
+          `Late capture for closed booking ${payment.bookingId}; organizer approval is required for a refund`,
+        );
       }
       return { received: true, handled: true };
     }
@@ -318,7 +332,11 @@ export class PaymentsService {
           type: 'PAYMENT_FAILED',
           title: 'Payment failed',
           message: `Your payment for "${payment.booking?.event?.title ?? 'booking'}" could not be completed: ${entity.error_description ?? 'Payment failed'}.`,
-          data: { action: 'PAYMENT_FAILED', bookingId: payment.bookingId, link: '/tickets' },
+          data: {
+            action: 'PAYMENT_FAILED',
+            bookingId: payment.bookingId,
+            link: '/tickets',
+          },
         });
       }
       this.logger.warn(`Payment for booking ${payment.bookingId} failed`);
@@ -357,11 +375,16 @@ export class PaymentsService {
     if (booking.status === 'REFUNDED') {
       throw new ConflictException('This booking was already refunded');
     }
-    if (payment.status === 'REFUND_PENDING' || payment.refundRequestStatus === 'APPROVED') {
+    if (
+      payment.status === 'REFUND_PENDING' ||
+      payment.refundRequestStatus === 'APPROVED'
+    ) {
       throw new ConflictException('A refund is already approved or being processed');
     }
     if (payment.refundRequestStatus === 'PENDING') {
-      throw new ConflictException('A refund request is already awaiting organizer approval');
+      throw new ConflictException(
+        'A refund request is already awaiting organizer approval',
+      );
     }
     if (booking.status !== 'CONFIRMED') {
       throw new ConflictException(
@@ -406,7 +429,9 @@ export class PaymentsService {
       return result.count === 1;
     });
     if (!claimed) {
-      throw new ConflictException('A refund request is already open or this payment is no longer eligible');
+      throw new ConflictException(
+        'A refund request is already open or this payment is no longer eligible',
+      );
     }
 
     if (booking.event.organizer?.userId) {
@@ -415,7 +440,12 @@ export class PaymentsService {
         type: 'SYSTEM',
         title: 'New refund request',
         message: `An attendee requested a refund for "${booking.event.title}".`,
-        data: { action: 'REFUND_REQUESTED', bookingId, eventId: booking.event.id, link: '/organizer/refunds' },
+        data: {
+          action: 'REFUND_REQUESTED',
+          bookingId,
+          eventId: booking.event.id,
+          link: '/organizer/refunds',
+        },
       });
     }
 
@@ -460,37 +490,43 @@ export class PaymentsService {
       where.refundRequestStatus = { not: null };
     }
 
-    const [pendingCount, approvedCount, refundedCount, rejectedCount, failedCount, allCount] =
-      await Promise.all([
-        this.prisma.payment.count({
-          where: { booking: { event: { organizerId } }, refundRequestStatus: 'PENDING' },
-        }),
-        this.prisma.payment.count({
-          where: {
-            booking: { event: { organizerId } },
-            refundRequestStatus: 'APPROVED',
-            status: 'REFUND_PENDING',
-          },
-        }),
-        this.prisma.payment.count({
-          where: { booking: { event: { organizerId } }, status: 'REFUNDED' },
-        }),
-        this.prisma.payment.count({
-          where: { booking: { event: { organizerId } }, refundRequestStatus: 'REJECTED' },
-        }),
-        this.prisma.payment.count({
-          where: { booking: { event: { organizerId } }, refundRequestStatus: 'FAILED' },
-        }),
-        this.prisma.payment.count({
-          where: {
-            booking: { event: { organizerId } },
-            OR: [
-              { refundRequestStatus: { not: null } },
-              { status: { in: ['REFUND_PENDING', 'REFUNDED'] } },
-            ],
-          },
-        }),
-      ]);
+    const [
+      pendingCount,
+      approvedCount,
+      refundedCount,
+      rejectedCount,
+      failedCount,
+      allCount,
+    ] = await Promise.all([
+      this.prisma.payment.count({
+        where: { booking: { event: { organizerId } }, refundRequestStatus: 'PENDING' },
+      }),
+      this.prisma.payment.count({
+        where: {
+          booking: { event: { organizerId } },
+          refundRequestStatus: 'APPROVED',
+          status: 'REFUND_PENDING',
+        },
+      }),
+      this.prisma.payment.count({
+        where: { booking: { event: { organizerId } }, status: 'REFUNDED' },
+      }),
+      this.prisma.payment.count({
+        where: { booking: { event: { organizerId } }, refundRequestStatus: 'REJECTED' },
+      }),
+      this.prisma.payment.count({
+        where: { booking: { event: { organizerId } }, refundRequestStatus: 'FAILED' },
+      }),
+      this.prisma.payment.count({
+        where: {
+          booking: { event: { organizerId } },
+          OR: [
+            { refundRequestStatus: { not: null } },
+            { status: { in: ['REFUND_PENDING', 'REFUNDED'] } },
+          ],
+        },
+      }),
+    ]);
 
     const [refundRequests, total] = await Promise.all([
       this.prisma.payment.findMany({
@@ -517,8 +553,18 @@ export class PaymentsService {
               totalAmount: true,
               status: true,
               createdAt: true,
-              user: { select: { id: true, firstName: true, lastName: true, email: true } },
-              event: { select: { id: true, title: true, slug: true, startDate: true, status: true } },
+              user: {
+                select: { id: true, firstName: true, lastName: true, email: true },
+              },
+              event: {
+                select: {
+                  id: true,
+                  title: true,
+                  slug: true,
+                  startDate: true,
+                  status: true,
+                },
+              },
               items: {
                 select: { quantity: true, ticketType: { select: { name: true } } },
               },
@@ -545,17 +591,29 @@ export class PaymentsService {
     };
   }
 
-  async reconcileOrganizerRefund(organizerId: string, actorUserId: string, bookingId: string) {
+  async reconcileOrganizerRefund(
+    organizerId: string,
+    actorUserId: string,
+    bookingId: string,
+  ) {
     await this.loadOrganizerRefundPayment(organizerId, bookingId);
     return this.reconcileRefund(actorUserId, bookingId);
   }
 
-  async recoverOrganizerRefund(organizerId: string, actorUserId: string, bookingId: string) {
+  async recoverOrganizerRefund(
+    organizerId: string,
+    actorUserId: string,
+    bookingId: string,
+  ) {
     await this.loadOrganizerRefundPayment(organizerId, bookingId);
     return this.recoverApprovedRefund(actorUserId, bookingId);
   }
 
-  async approveRefundRequest(organizerId: string, actorUserId: string, bookingId: string) {
+  async approveRefundRequest(
+    organizerId: string,
+    actorUserId: string,
+    bookingId: string,
+  ) {
     const payment = await this.loadOrganizerRefundPayment(organizerId, bookingId);
     if (payment.refundRequestStatus !== 'PENDING') {
       throw new ConflictException('This refund request is no longer awaiting approval');
@@ -603,7 +661,9 @@ export class PaymentsService {
       return result.count === 1;
     });
     if (!claimed) {
-      throw new ConflictException('This refund request was already reviewed or processed');
+      throw new ConflictException(
+        'This refund request was already reviewed or processed',
+      );
     }
 
     if (payment.booking.userId) {
@@ -617,18 +677,19 @@ export class PaymentsService {
     }
 
     return this.initiateApprovedRefund(
-      { ...payment, status: 'REFUND_PENDING', refundRequestStatus: 'APPROVED', refundAttemptKey },
+      {
+        ...payment,
+        status: 'REFUND_PENDING',
+        refundRequestStatus: 'APPROVED',
+        refundAttemptKey,
+      },
       actorUserId,
       razorpay,
       refundAttemptKey,
     );
   }
 
-  async rejectRefundRequest(
-    organizerId: string,
-    actorUserId: string,
-    bookingId: string,
-  ) {
+  async rejectRefundRequest(organizerId: string, actorUserId: string, bookingId: string) {
     const payment = await this.loadOrganizerRefundPayment(organizerId, bookingId);
     if (payment.refundRequestStatus !== 'PENDING') {
       throw new ConflictException('This refund request is no longer awaiting approval');
@@ -657,7 +718,9 @@ export class PaymentsService {
       return result.count === 1;
     });
     if (!rejected) {
-      throw new ConflictException('This refund request was already reviewed or processed');
+      throw new ConflictException(
+        'This refund request was already reviewed or processed',
+      );
     }
 
     if (payment.booking.userId) {
@@ -709,28 +772,31 @@ export class PaymentsService {
     }
     let refund: { id: string; amount: number; status: string };
     try {
-      refund = (await razorpay.payments.refund(
-        razorpayPaymentId,
-        {
-          speed: 'normal',
-          notes: {
-            bookingId: booking.id,
-            eventaiRefundAttempt: refundAttemptKey,
-            reason,
-          },
+      refund = (await razorpay.payments.refund(razorpayPaymentId, {
+        speed: 'normal',
+        notes: {
+          bookingId: booking.id,
+          eventaiRefundAttempt: refundAttemptKey,
+          reason,
         },
-      )) as { id: string; amount: number; status: string };
+      })) as { id: string; amount: number; status: string };
     } catch (error) {
-      const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
-        ? Number((error as { statusCode?: unknown }).statusCode)
-        : NaN;
+      const statusCode =
+        typeof error === 'object' && error !== null && 'statusCode' in error
+          ? Number((error as { statusCode?: unknown }).statusCode)
+          : NaN;
       // Any transport/provider exception is ambiguous: even a 4xx surfaced by
       // an intermediary must not release the claim without authoritative data.
-      await this.auditRefundOutcome(payment.id, actorUserId, 'REFUND_RECONCILIATION_REQUIRED', {
-        bookingId: booking.id,
-        providerStatusCode: Number.isInteger(statusCode) ? statusCode : undefined,
-        outcome: 'unknown',
-      });
+      await this.auditRefundOutcome(
+        payment.id,
+        actorUserId,
+        'REFUND_RECONCILIATION_REQUIRED',
+        {
+          bookingId: booking.id,
+          providerStatusCode: Number.isInteger(statusCode) ? statusCode : undefined,
+          outcome: 'unknown',
+        },
+      );
       throw new ServiceUnavailableException(
         'Refund outcome is pending provider reconciliation; do not retry yet',
       );
@@ -751,7 +817,15 @@ export class PaymentsService {
           include: {
             items: true,
             payment: true,
-            tickets: { select: { id: true, ticketCode: true, holderName: true, status: true, ticketTypeId: true } },
+            tickets: {
+              select: {
+                id: true,
+                ticketCode: true,
+                holderName: true,
+                status: true,
+                ticketTypeId: true,
+              },
+            },
           },
         }),
         refundId: refund.id,
@@ -766,7 +840,15 @@ export class PaymentsService {
         include: {
           items: true,
           payment: true,
-          tickets: { select: { id: true, ticketCode: true, holderName: true, status: true, ticketTypeId: true } },
+          tickets: {
+            select: {
+              id: true,
+              ticketCode: true,
+              holderName: true,
+              status: true,
+              ticketTypeId: true,
+            },
+          },
         },
       }),
       refundId: refund.id,
@@ -803,25 +885,34 @@ export class PaymentsService {
           payment.refundId,
         )) as RazorpayRefundRecord;
       } else {
-        const providerPayment = (await client.payments.fetch(payment.razorpayPaymentId)) as RazorpayPaymentRecord;
-        const result = (await client.payments.fetchMultipleRefund(payment.razorpayPaymentId, { count: 100 })) as {
+        const providerPayment = (await client.payments.fetch(
+          payment.razorpayPaymentId,
+        )) as RazorpayPaymentRecord;
+        const result = (await client.payments.fetchMultipleRefund(
+          payment.razorpayPaymentId,
+          { count: 100 },
+        )) as {
           count: number;
           items: RazorpayRefundRecord[];
         };
         const rawKey = payment.refundAttemptKey ?? '';
         const claimMeta = parseClaimKey(rawKey);
 
-        const matches = result.items.filter((candidate) =>
-          candidate.payment_id === payment.razorpayPaymentId &&
-          candidate.amount === payment.amount &&
-          (rawKey
-            ? String(candidate.notes?.eventaiRefundAttempt ?? '') === claimMeta.baseKey
-            : String(candidate.notes?.bookingId ?? '') === payment.bookingId),
+        const matches = result.items.filter(
+          (candidate) =>
+            candidate.payment_id === payment.razorpayPaymentId &&
+            candidate.amount === payment.amount &&
+            (rawKey
+              ? String(candidate.notes?.eventaiRefundAttempt ?? '') === claimMeta.baseKey
+              : String(candidate.notes?.bookingId ?? '') === payment.bookingId),
         );
 
         if (matches.length === 1) {
           refund = matches[0] as RazorpayRefundRecord;
-        } else if (result.items.length === 0 && (providerPayment.amount_refunded ?? 0) === 0) {
+        } else if (
+          result.items.length === 0 &&
+          (providerPayment.amount_refunded ?? 0) === 0
+        ) {
           // Provider authoritatively verifies zero refunds exist.
           if (claimMeta.isClaimed && claimMeta.claimedAt) {
             const elapsed = Date.now() - claimMeta.claimedAt;
@@ -884,10 +975,15 @@ export class PaymentsService {
         refund.payment_id !== payment.razorpayPaymentId ||
         (payment.refundId !== null && refund.id !== payment.refundId)
       ) {
-        await this.auditRefundOutcome(payment.id, adminUserId, 'REFUND_RECONCILIATION_REQUIRED', {
-          bookingId: payment.bookingId,
-          outcome: 'unknown',
-        });
+        await this.auditRefundOutcome(
+          payment.id,
+          adminUserId,
+          'REFUND_RECONCILIATION_REQUIRED',
+          {
+            bookingId: payment.bookingId,
+            outcome: 'unknown',
+          },
+        );
         return {
           bookingId,
           status: 'REFUND_PENDING',
@@ -904,19 +1000,25 @@ export class PaymentsService {
       const outcome = isMissingConfig
         ? 'missing_configuration'
         : isAuthError
-        ? 'provider_error'
-        : 'provider_unavailable';
+          ? 'provider_error'
+          : 'provider_unavailable';
       const message = isMissingConfig
         ? 'Payment provider configuration missing: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are not set in .env.'
         : isAuthError
-        ? 'Payment provider authentication failed (HTTP 401/403): invalid or expired Razorpay API keys in .env.'
-        : err?.message || 'Payment provider is temporarily unavailable. The refund remains safely pending settlement.';
+          ? 'Payment provider authentication failed (HTTP 401/403): invalid or expired Razorpay API keys in .env.'
+          : err?.message ||
+            'Payment provider is temporarily unavailable. The refund remains safely pending settlement.';
 
-      await this.auditRefundOutcome(payment.id, adminUserId, 'REFUND_RECONCILIATION_REQUIRED', {
-        bookingId: payment.bookingId,
-        outcome,
-        error: message,
-      });
+      await this.auditRefundOutcome(
+        payment.id,
+        adminUserId,
+        'REFUND_RECONCILIATION_REQUIRED',
+        {
+          bookingId: payment.bookingId,
+          outcome,
+          error: message,
+        },
+      );
       return {
         bookingId,
         status: 'REFUND_PENDING',
@@ -929,15 +1031,20 @@ export class PaymentsService {
       state === 'processed'
         ? 'Provider reconciliation complete: refund confirmed as processed.'
         : state === 'failed'
-        ? 'Provider reconciliation complete: refund settlement failed.'
-        : state === 'pending'
-        ? 'Provider settlement is in progress at payment provider. Please check back shortly.'
-        : 'Provider settlement outcome is pending confirmation.';
+          ? 'Provider reconciliation complete: refund settlement failed.'
+          : state === 'pending'
+            ? 'Provider settlement is in progress at payment provider. Please check back shortly.'
+            : 'Provider settlement outcome is pending confirmation.';
 
     return {
       bookingId,
       refundId: refund.id,
-      status: state === 'processed' ? 'REFUNDED' : state === 'failed' ? 'CAPTURED' : 'REFUND_PENDING',
+      status:
+        state === 'processed'
+          ? 'REFUNDED'
+          : state === 'failed'
+            ? 'CAPTURED'
+            : 'REFUND_PENDING',
       outcome: state === 'pending' ? 'provider_pending' : state,
       message,
     };
@@ -981,11 +1088,18 @@ export class PaymentsService {
     });
     if (!payment) throw new NotFoundException('Payment not found');
 
-    if (payment.status !== 'REFUND_PENDING' || payment.refundRequestStatus !== 'APPROVED') {
-      throw new ConflictException('Payment is not in an approved pending refund state eligible for recovery');
+    if (
+      payment.status !== 'REFUND_PENDING' ||
+      payment.refundRequestStatus !== 'APPROVED'
+    ) {
+      throw new ConflictException(
+        'Payment is not in an approved pending refund state eligible for recovery',
+      );
     }
     if (payment.refundId !== null) {
-      throw new ConflictException('Payment already has a provider refund ID; use reconciliation instead of recovery');
+      throw new ConflictException(
+        'Payment already has a provider refund ID; use reconciliation instead of recovery',
+      );
     }
     if (!payment.razorpayPaymentId) {
       throw new ConflictException('No captured payment exists for this booking');
@@ -1007,7 +1121,10 @@ export class PaymentsService {
       const details = (latestReconciliationLog.details ?? {}) as Record<string, unknown>;
       const statusCode = Number(details.providerStatusCode);
       const isDefinitivePreCreationFailure =
-        statusCode === 400 || statusCode === 401 || statusCode === 403 || statusCode === 404;
+        statusCode === 400 ||
+        statusCode === 401 ||
+        statusCode === 403 ||
+        statusCode === 404;
 
       if (!isDefinitivePreCreationFailure) {
         const cooldownMs = 10 * 60 * 1000;
@@ -1096,7 +1213,9 @@ export class PaymentsService {
           },
         });
       } catch (releaseErr) {
-        this.logger.error(`Failed to release recovery claim on payment ${payment.id}: ${releaseErr}`);
+        this.logger.error(
+          `Failed to release recovery claim on payment ${payment.id}: ${releaseErr}`,
+        );
       }
     };
 
@@ -1118,8 +1237,12 @@ export class PaymentsService {
     let refundList: { count: number; items: RazorpayRefundRecord[] };
 
     try {
-      providerPayment = (await client.payments.fetch(payment.razorpayPaymentId)) as RazorpayPaymentRecord;
-      refundList = (await client.payments.fetchMultipleRefund(payment.razorpayPaymentId, { count: 100 })) as {
+      providerPayment = (await client.payments.fetch(
+        payment.razorpayPaymentId,
+      )) as RazorpayPaymentRecord;
+      refundList = (await client.payments.fetchMultipleRefund(payment.razorpayPaymentId, {
+        count: 100,
+      })) as {
         count: number;
         items: RazorpayRefundRecord[];
       };
@@ -1130,13 +1253,19 @@ export class PaymentsService {
       const outcome = isAuthError ? 'provider_error' : 'provider_unavailable';
       const message = isAuthError
         ? 'Payment provider authentication failed (HTTP 401/403): invalid or expired Razorpay API keys.'
-        : err?.message || 'Payment provider is temporarily unavailable during recovery verification.';
+        : err?.message ||
+          'Payment provider is temporarily unavailable during recovery verification.';
 
-      await this.auditRefundOutcome(payment.id, actorUserId, 'REFUND_RECONCILIATION_REQUIRED', {
-        bookingId: payment.bookingId,
-        outcome,
-        error: message,
-      });
+      await this.auditRefundOutcome(
+        payment.id,
+        actorUserId,
+        'REFUND_RECONCILIATION_REQUIRED',
+        {
+          bookingId: payment.bookingId,
+          outcome,
+          error: message,
+        },
+      );
 
       return {
         bookingId,
@@ -1149,11 +1278,18 @@ export class PaymentsService {
     // Validate payment identity, captured status, amount, and currency
     if (providerPayment.id !== payment.razorpayPaymentId) {
       await releaseClaim();
-      throw new ConflictException('Provider payment ID does not match local payment record');
+      throw new ConflictException(
+        'Provider payment ID does not match local payment record',
+      );
     }
-    if (providerPayment.amount !== payment.amount || providerPayment.currency !== payment.currency) {
+    if (
+      providerPayment.amount !== payment.amount ||
+      providerPayment.currency !== payment.currency
+    ) {
       await releaseClaim();
-      throw new ConflictException('Provider payment amount or currency does not match local payment record');
+      throw new ConflictException(
+        'Provider payment amount or currency does not match local payment record',
+      );
     }
 
     // Check if matching refund already exists at provider
@@ -1178,15 +1314,22 @@ export class PaymentsService {
         payment.refundRequestReason ?? 'Customer refund',
       );
       // Restore baseAttemptKey
-      await this.prisma.payment.updateMany({
-        where: { id: payment.id, refundAttemptKey: activeClaimKey },
-        data: { refundAttemptKey: baseAttemptKey },
-      }).catch(() => undefined);
+      await this.prisma.payment
+        .updateMany({
+          where: { id: payment.id, refundAttemptKey: activeClaimKey },
+          data: { refundAttemptKey: baseAttemptKey },
+        })
+        .catch(() => undefined);
 
       return {
         bookingId,
         refundId: existingMatchingRefund.id,
-        status: state === 'processed' ? 'REFUNDED' : state === 'failed' ? 'CAPTURED' : 'REFUND_PENDING',
+        status:
+          state === 'processed'
+            ? 'REFUNDED'
+            : state === 'failed'
+              ? 'CAPTURED'
+              : 'REFUND_PENDING',
         outcome: 'reconciled_existing',
         message: 'Existing provider refund correlated and finalized.',
       };
@@ -1214,33 +1357,42 @@ export class PaymentsService {
 
     let refund: { id: string; amount: number; status: string };
     try {
-      refund = (await client.payments.refund(
-        payment.razorpayPaymentId,
-        {
-          speed: 'normal',
-          notes: {
-            bookingId: booking.id,
-            eventaiRefundAttempt: baseAttemptKey,
-            reason,
-          },
+      refund = (await client.payments.refund(payment.razorpayPaymentId, {
+        speed: 'normal',
+        notes: {
+          bookingId: booking.id,
+          eventaiRefundAttempt: baseAttemptKey,
+          reason,
         },
-      )) as { id: string; amount: number; status: string };
+      })) as { id: string; amount: number; status: string };
     } catch (error) {
-      const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
-        ? Number((error as { statusCode?: unknown }).statusCode)
-        : NaN;
+      const statusCode =
+        typeof error === 'object' && error !== null && 'statusCode' in error
+          ? Number((error as { statusCode?: unknown }).statusCode)
+          : NaN;
 
       // DO NOT release to retryable state! Restore baseAttemptKey for reconciliation lookups.
-      await this.prisma.payment.updateMany({
-        where: { id: payment.id, status: 'REFUND_PENDING', refundAttemptKey: activeClaimKey },
-        data: { refundAttemptKey: baseAttemptKey },
-      }).catch(() => undefined);
+      await this.prisma.payment
+        .updateMany({
+          where: {
+            id: payment.id,
+            status: 'REFUND_PENDING',
+            refundAttemptKey: activeClaimKey,
+          },
+          data: { refundAttemptKey: baseAttemptKey },
+        })
+        .catch(() => undefined);
 
-      await this.auditRefundOutcome(payment.id, actorUserId, 'REFUND_RECONCILIATION_REQUIRED', {
-        bookingId: booking.id,
-        providerStatusCode: Number.isInteger(statusCode) ? statusCode : undefined,
-        outcome: 'unknown',
-      });
+      await this.auditRefundOutcome(
+        payment.id,
+        actorUserId,
+        'REFUND_RECONCILIATION_REQUIRED',
+        {
+          bookingId: booking.id,
+          providerStatusCode: Number.isInteger(statusCode) ? statusCode : undefined,
+          outcome: 'unknown',
+        },
+      );
       throw new ServiceUnavailableException(
         'Refund outcome is pending provider reconciliation; do not retry yet',
       );
@@ -1255,10 +1407,12 @@ export class PaymentsService {
     );
 
     // Restore baseAttemptKey on the finalized record
-    await this.prisma.payment.updateMany({
-      where: { id: payment.id, refundAttemptKey: activeClaimKey },
-      data: { refundAttemptKey: baseAttemptKey },
-    }).catch(() => undefined);
+    await this.prisma.payment
+      .updateMany({
+        where: { id: payment.id, refundAttemptKey: activeClaimKey },
+        data: { refundAttemptKey: baseAttemptKey },
+      })
+      .catch(() => undefined);
 
     if (state === 'failed') {
       throw new BadRequestException('The payment provider could not process the refund');
@@ -1270,7 +1424,15 @@ export class PaymentsService {
         include: {
           items: true,
           payment: true,
-          tickets: { select: { id: true, ticketCode: true, holderName: true, status: true, ticketTypeId: true } },
+          tickets: {
+            select: {
+              id: true,
+              ticketCode: true,
+              holderName: true,
+              status: true,
+              ticketTypeId: true,
+            },
+          },
         },
       }),
       refundId: refund.id,
@@ -1306,11 +1468,16 @@ export class PaymentsService {
         : 'unknown';
     }
     if (refund.amount !== payment.amount) {
-      await this.auditRefundOutcome(payment.id, actorUserId, 'REFUND_RECONCILIATION_REQUIRED', {
-        bookingId: payment.bookingId,
-        refundId: refund.id,
-        outcome: 'amount_mismatch',
-      });
+      await this.auditRefundOutcome(
+        payment.id,
+        actorUserId,
+        'REFUND_RECONCILIATION_REQUIRED',
+        {
+          bookingId: payment.bookingId,
+          refundId: refund.id,
+          outcome: 'amount_mismatch',
+        },
+      );
       return 'unknown';
     }
 
@@ -1330,12 +1497,17 @@ export class PaymentsService {
     }
 
     if (refund.status !== 'processed' && refund.status !== 'failed') {
-      await this.auditRefundOutcome(payment.id, actorUserId, 'REFUND_RECONCILIATION_REQUIRED', {
-        bookingId: payment.bookingId,
-        refundId: refund.id,
-        providerStatus: refund.status,
-        outcome: 'pending',
-      });
+      await this.auditRefundOutcome(
+        payment.id,
+        actorUserId,
+        'REFUND_RECONCILIATION_REQUIRED',
+        {
+          bookingId: payment.bookingId,
+          refundId: refund.id,
+          providerStatus: refund.status,
+          outcome: 'pending',
+        },
+      );
       return 'pending';
     }
 
@@ -1357,7 +1529,11 @@ export class PaymentsService {
               action: 'REFUND_RECONCILIATION_FAILED',
               entity: 'PAYMENT',
               entityId: payment.id,
-              details: { bookingId: payment.bookingId, refundId: refund.id, providerStatus: 'failed' },
+              details: {
+                bookingId: payment.bookingId,
+                refundId: refund.id,
+                providerStatus: 'failed',
+              },
             },
           });
         }
@@ -1378,7 +1554,10 @@ export class PaymentsService {
       });
       if (paymentUpdated.count !== 1) return null;
       const bookingUpdated = await tx.booking.updateMany({
-        where: { id: payment.bookingId, status: { in: ['CONFIRMED', 'CANCELLED', 'EXPIRED'] } },
+        where: {
+          id: payment.bookingId,
+          status: { in: ['CONFIRMED', 'CANCELLED', 'EXPIRED'] },
+        },
         data: {
           status: 'REFUNDED',
           cancelledAt: new Date(),
@@ -1386,7 +1565,9 @@ export class PaymentsService {
         },
       });
       if (bookingUpdated.count !== 1) {
-        throw new ConflictException('Provider refund succeeded but booking state needs reconciliation');
+        throw new ConflictException(
+          'Provider refund succeeded but booking state needs reconciliation',
+        );
       }
       await tx.auditLog.create({
         data: {
@@ -1394,7 +1575,11 @@ export class PaymentsService {
           action: 'REFUND_COMPLETED',
           entity: 'PAYMENT',
           entityId: payment.id,
-          details: { bookingId: payment.bookingId, refundId: refund.id, refundAmount: refund.amount },
+          details: {
+            bookingId: payment.bookingId,
+            refundId: refund.id,
+            refundAmount: refund.amount,
+          },
         },
       });
       await tx.ticket.updateMany({
@@ -1414,7 +1599,15 @@ export class PaymentsService {
         include: {
           items: true,
           payment: true,
-          tickets: { select: { id: true, ticketCode: true, holderName: true, status: true, ticketTypeId: true } },
+          tickets: {
+            select: {
+              id: true,
+              ticketCode: true,
+              holderName: true,
+              status: true,
+              ticketTypeId: true,
+            },
+          },
         },
       });
     });
@@ -1430,9 +1623,17 @@ export class PaymentsService {
     action: string,
     details: Record<string, string | number | undefined>,
   ) {
-    const safeDetails = Object.fromEntries(Object.entries(details).filter(([, value]) => value !== undefined));
+    const safeDetails = Object.fromEntries(
+      Object.entries(details).filter(([, value]) => value !== undefined),
+    );
     await this.prisma.auditLog.create({
-      data: { userId, action, entity: 'PAYMENT', entityId: paymentId, details: safeDetails },
+      data: {
+        userId,
+        action,
+        entity: 'PAYMENT',
+        entityId: paymentId,
+        details: safeDetails,
+      },
     });
   }
 
@@ -1451,7 +1652,8 @@ export class PaymentsService {
     void this.notifications
       .sendRefundConfirmation({
         to: booking.user.email,
-        holderName: `${booking.user.firstName} ${booking.user.lastName}`.trim() || 'Guest',
+        holderName:
+          `${booking.user.firstName} ${booking.user.lastName}`.trim() || 'Guest',
         eventTitle: booking.event.title,
         bookingId: booking.id,
         refundAmount,
@@ -1467,7 +1669,12 @@ export class PaymentsService {
         type: 'REFUND_PROCESSED',
         title: 'Refund settled',
         message: `Your refund of ₹${(refundAmount / 100).toLocaleString('en-IN')} for "${booking.event.title}" has been settled.`,
-        data: { action: 'REFUND_SETTLED', bookingId: booking.id, refundId, link: '/tickets' },
+        data: {
+          action: 'REFUND_SETTLED',
+          bookingId: booking.id,
+          refundId,
+          link: '/tickets',
+        },
       });
     }
   }
@@ -1528,7 +1735,9 @@ export class PaymentsService {
       },
     });
     if (captured.count !== 1) {
-      throw new ConflictException('Payment was already processed; retry to load its current status');
+      throw new ConflictException(
+        'Payment was already processed; retry to load its current status',
+      );
     }
 
     const now = new Date();
@@ -1554,9 +1763,7 @@ export class PaymentsService {
       }
     }
     const canIssueTickets =
-      bookingOpen &&
-      !bookingExpired &&
-      bookingState.event.status === 'PUBLISHED';
+      bookingOpen && !bookingExpired && bookingState.event.status === 'PUBLISHED';
     if (canIssueTickets) {
       const bookingConfirmed = await tx.booking.updateMany({
         where: {
@@ -1567,10 +1774,22 @@ export class PaymentsService {
         data: { status: 'CONFIRMED', confirmedAt: now },
       });
       if (bookingConfirmed.count !== 1) {
-        await this.queueLateCaptureRefund(tx, input.paymentId, input.bookingId, bookingState.userId, now);
+        await this.queueLateCaptureRefund(
+          tx,
+          input.paymentId,
+          input.bookingId,
+          bookingState.userId,
+          now,
+        );
       }
     } else {
-      await this.queueLateCaptureRefund(tx, input.paymentId, input.bookingId, bookingState.userId, now);
+      await this.queueLateCaptureRefund(
+        tx,
+        input.paymentId,
+        input.bookingId,
+        bookingState.userId,
+        now,
+      );
     }
 
     const booking = await tx.booking.findUniqueOrThrow({
@@ -1585,7 +1804,8 @@ export class PaymentsService {
       : 0;
     if (confirmedBooking && existingCount === 0) {
       const holderName =
-        [booking.user.firstName, booking.user.lastName].filter(Boolean).join(' ') || 'Guest';
+        [booking.user.firstName, booking.user.lastName].filter(Boolean).join(' ') ||
+        'Guest';
       for (const item of booking.items) {
         for (let i = 0; i < item.quantity; i++) {
           const code = `TKT-${randomBytes(8).toString('hex').toUpperCase()}`;
@@ -1646,7 +1866,8 @@ export class PaymentsService {
       },
       data: {
         refundRequestStatus: 'PENDING',
-        refundRequestReason: 'Payment captured after booking or event closed; organizer review required',
+        refundRequestReason:
+          'Payment captured after booking or event closed; organizer review required',
         refundRequestedAt: requestedAt,
         refundReviewedAt: null,
         refundReviewedBy: null,
@@ -1670,7 +1891,12 @@ export class PaymentsService {
     bookingWithEvent: {
       userId?: string;
       user: { id?: string; email: string };
-      event: { id?: string; title: string; startDate: Date; organizer?: { userId: string } };
+      event: {
+        id?: string;
+        title: string;
+        startDate: Date;
+        organizer?: { userId: string };
+      };
     },
     confirmed: {
       id: string;
@@ -1691,7 +1917,8 @@ export class PaymentsService {
       })
       .catch(() => undefined);
 
-    const attendeeId = confirmed.userId ?? bookingWithEvent.userId ?? bookingWithEvent.user.id;
+    const attendeeId =
+      confirmed.userId ?? bookingWithEvent.userId ?? bookingWithEvent.user.id;
     if (attendeeId) {
       void this.notifications.createInAppNotification({
         userId: attendeeId,
@@ -1708,7 +1935,12 @@ export class PaymentsService {
         type: 'BOOKING_CONFIRMED',
         title: 'New ticket booking',
         message: `A booking for "${bookingWithEvent.event.title}" was confirmed (₹${(confirmed.totalAmount / 100).toLocaleString('en-IN')}).`,
-        data: { action: 'ORGANIZER_TICKET_SOLD', bookingId: confirmed.id, eventId: bookingWithEvent.event.id, link: '/organizer/events' },
+        data: {
+          action: 'ORGANIZER_TICKET_SOLD',
+          bookingId: confirmed.id,
+          eventId: bookingWithEvent.event.id,
+          link: '/organizer/events',
+        },
       });
     }
   }

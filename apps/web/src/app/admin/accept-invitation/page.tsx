@@ -52,7 +52,9 @@ function AcceptInvitationContent() {
         <div className="rounded-full bg-destructive/10 p-3 text-destructive inline-block">
           <AlertCircle className="h-8 w-8" />
         </div>
-        <h1 className="mt-4 text-2xl font-bold tracking-tight">Invalid Invitation Link</h1>
+        <h1 className="mt-4 text-2xl font-bold tracking-tight">
+          Invalid Invitation Link
+        </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           No invitation token was found in the link. Please check your invitation email.
         </p>
@@ -68,7 +70,10 @@ function AcceptInvitationContent() {
 
   if (authLoading) {
     return (
-      <div className="container flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground" role="status">
+      <div
+        className="container flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground"
+        role="status"
+      >
         <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
         <p className="text-sm font-medium">Checking authentication status...</p>
       </div>
@@ -88,7 +93,7 @@ function AcceptInvitationContent() {
         <p className="mt-2 text-sm text-muted-foreground">
           You have successfully accepted the invitation. Your account now has{' '}
           <strong className="text-foreground">
-            {successRole === 'OWNER' ? 'Platform Owner' : 'Delegated Administrator'}
+            {successRole === 'OWNER' ? 'Platform Owner' : 'Administratoristrator'}
           </strong>{' '}
           permissions.
         </p>
@@ -127,8 +132,9 @@ function AcceptInvitationContent() {
 
           <div className="mt-6 rounded-lg bg-muted/50 p-4 text-left border">
             <p className="text-xs text-muted-foreground">
-              <strong className="text-foreground font-semibold">Important:</strong> Please sign in
-              or register using the exact email address to which this invitation was delivered.
+              <strong className="text-foreground font-semibold">Important:</strong> Please
+              sign in or register using the exact email address to which this invitation
+              was delivered.
             </p>
           </div>
 
@@ -195,7 +201,8 @@ function AcceptInvitationContent() {
           </Button>
 
           <p className="text-[11px] text-muted-foreground">
-            By accepting, your account will gain access to administrative dashboards and management tools.
+            By accepting, your account will gain access to administrative dashboards and
+            management tools.
           </p>
         </div>
       </div>
@@ -207,7 +214,10 @@ export default function AcceptInvitationPage() {
   return (
     <Suspense
       fallback={
-        <div className="container flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground" role="status">
+        <div
+          className="container flex flex-col items-center justify-center gap-3 py-32 text-muted-foreground"
+          role="status"
+        >
           <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
           <p className="text-sm font-medium">Loading invitation details...</p>
         </div>

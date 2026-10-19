@@ -2,8 +2,8 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, CheckCircle2, Loader2, Minus, Plus, ShieldCheck, Ticket } from 'lucide-react';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { ArrowRight, CheckCircle2, Ticket } from 'lucide-react';
+import { buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/auth-provider';
 import {
   createBooking,
@@ -87,20 +87,20 @@ export function BookingWidget({
   const total = useMemo(
     () =>
       purchasable.reduce((sum, t) => {
-        const price = typeof t.price === 'number' && Number.isFinite(t.price) ? Math.round(t.price) : 0;
+        const price =
+          typeof t.price === 'number' && Number.isFinite(t.price)
+            ? Math.round(t.price)
+            : 0;
         const qty = quantities[t.id] ?? 0;
         return sum + price * qty;
       }, 0),
     [purchasable, quantities],
   );
 
-  const setQty = useCallback(
-    (t: TicketTypeView, next: number) => {
-      const capped = Math.max(0, Math.min(next, t.maxPerBooking, t.availableQuantity));
-      setQuantities((q) => ({ ...q, [t.id]: capped }));
-    },
-    [],
-  );
+  const setQty = useCallback((t: TicketTypeView, next: number) => {
+    const capped = Math.max(0, Math.min(next, t.maxPerBooking, t.availableQuantity));
+    setQuantities((q) => ({ ...q, [t.id]: capped }));
+  }, []);
 
   const busy = phase === 'creating' || phase === 'verifying';
   const selectedCount = Object.values(quantities).reduce((a, b) => a + b, 0);
@@ -167,7 +167,9 @@ export function BookingWidget({
       }
       const loaded = await loadRazorpayScript();
       if (!loaded || !window.Razorpay) {
-        throw new Error('Could not load the payment gateway. Please check your connection.');
+        throw new Error(
+          'Could not load the payment gateway. Please check your connection.',
+        );
       }
 
       const checkout = new window.Razorpay({
@@ -195,7 +197,9 @@ export function BookingWidget({
               setPhase('done');
               if (result.tickets) void loadQrUrls(result.tickets);
             } catch (err) {
-              setError(err instanceof Error ? err.message : 'Payment verification failed');
+              setError(
+                err instanceof Error ? err.message : 'Payment verification failed',
+              );
               setPhase('idle');
             } finally {
               submitLock.current = false;
@@ -214,7 +218,9 @@ export function BookingWidget({
       });
       checkout.open();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
+      setError(
+        err instanceof Error ? err.message : 'Something went wrong. Please try again.',
+      );
       setPhase('idle');
       submitLock.current = false;
     }
@@ -238,17 +244,29 @@ export function BookingWidget({
         {confirmed.tickets && confirmed.tickets.length > 0 ? (
           <div className="mt-4 space-y-3">
             {confirmed.tickets.map((t) => (
-              <div key={t.id} className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-sm">
+              <div
+                key={t.id}
+                className="flex items-center gap-3 rounded-lg border bg-card p-3 shadow-sm"
+              >
                 {qrUrls[t.id] ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qrUrls[t.id]} alt={`QR code for ${t.ticketCode}`} className="h-16 w-16 rounded border bg-white p-0.5" />
+                  <img
+                    src={qrUrls[t.id]}
+                    alt={`QR code for ${t.ticketCode}`}
+                    className="h-16 w-16 rounded border bg-white p-0.5"
+                  />
                 ) : (
-                  <div className="flex h-16 w-16 items-center justify-center rounded border bg-muted" aria-hidden>
+                  <div
+                    className="flex h-16 w-16 items-center justify-center rounded border bg-muted"
+                    aria-hidden
+                  >
                     <Ticket className="h-6 w-6 text-muted-foreground/40" />
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="font-mono text-sm font-semibold tracking-wide">{t.ticketCode}</p>
+                  <p className="font-mono text-sm font-semibold tracking-wide">
+                    {t.ticketCode}
+                  </p>
                   <p className="text-xs text-muted-foreground">{t.holderName}</p>
                   <span className="mt-1 inline-block rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
                     Valid Entry
@@ -264,10 +282,7 @@ export function BookingWidget({
         )}
 
         <div className="mt-5 flex flex-col gap-2">
-          <Link
-            href="/tickets"
-            className={cn(buttonVariants({ size: 'sm' }), 'w-full')}
-          >
+          <Link href="/tickets" className={cn(buttonVariants({ size: 'sm' }), 'w-full')}>
             Go to My Tickets <ArrowRight className="ml-1.5 h-4 w-4" />
           </Link>
           <p className="text-center text-[11px] text-muted-foreground">
@@ -278,121 +293,94 @@ export function BookingWidget({
     );
   }
 
-  // ── Booking panel ──────────────────────────────────
+  // The approved preview presentation; payment state machine above is unchanged.
   return (
-    <div className="mt-4 space-y-4">
+    <div className="ep-booking-widget">
       {purchasable.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-          Tickets are currently sold out or sales are closed.
-        </div>
+        <div className="notice">Tickets are currently sold out or sales are closed.</div>
       ) : (
-        <div className="space-y-3">
-          {purchasable.map((t) => {
-            const currentQty = quantities[t.id] ?? 0;
-            const maxAllowed = Math.min(t.maxPerBooking, t.availableQuantity);
-            return (
-              <div
-                key={t.id}
-                className="flex items-center justify-between gap-3 rounded-lg border bg-card/60 p-3.5 transition-colors hover:border-primary/40"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{t.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">{formatPrice(t.price)}</span>
-                    {' · '}
-                    {t.availableQuantity <= 10 ? (
-                      <span className="font-medium text-amber-600 dark:text-amber-400">
-                        Only {t.availableQuantity} left
-                      </span>
-                    ) : (
-                      <span>Max {t.maxPerBooking}</span>
-                    )}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
+        purchasable.map((t) => {
+          const qty = quantities[t.id] ?? 0;
+          const max = Math.min(t.maxPerBooking, t.availableQuantity);
+          return (
+            <div key={t.id} className={'tier ' + (qty ? 'on' : '')}>
+              <div className="tier-top">
+                <h3>{t.name}</h3>
+              </div>
+              {t.description && <p>{t.description}</p>}
+              <p>
+                {t.availableQuantity} available · Max {t.maxPerBooking} per booking
+              </p>
+              <div className="tier-bottom">
+                <strong>{formatPrice(t.price)}</strong>
+                <div className="stepper" role="group" aria-label={t.name + ' quantity'}>
                   <button
                     type="button"
-                    aria-label={`Remove one ${t.name} ticket`}
-                    disabled={busy || currentQty === 0}
-                    onClick={() => setQty(t, currentQty - 1)}
-                    className="flex h-8 w-8 items-center justify-center rounded-md border bg-background text-foreground transition-colors hover:bg-muted disabled:opacity-40"
+                    aria-label={'Remove one ' + t.name + ' ticket'}
+                    disabled={busy || phase === 'paying' || qty === 0}
+                    onClick={() => setQty(t, qty - 1)}
                   >
-                    <Minus className="h-3.5 w-3.5" />
+                    −
                   </button>
-                  <span className="w-7 text-center font-mono text-sm font-semibold" aria-live="polite">
-                    {currentQty}
-                  </span>
+                  <output aria-live="polite">{qty}</output>
                   <button
                     type="button"
-                    aria-label={`Add one ${t.name} ticket`}
-                    disabled={busy || currentQty >= maxAllowed}
-                    onClick={() => setQty(t, currentQty + 1)}
-                    className="flex h-8 w-8 items-center justify-center rounded-md border bg-background text-foreground transition-colors hover:bg-muted disabled:opacity-40"
+                    aria-label={'Add one ' + t.name + ' ticket'}
+                    disabled={busy || phase === 'paying' || qty >= max}
+                    onClick={() => setQty(t, qty + 1)}
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    +
                   </button>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })
       )}
-
-      {selectedCount > 0 && (
-        <div className="rounded-lg bg-muted/50 p-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">
-              {selectedCount} ticket{selectedCount === 1 ? '' : 's'} selected
-            </span>
-            <span className="text-xl font-bold tracking-tight">{formatPrice(total)}</span>
-          </div>
-        </div>
-      )}
-
+      <div className="order-total">
+        <span>
+          Total <small className="muted">({selectedCount} selected)</small>
+        </span>
+        <strong aria-live="polite">{formatPrice(total)}</strong>
+      </div>
       {error && (
-        <div
-          role="alert"
-          className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive"
-        >
+        <p className="notice" role="alert">
           {error}
-        </div>
+        </p>
       )}
-
       {loading ? (
-        <Button className="w-full" size="lg" disabled>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        <button className="btn full" disabled>
           Loading…
-        </Button>
+        </button>
       ) : user ? (
-        <Button
-          className="w-full text-base font-semibold shadow-md"
-          size="lg"
+        <button
+          type="button"
+          className="btn full"
           disabled={busy || phase === 'paying' || selectedCount === 0}
           onClick={() => void onBook()}
         >
-          {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
           {phase === 'creating'
             ? 'Reserving tickets…'
             : phase === 'paying'
               ? 'Opening payment gateway…'
               : phase === 'verifying'
                 ? 'Confirming payment…'
-                : selectedCount > 0
-                  ? `Book Tickets · ${formatPrice(total)}`
-                  : 'Select Tickets'}
-        </Button>
+                : 'Continue to checkout'}
+          <ArrowRight className="icon" />
+        </button>
       ) : (
         <Link
-          href={`/signin?returnUrl=/events/${encodeURIComponent(eventId)}`}
-          className={cn(buttonVariants({ size: 'lg' }), 'w-full text-base font-semibold')}
+          className="btn full"
+          href={'/signin?returnUrl=/events/' + encodeURIComponent(eventId)}
         >
-          Sign in to complete booking
+          Sign in to book tickets
+          <ArrowRight className="icon" />
         </Link>
       )}
-
-      <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
-        <ShieldCheck className="h-3.5 w-3.5 text-primary" />
-        Instant digital tickets & verified checkout
+      <p className="ticket-fineprint">
+        Secure payment · Verified tickets
+        <br />
+        Final pricing and availability are verified at checkout.
       </p>
     </div>
   );
