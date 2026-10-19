@@ -189,3 +189,37 @@ html.dark .ep-app .category { color: #dedee8; }
 .ep-app { --ep-muted: #60657a; }
 html.dark .ep-app { --ep-muted: #b5b5c2; }
 @media (max-width: 1200px) { .ep-app .head-actions { gap: 7px; } .ep-app .ep-my-bookings { padding: 9px; font-size: 12px; } }
+
+/* Keep the approved desktop header aligned at narrower widths and browser zoom. */
+.ep-app .header { column-gap: 20px; }
+.ep-app .header .brand { flex: 0 0 auto; }
+.ep-app .app-nav { flex: 0 0 auto; flex-wrap: nowrap; }
+.ep-app .app-nav > a { white-space: nowrap; line-height: 1.4; }
+.ep-app .header .head-actions { flex: 0 0 auto; flex-wrap: nowrap; align-items: center; }
+.ep-app .header .workspace-switch,
+.ep-app .header .admin-switch,
+.ep-app .header .ep-my-bookings { font-size: 14px; line-height: 1.4; white-space: nowrap; }
+@media (min-width: 1001px) and (max-width: 1360px) {
+  .ep-app .header { column-gap: 14px; height: 80px; }
+  .ep-app .header .brand { font-size: 26px; gap: 10px; }
+  .ep-app .header .brand > svg { width: 39px; height: 43px; }
+  .ep-app .app-nav { gap: 18px; font-size: 14px; }
+  .ep-app .header .head-actions { gap: 8px; }
+  .ep-app .header .workspace-switch { padding: 10px 11px; }
+  .ep-app .header .ep-my-bookings { padding: 9px 8px; }
+}
+@media (min-width: 1001px) and (max-width: 1200px) {
+  .ep-app .header { column-gap: 10px; }
+  .ep-app .header .brand { font-size: 23px; gap: 8px; }
+  .ep-app .header .brand > svg { width: 34px; height: 38px; }
+  .ep-app .header .ep-brand-stack small { font-size: 7px; letter-spacing: 1.3px; }
+  .ep-app .app-nav { gap: 12px; font-size: 13px; }
+  .ep-app .header .head-actions { gap: 6px; }
+  .ep-app .header .workspace-switch,
+  .ep-app .header .admin-switch,
+  .ep-app .header .ep-my-bookings { font-size: 12px; }
+  .ep-app .header .workspace-switch { padding: 9px; }
+}
+@media (max-width: 600px) {
+  .ep-app .header .head-actions { flex-wrap: wrap; flex-basis: 100%; }
+}
