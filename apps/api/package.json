@@ -41,6 +41,7 @@
     "@eventai/database": "*",
     "@eventai/types": "*",
     "@eventai/validation": "*",
+    "@huggingface/transformers": "3.8.1",
     "@prisma/client": "^6.1.0",
     "@sentry/node": "^11.6.0",
     "argon2": "^0.41.0",

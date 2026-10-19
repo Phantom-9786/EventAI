@@ -23,6 +23,7 @@ import { TicketsService } from '../modules/tickets/tickets.service';
 import { PaymentsService } from '../modules/payments/payments.service';
 import { BookingsService } from '../modules/bookings/bookings.service';
 import { AdminService } from '../modules/admin/admin.service';
+import { SemanticRetrievalService } from '../modules/ai/semantic-retrieval.service';
 import { AiService } from '../modules/ai/ai.service';
 import { ExpressModerationService } from './services/moderation.service';
 import { SystemControlsService } from '../modules/admin/system-controls.service';
@@ -184,9 +185,11 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     options.organizersService ?? new OrganizersService(prisma as never);
   const mediaService =
     options.mediaService ?? new EventMediaService(prisma as never);
+  const semanticRetrieval = new SemanticRetrievalService(prisma as never);
+  if (process.env.NODE_ENV !== 'test') void semanticRetrieval.warmup();
   const eventsService =
     options.eventsService ??
-    new EventsService(prisma as never, cache as never, notificationsService as never, mediaService as never);
+    new EventsService(prisma as never, cache as never, notificationsService as never, mediaService as never, semanticRetrieval);
   const ticketsService =
     options.ticketsService ??
     new TicketsService(prisma as never, eventsService as never);

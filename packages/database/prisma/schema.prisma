@@ -212,6 +212,8 @@ model Event {
   policies          String?
   cancellationPolicy String?    @map("cancellation_policy")
 
+  semanticEmbedding EventSemanticEmbedding?
+
   // Full-text search vector (populated via trigger/migration)
   searchVector      Unsupported("tsvector")? @map("search_vector")
 
@@ -237,6 +239,17 @@ model Event {
   @@index([isFeatured])
   @@index([searchVector], type: Gin, map: "events_search_vector_idx")
   @@map("events")
+}
+
+model EventSemanticEmbedding {
+  eventId String @id @map("event_id")
+  model String
+  contentHash String @map("content_hash")
+  sourceUpdatedAt DateTime @map("source_updated_at")
+  embedding Float[]
+  updatedAt DateTime @default(now()) @map("updated_at")
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  @@map("event_semantic_embeddings")
 }
 
 // ── Event FAQ ─────────────────────────────────────

@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '../../common/exceptions';
 import { aiEventFilterSchema } from '@eventai/validation';
+import { isMoodSearch } from './semantic-retrieval.service';
 import { EventsService } from '../events/events.service';
 import type { AiChatInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -351,6 +352,12 @@ export class AiService {
         });
     }
     const catalog = await this.loadCatalog();
+    const moodRequest = isMoodSearch(latestUserMessage?.content ?? '');
+    let semanticContext = '';
+    if (!eventId && moodRequest && this.eventSearch) {
+      const retrieved = await this.eventSearch.searchEvents({ aiFilters: JSON.stringify({ semanticQuery: latestUserMessage!.content.slice(0, 500) }), page: 1, limit: 6 });
+      if (retrieved.retrievalMode === 'hybrid') semanticContext = '\n\nSemantically related event facts (examples only; exact constraints are applied by the server):\n' + JSON.stringify(retrieved.events.map(event => ({ title: event.title, slug: event.slug, description: event.description?.slice(0, 650), category: event.category.name, city: event.venue.city, minPrice: event.minPrice })));
+    }
     // Explicit short artist/genre searches must not silently broaden to all music.
     const normalizeSearch = (value: string) =>
       value
@@ -446,11 +453,12 @@ export class AiService {
           'Prices are in INR. Keep answers concise (under 150 words). If you do not know something, say so.' +
           catalogText +
           eventContext +
+          semanticContext +
           '\n\nKeep replies conversational and concise. Never invent event details or URLs. ' +
           '\nOUTPUT CONTRACT: Return a JSON object only, with keys reply (short conversational answer), search (filter object for ANY discovery/recommendation request, otherwise null), and slugs (array of catalog slugs, possibly empty). Do not output SEARCH or EVENTS trailers outside JSON. ' +
-          'search must use only query, category, city, dateFrom, dateTo, priceMin, priceMax, partySize (integer people count), excludedKeywords (array of unwanted activities). Set search={} for all events. A one-word category such as music means search={"category":"music"}. Search the full database even if the catalog sample has few matches. Never limit the search to the six slugs. ' +
+          'search must use only query, category, city, dateFrom, dateTo, priceMin, priceMax, partySize (integer people count), excludedKeywords (array of unwanted activities), semanticQuery (positive mood/atmosphere preferences in English). Set search={} for all events. A one-word category such as music means search={"category":"music"}. Search the full database even if the catalog sample has few matches. Never limit the search to the six slugs. ' +
           'Interpret the whole conversation: retain city/date/budget during refinements, but explicit all events resets previous category/city constraints. Prices in search are paise. For a TOTAL group budget divide it by party size before setting priceMax; for a per-person budget do not divide. If unclear ask a short clarification. ' +
-          'For mood requests map preferences to event descriptions/tags, use English search keywords for Hindi/Hinglish too, and Use OR between mood synonyms, and negative web-search terms to exclude unwanted activities (example: chill OR calm OR seated -dance). Include partySize when a group size is known. Never assert capacity for a group unless tier stock and max-per-booking permit it; never book or promise payment yourself. ' +
+          'For mood/vibe requests set semanticQuery to positive experiential preferences in English, e.g. a quiet intimate acoustic evening. Do not put mood synonyms into query: query is for exact artist/title/genre terms. Use excludedKeywords for unwanted activities and partySize for group size. Never assert group capacity unless stock and max-per-booking permit it, and never book or promise payment yourself. ' +
           'A greeting should warmly ask about city, dates, interests and budget with search=null. Opinions should explain fit using event facts rather than promise quality or safety.',
       },
       ...messages,
@@ -613,7 +621,10 @@ export class AiService {
             if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) normalized[key] = value + (key === 'dateTo' ? 'T23:59:59.999Z' : 'T00:00:00.000Z');
           }
           const requestText = latestUserMessage?.content ?? '';
-          if (!normalized.query && /\b(chill|relaxed?|calm|quiet|seated)\b/i.test(requestText)) normalized.query = 'chill OR calm OR seated OR relaxed OR quiet';
+          if (!eventId && moodRequest && !allEvents && !categoryMatch) {
+            if (!normalized.semanticQuery) normalized.semanticQuery = requestText.slice(0, 500);
+            if (typeof normalized.query === 'string' && /^(?:chill|calm|seated|relaxed|quiet|OR|\s)+$/i.test(normalized.query)) delete normalized.query;
+          } else if (allEvents || categoryMatch || !messages.filter(message => message.role === 'user').slice(-6).some(message => isMoodSearch(message.content))) delete normalized.semanticQuery;
           if (/\b(no dancing|no dance|not dancing|avoid danc|without danc|dont want to dance|don't want to dance)|dance.{0,30}(nahi|nhi)/i.test(requestText)) {
             normalized.excludedKeywords = [...new Set([...(Array.isArray(normalized.excludedKeywords) ? normalized.excludedKeywords : []), 'dance'])].slice(0, 5);
           }
@@ -624,7 +635,7 @@ export class AiService {
           const aiFilters = JSON.stringify({ ...filter.data, dateFrom: filter.data.dateFrom ?? new Date().toISOString() });
           const result = await this.eventSearch.searchEvents({ aiFilters, page: 1, limit: 6 });
           return {
-            reply: result.total ? 'Here are events matching your plans. Select a card to explore.' : 'No upcoming events match these filters. Try another city, date or budget.',
+            reply: result.retrievalMode === 'keyword-fallback' ? 'Semantic matching is warming up or temporarily unavailable. These results use keyword matching and your exact filters.' : result.total ? 'Here are events matching your plans. Select a card to explore.' : 'No upcoming events match these filters. Try another city, date or budget.',
             events: result.events as unknown as AiEventCard[],
             total: result.total,
             moreEventsUrl: result.total > 0 ? '/events?' + new URLSearchParams({ aiFilters }).toString() : undefined,

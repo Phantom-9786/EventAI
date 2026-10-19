@@ -5,7 +5,10 @@
 # ═══════════════════════════════════════════════════
 
 # ── Base ───────────────────────────────────────────
-FROM node:20-alpine AS base
+# ONNX Runtime uses glibc; Debian keeps local semantic inference compatible.
+FROM node:20-bookworm-slim AS base
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates libgomp1 \
+  && rm -rf /var/lib/apt/lists/*
 
 # ── Dependencies ───────────────────────────────────
 FROM base AS deps
@@ -38,9 +41,10 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN addgroup -S eventai && adduser -S eventai -G eventai
-RUN mkdir -p /app/uploads \
-  && chown eventai:eventai /app/uploads \
+RUN groupadd --system eventai && useradd --system --gid eventai --create-home eventai
+ENV SEMANTIC_MODEL_CACHE_DIR=/app/model-cache
+RUN mkdir -p /app/uploads /app/model-cache \
+  && chown eventai:eventai /app/uploads /app/model-cache \
   && chmod 0750 /app/uploads
 
 COPY --from=build /app/node_modules ./node_modules
@@ -52,6 +56,6 @@ USER eventai
 EXPOSE 4000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget -qO- http://localhost:4000/api/health || exit 1
+  CMD node -e "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "apps/api/dist/main.js"]

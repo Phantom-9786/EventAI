@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
+import { SemanticRetrievalService, SEMANTIC_MODEL } from '../ai/semantic-retrieval.service';
 import { EventMediaService } from './event-media.service';
 
 const EVENT_SUMMARY_INCLUDE = {
@@ -109,6 +110,7 @@ export class EventsService {
     private readonly cache: CacheService,
     private readonly notifications: NotificationsService,
     private readonly media: EventMediaService,
+    private readonly semantics?: SemanticRetrievalService,
   ) {}
 
   /** Bumps the public event cache after any write that can affect it. */
@@ -452,10 +454,12 @@ export class EventsService {
    */
   async searchEvents(input: EventSearchInput) {
     const aiSearch = Boolean(input.aiFilters);
+    let semanticQuery: string | undefined;
     let partySize: number | undefined;
     let excludedKeywords: string[] = [];
     if (input.aiFilters) {
       const filters = aiEventFilterSchema.parse(JSON.parse(input.aiFilters));
+      semanticQuery = filters.semanticQuery;
       partySize = filters.partySize;
       excludedKeywords = filters.excludedKeywords ?? [];
       input = {
@@ -470,11 +474,19 @@ export class EventsService {
     const limit = Math.min(100, Math.max(1, Number.parseInt(String(input?.limit ?? '20'), 10) || 20));
     const offset = (page - 1) * limit;
     const query = input?.query?.trim();
+    const vector = semanticQuery ? await this.semantics?.queryVector(semanticQuery) : null;
+    const retrievalMode = semanticQuery ? (vector ? 'hybrid' : 'keyword-fallback') : 'structured';
+    const semanticScore = vector ? Prisma.sql`(SELECT SUM(a.value * b.value) FROM unnest(se.embedding) WITH ORDINALITY a(value, i) JOIN unnest(${vector}::double precision[]) WITH ORDINALITY b(value, i) USING (i))` : null;
 
     const conditions: Prisma.Sql[] = [Prisma.sql`e.status = 'PUBLISHED'`];
     for (const word of excludedKeywords) conditions.push(Prisma.sql`NOT (to_tsvector('english', e.title || ' ' || array_to_string(e.tags, ' ')) @@ plainto_tsquery('english', ${word}))`);
     if (partySize) conditions.push(Prisma.sql`EXISTS (SELECT 1 FROM public.ticket_types tt WHERE tt.event_id = e.id AND tt.is_active = true AND tt.available_quantity >= ${partySize} AND tt.max_per_booking >= ${partySize} AND (${input.priceMax ?? null}::int IS NULL OR tt.price <= ${input.priceMax ?? null}) AND (${input.priceMin ?? null}::int IS NULL OR tt.price >= ${input.priceMin ?? null}))`);
     if (input?.venueId) conditions.push(Prisma.sql`e.venue_id = ${input.venueId}`);
+    if (!vector && semanticQuery && !query) {
+      const moodWords = semanticQuery.match(/[a-z]{3,}/gi)?.filter(word => !['with', 'the', 'and', 'for', 'event', 'events'].includes(word.toLowerCase())).slice(0, 10) ?? [];
+      if (moodWords.length) conditions.push(Prisma.sql`e.search_vector @@ websearch_to_tsquery('english', ${moodWords.join(' OR ')})`);
+    }
+    if (semanticScore) conditions.push(Prisma.sql`${semanticScore} >= 0.28`);
     if (query) {
       conditions.push(
         Prisma.sql`e.search_vector @@ websearch_to_tsquery('english', ${query})`,
@@ -517,6 +529,7 @@ export class EventsService {
       // All rows match the same validated filter. Paid admissions rank first;
       // Earlier-created listings break ties when sales are equal.
       orderBy = Prisma.sql`(SELECT COUNT(*) FROM public.tickets t JOIN public.bookings b ON b.id = t.booking_id JOIN public.payments p ON p.booking_id = b.id WHERE b.event_id = e.id AND b.status = 'CONFIRMED' AND p.status = 'CAPTURED' AND p.amount > 0 AND t.status IN ('VALID', 'USED')) DESC, e.created_at ASC, e.id ASC`;
+      if (semanticScore) orderBy = Prisma.sql`FLOOR(${semanticScore} * 20) DESC, ${orderBy}`;
     } else if (query) {
       // Relevance first when searching
       orderBy = Prisma.sql`ts_rank(e.search_vector, websearch_to_tsquery('english', ${query})) DESC, e.start_date ASC`;
@@ -538,7 +551,7 @@ export class EventsService {
       }
     }
 
-    const table = Prisma.sql`public.events e JOIN public.venues v ON v.id = e.venue_id`;
+    const table = vector ? Prisma.sql`public.events e JOIN public.venues v ON v.id = e.venue_id JOIN public.event_semantic_embeddings se ON se.event_id = e.id AND se.model = ${SEMANTIC_MODEL} AND se.source_updated_at = e.updated_at` : Prisma.sql`public.events e JOIN public.venues v ON v.id = e.venue_id`;
     const [rows, countRows] = await this.prisma.$transaction([
       this.prisma.$queryRaw<{ id: string }[]>(
         Prisma.sql`SELECT e.id FROM ${table} WHERE ${where} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`,
@@ -550,7 +563,7 @@ export class EventsService {
 
     const total = countRows[0]?.total ?? 0;
     if (rows.length === 0) {
-      return { events: [], total, page, limit, pages: Math.ceil(total / limit) || 1 };
+      return { events: [], total, page, limit, pages: Math.ceil(total / limit) || 1, retrievalMode };
     }
 
     const hydrated = await this.prisma.event.findMany({
@@ -567,7 +580,7 @@ export class EventsService {
         ticketTypes: undefined,
       }));
 
-    return { events, total, page, limit, pages: Math.ceil(total / limit) || 1 };
+    return { events, total, page, limit, pages: Math.ceil(total / limit) || 1, retrievalMode };
   }
 
   /** Resolves an event owned by the organizer by id or slug (throws 404). */

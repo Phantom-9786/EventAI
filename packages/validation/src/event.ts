@@ -49,6 +49,7 @@ export const updateEventSchema = z.object({
 });
 
 export const aiEventFilterSchema = z.object({
+  semanticQuery: z.string().trim().min(3).max(500).optional(),
   excludedKeywords: z.array(z.string().trim().min(1).max(50)).max(5).optional(),
   partySize: z.number().int().min(1).max(100).optional(),
   query: z.string().trim().max(200).optional(),

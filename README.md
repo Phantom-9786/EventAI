@@ -10,13 +10,12 @@ AI-powered Event Discovery and Ticket Booking Platform built as a modular monoli
 | Backend | Express, TypeScript, REST APIs |
 | Database | PostgreSQL 16, Prisma ORM |
 | Cache / Queue | Redis 7 |
-| Background Jobs | BullMQ |
-| Real-Time | Socket.IO |
+| Background Jobs | API scheduler; BullMQ worker scaffold (no processors registered) |
 | Payments | Razorpay (Sandbox) |
 | Maps | Leaflet + OpenStreetMap |
-| Search | PostgreSQL Full-Text Search |
-| AI/LLM | Grok/xAI (via provider abstraction) |
-| Vector DB | Pinecone |
+| Search | PostgreSQL full-text filters + mood-based semantic retrieval |
+| AI/LLM | Groq Chat Completions, GPT-OSS 20B/120B with complexity routing |
+| Semantic RAG | Local quantized MiniLM embeddings stored in PostgreSQL; exact cosine scoring |
 | Email | Brevo |
 | Monorepo | Turborepo, npm workspaces |
 
