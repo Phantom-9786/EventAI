@@ -255,7 +255,7 @@ html.dark .ep-app { --ep-muted: #b5b5c2; }
 .ep-app .ep-event-detail .breadcrumb { margin: 18px 0; min-width: 0; align-items: center; }
 .ep-app .ep-event-detail .breadcrumb > a { flex-shrink: 0; }
 .ep-app .ep-event-detail .breadcrumb > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.ep-app .ep-event-detail .ep-event-gallery .gallery-main { height: clamp(160px, calc(34dvh / var(--ep-ui-scale)), 300px); aspect-ratio: auto; }
+.ep-app .ep-event-detail .ep-event-gallery .gallery-main { height: clamp(180px, calc(40dvh / var(--ep-ui-scale)), 360px); aspect-ratio: auto; }
 .ep-app .ep-event-detail .thumbnails { gap: 8px; margin: 10px 0 14px; }
 .ep-app .ep-event-detail .thumbnails button { width: 78px; height: 46px; }
 .ep-app .ep-event-detail .detail-title { align-items: flex-start; gap: 16px; margin-top: 14px; }
