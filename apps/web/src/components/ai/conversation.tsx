@@ -24,6 +24,7 @@ export function Conversation({
   full = false,
   onClose,
   autoSend = false,
+  onInitialPromptConsumed,
 }: {
   eventId?: string;
   eventTitle?: string;
@@ -31,6 +32,7 @@ export function Conversation({
   full?: boolean;
   onClose?: () => void;
   autoSend?: boolean;
+  onInitialPromptConsumed?: () => void;
 }) {
   const greeting: AiMessage = {
     role: 'assistant',
@@ -129,15 +131,18 @@ export function Conversation({
     }
   }
   useEffect(() => {
-    if (!autoSend || !initialPrompt || maintenance) return;
+    if (!autoSend || !initialPrompt || maintenance || authLoading) return;
+    // Wait for the saved transcript before appending the homepage request.
+    if (storageKey && restoredKey !== storageKey) return;
     const timer = setTimeout(() => {
       if (initialSent.current !== initialPrompt && !active.current) {
         initialSent.current = initialPrompt;
         void send(initialPrompt);
+        onInitialPromptConsumed?.();
       }
     }, 0);
     return () => clearTimeout(timer);
-  }, [autoSend, initialPrompt, maintenance]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoSend, initialPrompt, maintenance, authLoading, storageKey, restoredKey, onInitialPromptConsumed]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!expanded) return;
     const previous = document.body.style.overflow;
