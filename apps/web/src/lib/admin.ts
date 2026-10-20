@@ -34,6 +34,9 @@ export interface AdminCategory {
   icon: string | null;
   color: string | null;
   coverImage: string | null;
+  spotlightEyebrow?: string | null;
+  spotlightTitle?: string | null;
+  spotlightDescription?: string | null;
   eventCount: number;
 }
 
@@ -398,6 +401,9 @@ export async function listAdminCategories(): Promise<AdminCategory[]> {
       icon: string | null;
       color: string | null;
       coverImage: string | null;
+      spotlightEyebrow?: string | null;
+      spotlightTitle?: string | null;
+      spotlightDescription?: string | null;
       _count: { events: number };
     }[];
   };
@@ -424,10 +430,14 @@ export const createAdminCategory = (input: {
   description?: string;
   color?: string;
   coverImage?: string;
+  spotlightEyebrow?: string;
+  spotlightTitle?: string;
+  spotlightDescription?: string;
 }) => adminMutation('/categories', 'POST', input);
 
-export const updateAdminCategoryCover = (id: string, coverImage: string) =>
-  adminMutation(`/categories/${id}`, 'PATCH', { coverImage });
+export const updateAdminCategoryCover = (id: string, input: {
+  coverImage?: string; spotlightEyebrow: string; spotlightTitle: string; spotlightDescription: string;
+}) => adminMutation(`/categories/${id}`, 'PATCH', input);
 
 export async function uploadAdminCategoryCover(file: File): Promise<string> {
   const body = new FormData();

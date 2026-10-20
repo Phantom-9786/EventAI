@@ -13,6 +13,9 @@ export interface Category {
   icon: string | null;
   color: string | null;
   coverImage?: string | null;
+  spotlightEyebrow?: string | null;
+  spotlightTitle?: string | null;
+  spotlightDescription?: string | null;
   _count?: { events: number };
 }
 
@@ -191,6 +194,9 @@ export interface CategorySpotlight {
   upcomingEvents: number;
   paidTickets: number;
   coverImage: string | null;
+  spotlightEyebrow?: string | null;
+  spotlightTitle?: string | null;
+  spotlightDescription?: string | null;
 }
 
 export async function getCategorySpotlights(): Promise<CategorySpotlight[]> {

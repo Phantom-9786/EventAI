@@ -15,6 +15,9 @@ export interface CategorySpotlight {
   upcomingEvents: number;
   paidTickets: number;
   coverImage: string | null;
+  spotlightEyebrow?: string | null;
+  spotlightTitle?: string | null;
+  spotlightDescription?: string | null;
 }
 
 /** Daily, stable tie rotation avoids flicker and gives equal categories a turn. */
@@ -33,7 +36,7 @@ export function chooseCategorySpotlights(rows: CategorySpotlight[], day: string)
 
 @Injectable()
 export class CategoriesService {
-  private static readonly LIST_CACHE_KEY = 'categories:active:v2';
+  private static readonly LIST_CACHE_KEY = 'categories:active:v3';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -65,7 +68,7 @@ export class CategoriesService {
   async spotlights() {
     const now = new Date();
     const day = now.toISOString().slice(0, 10);
-    const key = 'categories:spotlights:v2:' + day;
+    const key = 'categories:spotlights:v3:' + day;
     const cached = await this.cache.get<CategorySpotlight[]>(key);
     if (cached) return cached;
     const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -75,7 +78,9 @@ export class CategoriesService {
         FROM events e JOIN categories c ON c.id=e.category_id
         WHERE e.status='PUBLISHED' AND e.start_date >= ${now} AND c.is_active=true
       )
-      SELECT c.id, c.name, c.slug, COUNT(e.id)::int AS "upcomingEvents",
+      SELECT c.id, c.name, c.slug, c.spotlight_eyebrow AS "spotlightEyebrow",
+        c.spotlight_title AS "spotlightTitle", c.spotlight_description AS "spotlightDescription",
+        COUNT(e.id)::int AS "upcomingEvents",
         (SELECT COUNT(t.id)::int FROM tickets t
           JOIN bookings b ON b.id=t.booking_id JOIN payments p ON p.booking_id=b.id
           JOIN eligible sold ON sold.id=t.event_id
@@ -102,6 +107,9 @@ export class CategoriesService {
         icon: true,
         color: true,
         coverImage: true,
+        spotlightEyebrow: true,
+        spotlightTitle: true,
+        spotlightDescription: true,
         _count: { select: { events: { where: { status: 'PUBLISHED' } } } },
       },
     });
@@ -124,6 +132,9 @@ export class CategoriesService {
         icon: input.icon,
         color: input.color,
         coverImage: input.coverImage,
+        spotlightEyebrow: input.spotlightEyebrow,
+        spotlightTitle: input.spotlightTitle,
+        spotlightDescription: input.spotlightDescription,
       },
     }).then(async (created) => {
       await this.invalidateList();
@@ -152,6 +163,9 @@ export class CategoriesService {
           ...(input.icon !== undefined && { icon: input.icon }),
           ...(input.color !== undefined && { color: input.color }),
           ...(input.coverImage !== undefined && { coverImage: input.coverImage }),
+          ...(input.spotlightEyebrow !== undefined && { spotlightEyebrow: input.spotlightEyebrow }),
+          ...(input.spotlightTitle !== undefined && { spotlightTitle: input.spotlightTitle }),
+          ...(input.spotlightDescription !== undefined && { spotlightDescription: input.spotlightDescription }),
           ...(input.isActive !== undefined && { isActive: input.isActive }),
         },
       });

@@ -27,10 +27,21 @@ export function categorySpotlightCover(category: { slug: string; coverImage: str
   return category.coverImage || covers[category.slug];
 }
 
-export function categorySpotlightCopy(category: { name: string; slug: string }) {
-  return copy[category.slug] ?? {
+export interface CategorySpotlightText {
+  spotlightEyebrow?: string | null;
+  spotlightTitle?: string | null;
+  spotlightDescription?: string | null;
+}
+
+export function categorySpotlightCopy(category: { name: string; slug: string } & CategorySpotlightText) {
+  const defaults = copy[category.slug] ?? {
     eyebrow: 'Try a change of pace',
     title: 'Discover ' + category.name.toLowerCase() + '.',
     description: 'Find your next experience and make a plan worth sharing.',
+  };
+  return {
+    eyebrow: category.spotlightEyebrow ?? defaults.eyebrow,
+    title: category.spotlightTitle ?? defaults.title,
+    description: category.spotlightDescription ?? defaults.description,
   };
 }

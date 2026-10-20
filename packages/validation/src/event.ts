@@ -88,6 +88,9 @@ export const eventSearchSchema = z.object({
 
 export const createCategorySchema = z.object({
   name: z.string().min(2).max(50).trim(),
+  spotlightEyebrow: z.string().trim().max(80).nullable().optional(),
+  spotlightTitle: z.string().trim().min(1).max(100).nullable().optional(),
+  spotlightDescription: z.string().trim().max(200).nullable().optional(),
   coverImage: z.string().url().max(2048).refine(value => value.startsWith('https://'), 'Cover image must use HTTPS').nullable().optional(),
   description: z.string().max(200).optional(),
   icon: z.string().max(50).optional(),

@@ -124,9 +124,9 @@ export default async function HomePage() {
             return <Link key={category.id} href={'/events?category=' + encodeURIComponent(category.slug)} className="spotlight">
               <EventImage src={categorySpotlightCover(category)} fallbacks={category.coverImage ? [category.coverImage] : []} alt={category.name + ' experiences'} className="ep-spotlight-cover" />
               <div>
-                <span className="eyebrow">{wording.eyebrow}</span>
+                {wording.eyebrow && <span className="eyebrow">{wording.eyebrow}</span>}
                 <h3>{wording.title}</h3>
-                <p>{wording.description}</p>
+                {wording.description && <p>{wording.description}</p>}
               </div>
               <span className="round-arrow"><ArrowRight className="icon" /></span>
             </Link>;

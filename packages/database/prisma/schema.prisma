@@ -173,6 +173,9 @@ model Category {
   icon        String?
   color       String?
   coverImage  String? @map("cover_image")
+  spotlightEyebrow String? @map("spotlight_eyebrow")
+  spotlightTitle String? @map("spotlight_title")
+  spotlightDescription String? @map("spotlight_description")
   isActive    Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
