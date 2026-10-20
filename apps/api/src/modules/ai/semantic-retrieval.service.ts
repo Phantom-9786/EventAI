@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { createRequire } from 'module';
 import { Injectable, Logger } from '../../common/exceptions';
 import { PrismaService } from '../../prisma/prisma.service';
+import { lexicalChunkScores, selectEvidence, type EvidenceChunk } from './retrieval-context';
 
 export const SEMANTIC_MODEL = 'Xenova/all-MiniLM-L6-v2';
 export const SEMANTIC_DIMENSIONS = 384;
@@ -21,6 +22,7 @@ export class SemanticRetrievalService {
   private indexRevision = 0;
   private queue: Promise<unknown> = Promise.resolve();
   private readonly queryCache = new Map<string, number[]>();
+  private readonly passageCache = new Map<string, number[]>();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -121,6 +123,45 @@ export class SemanticRetrievalService {
     } catch {
       this.logger.warn('Semantic retrieval unavailable; falling back to keyword filtering');
       return null;
+    }
+  }
+
+  /** Retrieve from a small, authorized set of event passages. No model-provider
+   * API call, no full-catalog indexing, and content hashes invalidate edited text. */
+  async retrievePassages(query: string, chunks: EvidenceChunk[]) {
+    const lexical = lexicalChunkScores(query, chunks);
+    const candidates = selectEvidence(chunks, lexical, 16);
+    const candidateLexical = lexicalChunkScores(query, candidates);
+    const fallback = () => ({ mode: 'keyword-fallback' as const,
+      chunks: selectEvidence(candidates, candidateLexical, 6) });
+    if (!this.enabled || !candidates.length) return fallback();
+    try {
+      const texts = [query.slice(0, 500), ...candidates.map(chunk => chunk.text)];
+      const keys = texts.map(text => createHash('sha256').update(SEMANTIC_MODEL + ':' + text).digest('hex'));
+      const missing = [...new Map(texts.map((text, index) => [keys[index], text]))]
+        .filter(([key]) => !this.passageCache.has(key));
+      // Small batches keep CPU inference bounded and share the existing encoder.
+      for (let start = 0; start < missing.length; start += 4) {
+        const batch = missing.slice(start, start + 4);
+        const vectors = await this.embed(batch.map(([, text]) => text));
+        batch.forEach(([key], index) => {
+          if (this.passageCache.size >= 512) this.passageCache.delete(this.passageCache.keys().next().value!);
+          this.passageCache.set(key, vectors[index]);
+        });
+      }
+      const queryVector = this.passageCache.get(keys[0])!;
+      const semantic = candidates.map((_, index) => this.passageCache.get(keys[index + 1])!
+        .reduce((sum, value, dimension) => sum + value * queryVector[dimension], 0));
+      const ranks = (values: number[]) => new Map(values.map((value, index) => ({ value, index }))
+        .sort((a, b) => b.value - a.value).map((row, rank) => [row.index, rank + 1]));
+      const semanticRanks = ranks(semantic);
+      const lexicalRanks = ranks(candidateLexical);
+      const scores = candidates.map((_, index) => 1 / (60 + semanticRanks.get(index)!) +
+        (candidateLexical[index] > 0 ? 1 / (60 + lexicalRanks.get(index)!) : 0));
+      return { mode: 'hybrid' as const, chunks: selectEvidence(candidates, scores, 6) };
+    } catch {
+      this.logger.warn('Event passage embeddings unavailable; using lexical evidence');
+      return fallback();
     }
   }
 }

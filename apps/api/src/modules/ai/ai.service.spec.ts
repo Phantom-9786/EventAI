@@ -29,6 +29,7 @@ const CATALOG_ROW = {
 
 function makePrismaMock(catalog: unknown[] = [], matched: unknown[] = []) {
   return {
+    category: { findMany: jest.fn().mockResolvedValue([{ name: 'Music', slug: 'music' }]) },
     event: {
       findMany: jest
         .fn()
@@ -67,6 +68,8 @@ async function makeService(
       {
         provide: CacheService,
         useValue: {
+          get: jest.fn().mockResolvedValue(null),
+          set: jest.fn().mockResolvedValue(undefined),
           providerCooldownMs: jest.fn().mockResolvedValue(0),
           setProviderCooldown: jest.fn().mockResolvedValue(undefined),
         },
@@ -473,12 +476,13 @@ describe('AiService event context', () => {
     delete process.env.GROQ_API_KEY;
     jest.restoreAllMocks();
   });
-  it('uses published event facts in the assistant context', async () => {
+  it('uses compact published event references before retrieving detail passages', async () => {
     const prisma = {
       ...makePrismaMock(),
       event: {
         ...makePrismaMock().event,
         findFirst: jest.fn().mockResolvedValue({
+          ...CATALOG_ROW,
           title: 'Context event',
           description: 'Actual event facts',
           policies: 'No outside food',
@@ -499,8 +503,9 @@ describe('AiService event context', () => {
       expect.objectContaining({ where: { id: 'event-context', status: 'PUBLISHED' } }),
     );
     const body = JSON.parse(fetchSpy.mock.calls[0][1]!.body as string);
-    expect(body.messages[0].content).toContain('No outside food');
-    expect(body.messages[0].content).toContain('No refunds');
+    expect(body.messages[1].content).toContain('Context event');
+    expect(body.messages[1].content).not.toContain('No outside food');
+    expect(body.messages[1].content).not.toContain('No refunds');
   });
   it('does not send missing or unpublished event context to the provider', async () => {
     const prisma = {
@@ -618,7 +623,7 @@ describe('Structured discovery filters', () => {
   ])('keeps a complete Discover link for %s', async (prompt, search) => {
     process.env.GROQ_API_KEY = KEY_A;
     const database = { searchEvents: jest.fn().mockResolvedValue({ events: [CATALOG_ROW], total: 40 }) };
-    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
+    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined), providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
     const provider = jest.spyOn(global, 'fetch').mockResolvedValue(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'Here are some ideas.', search, slugs: [] }) } }] }));
     const result = await service.chat([{ role: 'user', content: String(prompt) }]);
     expect(provider).toHaveBeenCalledTimes(1);
@@ -632,7 +637,7 @@ describe('Structured discovery filters', () => {
   it.each([0, 2, 6])('omits More events when all %s matches fit in chat', async total => {
     process.env.GROQ_API_KEY = KEY_A;
     const database = { searchEvents: jest.fn().mockResolvedValue({ events: Array(total).fill(CATALOG_ROW), total }) };
-    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
+    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined), providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
     jest.spyOn(global, 'fetch').mockResolvedValue(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'Found', search: { category: 'music' }, slugs: [] }) } }] }));
     expect((await service.chat([{ role: 'user', content: 'music' }])).moreEventsUrl).toBeUndefined();
   });
@@ -640,7 +645,7 @@ describe('Structured discovery filters', () => {
   it('searches prior mood after any-city even when the model asks another clarification', async () => {
     process.env.GROQ_API_KEY = KEY_A;
     const database = { searchEvents: jest.fn().mockResolvedValue({ events: [CATALOG_ROW], total: 1, retrievalMode: 'hybrid' }) };
-    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
+    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined), providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
     jest.spyOn(global, 'fetch').mockResolvedValue(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'What budget?', search: null, slugs: [] }) } }] }));
     const result = await service.chat([{ role: 'user', content: 'We are three friends wanting a relaxed evening' }, { role: 'assistant', content: 'Which city?' }, { role: 'user', content: 'We are free to choose any city' }]);
     expect(result.events).toHaveLength(1);
@@ -649,7 +654,7 @@ describe('Structured discovery filters', () => {
 
   it('repairs a Groq JSON-validation rejection once', async () => {
     process.env.GROQ_API_KEY = KEY_A;
-    const service = new AiService(makePrismaMock() as never, { providerCooldownMs: jest.fn().mockResolvedValue(0) } as never);
+    const service = new AiService(makePrismaMock() as never, { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined), providerCooldownMs: jest.fn().mockResolvedValue(0) } as never);
     const provider = jest.spyOn(global, 'fetch')
       .mockResolvedValueOnce(groqResponse(400, { error: { code: 'json_validate_failed' } }))
       .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'Hello!', search: null, slugs: [] }) } }] }));
@@ -660,7 +665,7 @@ describe('Structured discovery filters', () => {
   it.each([null, { category: 'music', semanticQuery: 'relaxed evening' }])('handles a new conversational category request even with search=%j', async search => {
     process.env.GROQ_API_KEY = KEY_A;
     const database = { searchEvents: jest.fn().mockResolvedValue({ events: [CATALOG_ROW], total: 1 }) };
-    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
+    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined), providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
     jest.spyOn(global, 'fetch').mockResolvedValue(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'What budget?', search, slugs: [] }) } }] }));
     await service.chat([{ role: 'user', content: 'We want a relaxed evening' }, { role: 'assistant', content: 'Here are some ideas' }, { role: 'user', content: 'some music events dont u have for us' }]);
     const filters = JSON.parse(database.searchEvents.mock.calls[0][0].aiFilters);

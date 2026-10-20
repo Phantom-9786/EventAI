@@ -200,7 +200,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     options.adminService ??
     new AdminService(prisma as never, eventsService as never, notificationsService as never, systemControlsService);
   const aiService =
-    options.aiService ?? new AiService(prisma as never, cache as never, eventsService);
+    options.aiService ?? new AiService(prisma as never, cache as never, eventsService, semanticRetrieval);
 
   // 1. Request ID and structured request logger
   app.use(createRequestIdMiddleware(logger));

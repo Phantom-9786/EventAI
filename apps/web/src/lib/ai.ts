@@ -8,12 +8,13 @@ export interface AiMessage {
   moreEventsUrl?: string;
   total?: number;
   searchFilters?: Record<string, unknown>;
+  conversationMemory?: string;
 }
 export async function askEvents(
   messages: AiMessage[],
   eventId?: string,
   signal?: AbortSignal,
-): Promise<{ reply: string; events: EventSummary[]; moreEventsUrl?: string; total?: number; searchFilters?: Record<string, unknown> }> {
+): Promise<{ reply: string; events: EventSummary[]; moreEventsUrl?: string; total?: number; searchFilters?: Record<string, unknown>; conversationMemory?: string }> {
   const token = getAccessToken();
   const timeout = AbortSignal.timeout(45000);
   const controller = new AbortController();
@@ -30,6 +31,9 @@ export async function askEvents(
         ...(token ? { Authorization: 'Bearer ' + token } : {}),
       },
       body: JSON.stringify({
+        conversationMemory: [...messages].reverse().find(message => typeof message.conversationMemory === 'string')?.conversationMemory,
+        displayedEventGroups: messages.filter(message => message.role === 'assistant' && message.events?.length)
+          .slice(-2).map(message => message.events!.slice(0, 6).map(event => event.slug)),
         // Keep the last applied preferences even after the transcript window moves on.
         ...(!eventId ? { discoveryContext: [...messages].reverse()
           .find(message => message.role === 'assistant' && message.searchFilters)?.searchFilters } : {}),
@@ -67,6 +71,7 @@ export async function askEvents(
       total: typeof data.total === 'number' ? data.total : undefined,
       searchFilters: data.searchFilters && typeof data.searchFilters === 'object' && !Array.isArray(data.searchFilters)
         ? data.searchFilters : undefined,
+      conversationMemory: typeof data.conversationMemory === 'string' ? data.conversationMemory.slice(0, 800) : undefined,
     };
   } catch (error) {
     if (timeout.aborted && !signal?.aborted) throw new Error('The assistant took too long to respond. Please retry your message.');

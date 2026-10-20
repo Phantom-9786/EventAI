@@ -37,7 +37,7 @@ export class ExpressAiController {
         });
 
         try {
-          const result = await this.aiService.chat(req.body.messages, req.body.eventId, req.body.discoveryContext);
+          const result = await this.aiService.chat(req.body.messages, req.body.eventId, req.body.discoveryContext, req.body.conversationMemory, req.body.displayedEventGroups);
           if (!clientDisconnected) {
             res.write(
               `data: ${JSON.stringify({
@@ -47,6 +47,7 @@ export class ExpressAiController {
                 moreEventsUrl: result.moreEventsUrl,
                 total: result.total,
                 searchFilters: result.searchFilters,
+                conversationMemory: result.conversationMemory,
               })}\n\n`,
             );
             res.write('data: [DONE]\n\n');
@@ -66,7 +67,7 @@ export class ExpressAiController {
       }
 
       // Standard JSON response mode
-      const result = await this.aiService.chat(req.body.messages, req.body.eventId, req.body.discoveryContext);
+      const result = await this.aiService.chat(req.body.messages, req.body.eventId, req.body.discoveryContext, req.body.conversationMemory, req.body.displayedEventGroups);
       res.status(200).json({
         configured: this.aiService.isConfigured(),
         reply: result.reply,
@@ -74,6 +75,7 @@ export class ExpressAiController {
                 moreEventsUrl: result.moreEventsUrl,
                 total: result.total,
                 searchFilters: result.searchFilters,
+                conversationMemory: result.conversationMemory,
       });
     } catch (err) {
       next(err);

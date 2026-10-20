@@ -115,7 +115,7 @@ export function Conversation({
       if (serial.current === request)
         setMessages([
           ...next,
-          { role: 'assistant', content: reply.reply, events: reply.events, moreEventsUrl: reply.moreEventsUrl, total: reply.total, searchFilters: reply.searchFilters },
+          { role: 'assistant', content: reply.reply, events: reply.events, moreEventsUrl: reply.moreEventsUrl, total: reply.total, searchFilters: reply.searchFilters, conversationMemory: reply.conversationMemory },
         ]);
     } catch (err) {
       if (serial.current === request && !controller.signal.aborted)

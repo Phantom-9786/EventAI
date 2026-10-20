@@ -25,6 +25,7 @@ describe('Express AI & Streaming Module', () => {
   } as unknown as StructuredLogger;
 
   const mockPrisma = {
+    category: { findMany: jest.fn().mockResolvedValue([]) },
     $queryRaw: jest.fn().mockResolvedValue([{ 1: 1 }]),
     event: {
       findMany: jest.fn(),
@@ -35,6 +36,8 @@ describe('Express AI & Streaming Module', () => {
   } as unknown as PrismaClient;
 
   let mockCache: {
+    get: jest.Mock;
+    set: jest.Mock;
     ping: jest.Mock;
     consumeAiRequest: jest.Mock;
     releaseAiRequest: jest.Mock;
@@ -53,6 +56,8 @@ describe('Express AI & Streaming Module', () => {
     aiService?: Partial<typeof mockAiService>;
   }) => {
     mockCache = {
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue(undefined),
       ping: jest.fn().mockResolvedValue('PONG'),
       consumeAiRequest: jest.fn().mockResolvedValue({ allowed: true }),
       releaseAiRequest: jest.fn().mockResolvedValue(undefined),

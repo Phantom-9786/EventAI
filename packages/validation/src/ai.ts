@@ -4,6 +4,8 @@ import { aiEventFilterSchema } from './event';
 export const aiChatSchema = z.object({
   eventId: z.string().uuid().optional(),
   discoveryContext: aiEventFilterSchema.optional(),
+  conversationMemory: z.string().max(800).optional(),
+  displayedEventGroups: z.array(z.array(z.string().min(1).max(250)).max(6)).max(2).optional(),
   messages: z
     .array(
       z.object({
