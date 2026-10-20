@@ -1,21 +1,5 @@
 import { isMoodSearch } from './semantic-retrieval.service';
 
-/** Only standalone social turns qualify; "thanks, show music" must still search. */
-export function socialTurnReply(text: string): string | undefined {
-  const normalized = text.normalize('NFKC').toLowerCase()
-    .replace(/[’']/g, '').replace(/[^\p{L}\p{N}\s]/gu, ' ')
-    .replace(/\s+/g, ' ').trim();
-  const gratitude = /^(?:(?:thank you|thanks|thankyou|thx|ty|shukriya|dhanyavaad|धन्यवाद|शुक्रिया)(?: so much| a lot| very much)?)(?: (?:bro|brother|bhai|yaar|buddy|for your help|for the help))?$/;
-  if (gratitude.test(normalized)) return "You're welcome! Enjoy your plans.";
-  if (/^(?:bye|goodbye|good bye|see you|see you later|good night)(?: bro| bhai| brother)?$/.test(normalized)) {
-    return 'See you! Come back whenever you want to find your next experience.';
-  }
-  if (/^(?:hi|hello|hey|namaste|namaskar)(?: there| bro| brother| bhai| yaar)?$/.test(normalized)) {
-    return 'Hey! What kind of experience are you looking for? You can share a mood, an interest, or ask to browse events.';
-  }
-  return undefined;
-}
-
 export function acceptsAnyCity(text: string): boolean {
   return /\b(any|all|every)\s+(?:cities|city|locations?|places?)\b|\banywhere\b|\bno\s+(?:city|location)\s+(?:preference|restriction)\b|\b(?:city|location)\s+(?:doesn't|does not|doesnt)\s+matter\b/i.test(text);
 }

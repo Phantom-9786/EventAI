@@ -7,12 +7,13 @@ export interface AiMessage {
   events?: EventSummary[];
   moreEventsUrl?: string;
   total?: number;
+  searchFilters?: Record<string, unknown>;
 }
 export async function askEvents(
   messages: AiMessage[],
   eventId?: string,
   signal?: AbortSignal,
-): Promise<{ reply: string; events: EventSummary[]; moreEventsUrl?: string; total?: number }> {
+): Promise<{ reply: string; events: EventSummary[]; moreEventsUrl?: string; total?: number; searchFilters?: Record<string, unknown> }> {
   const token = getAccessToken();
   const timeout = AbortSignal.timeout(45000);
   const controller = new AbortController();
@@ -29,9 +30,18 @@ export async function askEvents(
         ...(token ? { Authorization: 'Bearer ' + token } : {}),
       },
       body: JSON.stringify({
+        // Keep the last applied preferences even after the transcript window moves on.
+        ...(!eventId ? { discoveryContext: [...messages].reverse()
+          .find(message => message.role === 'assistant' && message.searchFilters)?.searchFilters } : {}),
         messages: messages
           .slice(-12)
-          .map(({ role, content }) => ({ role, content: content.slice(0, 2000) })),
+          .map(({ role, content, events }) => ({
+            role,
+            content: content.slice(0, 2000),
+            ...(role === 'assistant' && events?.length
+              ? { eventSlugs: events.slice(0, 6).map(event => event.slug) }
+              : {}),
+          })),
         ...(eventId ? { eventId } : {}),
       }),
     });
@@ -55,6 +65,8 @@ export async function askEvents(
       events: Array.isArray(data.events) ? data.events.slice(0, 6) : [],
       moreEventsUrl: typeof data.moreEventsUrl === 'string' && data.moreEventsUrl.startsWith('/events?') ? data.moreEventsUrl : undefined,
       total: typeof data.total === 'number' ? data.total : undefined,
+      searchFilters: data.searchFilters && typeof data.searchFilters === 'object' && !Array.isArray(data.searchFilters)
+        ? data.searchFilters : undefined,
     };
   } catch (error) {
     if (timeout.aborted && !signal?.aborted) throw new Error('The assistant took too long to respond. Please retry your message.');

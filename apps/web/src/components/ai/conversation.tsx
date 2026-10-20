@@ -38,7 +38,7 @@ export function Conversation({
     role: 'assistant',
     content: eventTitle
       ? 'Hello! How can I help you with this event? Ask about tickets, the venue, or booking policies.'
-      : 'Tell me your city, budget, dates or interests. I’ll find matching events for you.',
+      : 'Not sure what you’re in the mood for? Tell me how you feel or what you’d enjoy, and we’ll find an event that fits. You can also ask to browse events.',
   };
   const { user, loading: authLoading } = useAuth();
   const storageKey = full && !eventId ? 'eventpoint-ai-chat-v1:' + (user?.id ?? 'guest') : null;
@@ -115,7 +115,7 @@ export function Conversation({
       if (serial.current === request)
         setMessages([
           ...next,
-          { role: 'assistant', content: reply.reply, events: reply.events, moreEventsUrl: reply.moreEventsUrl, total: reply.total },
+          { role: 'assistant', content: reply.reply, events: reply.events, moreEventsUrl: reply.moreEventsUrl, total: reply.total, searchFilters: reply.searchFilters },
         ]);
     } catch (err) {
       if (serial.current === request && !controller.signal.aborted)

@@ -37,7 +37,7 @@ export class ExpressAiController {
         });
 
         try {
-          const result = await this.aiService.chat(req.body.messages, req.body.eventId);
+          const result = await this.aiService.chat(req.body.messages, req.body.eventId, req.body.discoveryContext);
           if (!clientDisconnected) {
             res.write(
               `data: ${JSON.stringify({
@@ -46,6 +46,7 @@ export class ExpressAiController {
                 events: result.events,
                 moreEventsUrl: result.moreEventsUrl,
                 total: result.total,
+                searchFilters: result.searchFilters,
               })}\n\n`,
             );
             res.write('data: [DONE]\n\n');
@@ -65,13 +66,14 @@ export class ExpressAiController {
       }
 
       // Standard JSON response mode
-      const result = await this.aiService.chat(req.body.messages, req.body.eventId);
+      const result = await this.aiService.chat(req.body.messages, req.body.eventId, req.body.discoveryContext);
       res.status(200).json({
         configured: this.aiService.isConfigured(),
         reply: result.reply,
         events: result.events,
                 moreEventsUrl: result.moreEventsUrl,
                 total: result.total,
+                searchFilters: result.searchFilters,
       });
     } catch (err) {
       next(err);
