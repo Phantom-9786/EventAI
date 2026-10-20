@@ -447,16 +447,16 @@ export function TeamAccessSection() {
               return (
                 <div
                   key={member.id}
-                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 transition-colors hover:bg-muted/10"
+                  className="ep-team-member flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 transition-colors hover:bg-muted/10"
                 >
-                  <div className="flex items-start sm:items-center gap-3.5">
+                  <div className="ep-team-member-person flex items-start sm:items-center gap-3.5">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-sm">
                       {member.fullName
                         ? member.fullName.charAt(0).toUpperCase()
                         : member.email.charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="ep-team-member-name flex items-center gap-2">
                         <span className="font-semibold text-sm text-foreground">
                           {member.fullName || 'Unnamed Account'}
                         </span>
@@ -477,7 +477,7 @@ export function TeamAccessSection() {
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground mt-1">
+                      <div className="ep-team-member-meta flex items-center gap-4 text-xs text-muted-foreground mt-1">
                         <span>{member.email}</span>
                         <span className="hidden sm:inline">•</span>
                         <span className="flex items-center gap-1">
@@ -539,7 +539,7 @@ export function TeamAccessSection() {
           </div>
 
           {/* Tab selector */}
-          <div className="flex items-center gap-1 bg-muted/60 p-1 rounded-lg border text-xs">
+          <div className="ep-team-invitation-tabs flex items-center gap-1 bg-muted/60 p-1 rounded-lg border text-xs">
             <button
               type="button"
               onClick={() => setInvitationTab('pending')}

@@ -3,60 +3,10 @@
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import {
-  Bell,
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Compass,
-  Heart,
-  LayoutDashboard,
-  MapPin,
-  QrCode,
-  RotateCcw,
-  Settings,
-  ShieldCheck,
-  Sparkles,
-  Ticket,
-  Users,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { attendee, organizer, admin } from './workspace-navigation';
 import { useAuth } from '@/components/auth/auth-provider';
 import { cn } from '@/lib/utils';
-
-const attendee = [
-  ['/overview', 'My Dashboard', LayoutDashboard],
-  ['/events', 'Discover events', Compass],
-  ['/bookings', 'My bookings', CalendarDays],
-  ['/tickets', 'Digital tickets', Ticket],
-  ['/calendar', 'My calendar', CalendarDays],
-  ['/overview?view=saved', 'Saved events', Heart],
-  ['/venues', 'Venues', MapPin],
-  ['/ai', 'AI assistant', Sparkles],
-  ['/notifications', 'Notifications', Bell],
-  ['/account', 'Profile & settings', Settings],
-] as const;
-const organizer = [
-  ['/dashboard', 'Overview', LayoutDashboard],
-  ['/organizer/analytics', 'Analytics', LayoutDashboard],
-  ['/organizer/events', 'My events', CalendarDays],
-  ['/organizer/events/new', 'Create event', CalendarDays],
-  ['/organizer/venues', 'My venues', MapPin],
-  ['/organizer/attendees', 'Attendees', Users],
-  ['/dashboard/scan', 'Ticket validation', QrCode],
-  ['/organizer/refunds', 'Refund requests', RotateCcw],
-
-  ['/organizer/settings', 'Organization settings', Settings],
-] as const;
-const admin = [
-  ['/admin?tab=overview', 'Admin Dashboard', LayoutDashboard],
-  ['/admin?tab=users', 'Users', Users],
-  ['/admin?tab=events', 'Event moderation', CalendarDays],
-  ['/admin?tab=organizers', 'Organizer applications', ShieldCheck],
-  ['/admin?tab=bookings', 'Bookings & payments', Ticket],
-  ['/admin?tab=system-controls', 'System controls', Settings],
-  ['/admin?tab=team', 'Team & access', Users],
-  ['/admin?tab=audit-logs', 'Audit logs', LayoutDashboard],
-] as const;
 
 function WorkspaceShellContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -94,6 +44,10 @@ function WorkspaceShellContent({ children }: { children: React.ReactNode }) {
       : 'Attendee workspace';
   return (
     <div className={cn('workspace', collapsed && 'sidebar-collapsed')}>
+      <div className="ep-mobile-workspace-context">
+        <span>{title}</span>
+        <button type="button" onClick={() => window.dispatchEvent(new Event('eventpoint:open-mobile-menu'))}>Workspace menu</button>
+      </div>
       <aside className="side-nav" aria-label={title}>
         <button
           type="button"

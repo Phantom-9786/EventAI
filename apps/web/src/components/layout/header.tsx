@@ -9,6 +9,7 @@ import { ThemeToggle } from '@/components/layout/theme-toggle';
 import { NotificationBell } from '@/components/notifications/notification-bell';
 import { getOrganizerProfile, type OrganizerProfile } from '@/lib/organizer';
 import { BrandIcon } from '@/components/layout/brand-logo';
+import { MobileNavigation } from './mobile-navigation';
 export function Header() {
   const { user, loading, signOut } = useAuth();
   const pathname = usePathname(),
@@ -90,10 +91,10 @@ export function Header() {
           </span>
         </Link>
         <nav className="app-nav" aria-label="Main navigation">
-          <Link href="/" className={pathname === '/' ? 'active' : ''}>
+          <Link href="/" className={pathname === '/' ? 'active' : ''} aria-current={pathname === '/' ? 'page' : undefined}>
             Home
           </Link>
-          <Link href="/events" className={pathname.startsWith('/events') ? 'active' : ''}>
+          <Link href="/events" className={pathname.startsWith('/events') ? 'active' : ''} aria-current={pathname.startsWith('/events') ? 'page' : undefined}>
             Discover
           </Link>
           <Link href="/venues" className={pathname.startsWith('/venues') ? 'active' : ''} aria-current={pathname.startsWith('/venues') ? 'page' : undefined}>Venues</Link>
@@ -210,6 +211,7 @@ export function Header() {
           )}
           <ThemeToggle />
         </div>
+        <MobileNavigation dashboard={dashboard} workspace={workspace} canOrganize={canOrganize} hasApplication={Boolean(organizerProfile)} />
       </div>
       <EmailVerificationBanner />
     </header>

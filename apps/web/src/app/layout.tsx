@@ -8,6 +8,7 @@ import './globals.css';
 import './approved-preview.css';
 import './ui-scale.css';
 import './light-surfaces.css';
+import './mobile-layout.css';
 
 export const viewport: Viewport = {
   width: 'device-width',

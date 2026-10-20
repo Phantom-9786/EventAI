@@ -1,0 +1,146 @@
+/* New controls stay absent from the approved desktop layout. */
+.ep-app .ep-mobile-menu-trigger,
+.ep-app .ep-mobile-workspace-context,
+.ep-app .ep-mobile-menu { display: none; }
+
+@media (max-width: 900px) {
+  .ep-app .wrap { width: calc(100% - 32px); }
+  .ep-app .header-shell { padding-top: env(safe-area-inset-top, 0px); }
+  .ep-app .header {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    height: auto; min-height: 0; gap: 6px 12px; padding: 10px 0 0;
+  }
+  .ep-app .header .brand { grid-area: 1 / 1; margin: 0; gap: 8px; min-width: 0; }
+  .ep-app .header .brand > svg { width: 31px; height: 35px; }
+  .ep-app .header .ep-brand-name { font-size: 23px; letter-spacing: -1px; }
+  .ep-app .header .ep-brand-stack { gap: 5px; }
+  .ep-app .header .ep-brand-stack small { font-size: 6px; letter-spacing: 1.2px; }
+  .ep-app .header .head-actions { display: none; }
+  .ep-app .header .app-nav {
+    grid-area: 2 / 1 / 3 / -1; display: flex !important; position: static;
+    width: 100%; max-width: 100%; min-width: 0; margin: 0; padding: 0 2px 4px;
+    gap: 3px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+    align-items: stretch; flex-wrap: nowrap; -webkit-overflow-scrolling: touch;
+  }
+  .ep-app .header .app-nav::-webkit-scrollbar { display: none; }
+  .ep-app .header .app-nav > a,
+  .ep-app .header .app-nav > a:not(.dashboard-access) {
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+    min-height: 44px; padding: 10px 11px; border-bottom: 2px solid transparent;
+    font-size: 13px; line-height: 1.4; font-weight: 600; white-space: nowrap;
+  }
+  .ep-app .header .app-nav > a.active { border-bottom-color: var(--ep-primary); }
+  .ep-app .ep-mobile-menu-trigger {
+    grid-area: 1 / 2; display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px; min-width: 44px; min-height: 44px; padding: 8px 10px;
+    border: 1px solid var(--ep-border); border-radius: 10px;
+    background: var(--ep-card); color: var(--ep-text); font-size: 12px; font-weight: 600;
+  }
+  .ep-app .ep-mobile-menu[open] {
+    display: flex; flex-direction: column; position: fixed; inset: 0 0 0 auto;
+    width: min(360px, calc(100vw - 28px)); max-width: none;
+    height: 100dvh; max-height: 100dvh; margin: 0; padding: 0;
+    border: 0; border-left: 1px solid var(--ep-border); border-radius: 18px 0 0 18px;
+    color: var(--ep-text); background: var(--ep-card); box-shadow: -16px 0 60px #0003;
+    overflow: hidden; text-align: left;
+  }
+  .ep-app .ep-mobile-menu::backdrop { background: rgb(10 14 30 / 48%); }
+  .ep-app .ep-mobile-menu-heading {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: max(16px, env(safe-area-inset-top)) 18px 14px; border-bottom: 1px solid var(--ep-border);
+  }
+  .ep-app .ep-mobile-menu-heading h2 { font-size: 18px; letter-spacing: -.03em; }
+  .ep-app .ep-mobile-menu .icon-btn { width: 44px; height: 44px; flex-shrink: 0; }
+  .ep-app .ep-mobile-menu-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px max(24px, env(safe-area-inset-bottom)); }
+  .ep-app .ep-mobile-menu-person { display: flex; align-items: center; gap: 12px; padding: 0 4px 14px; }
+  .ep-app .ep-mobile-menu-person > div { min-width: 0; }
+  .ep-app .ep-mobile-menu-person strong { display: block; font-size: 15px; }
+  .ep-app .ep-mobile-menu-person p { margin-top: 4px; font-size: 12px; color: var(--ep-muted); overflow-wrap: anywhere; }
+  .ep-app .ep-mobile-menu-person .account-monogram { display: grid; place-items: center; flex: 0 0 42px; height: 42px; border-radius: 50%; background: var(--ep-soft); color: var(--ep-primary); }
+  .ep-app .ep-mobile-menu-label { margin: 18px 10px 8px; color: var(--ep-muted); font-size: 10px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  .ep-app .ep-mobile-menu-links { display: flex; flex-direction: column; gap: 3px; }
+  .ep-app .ep-mobile-menu-links a,
+  .ep-app .ep-mobile-signout {
+    display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 11px 12px;
+    border: 0; border-radius: 10px; background: transparent; font-size: 14px;
+    line-height: 1.5; color: var(--ep-text); overflow-wrap: anywhere;
+  }
+  .ep-app .ep-mobile-menu-links a[aria-current="page"] { color: var(--ep-primary); background: var(--ep-soft); font-weight: 600; }
+  .ep-app .ep-mobile-menu-links a:hover, .ep-app .ep-mobile-signout:hover { background: var(--ep-soft); }
+  .ep-app .ep-mobile-menu-links .icon { width: 18px; height: 18px; color: var(--ep-muted); }
+  .ep-app .ep-mobile-menu-theme { display: flex; align-items: center; justify-content: space-between; padding: 14px 10px; margin-top: 14px; border-top: 1px solid var(--ep-border); font-size: 14px; }
+  .ep-app .ep-mobile-signout { width: 100%; }
+
+  .ep-app .workspace, .ep-app .workspace.sidebar-collapsed {
+    display: block; width: calc(100% - 32px); margin: 16px auto 0; min-height: 0;
+  }
+  .ep-app .workspace > .side-nav { display: none; }
+  .ep-app .workspace-main, .ep-app .workspace-main > *, .ep-app .workspace-main .panel { min-width: 0; max-width: 100%; }
+  .ep-app .ep-mobile-workspace-context { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; font-size: 11px; color: var(--ep-muted); }
+  .ep-app .ep-mobile-workspace-context > button { min-height: 44px; padding: 8px 12px; border: 1px solid var(--ep-border); border-radius: 9px; background: var(--ep-card); font-weight: 600; color: var(--ep-text); }
+  .ep-app .workspace-main h1 { font-size: clamp(24px, 6vw, 30px); line-height: 1.25; }
+  .ep-app .workspace-main h2 { font-size: 21px; }
+  .ep-app .workspace-main .page-head { flex-wrap: wrap; gap: 16px; margin-bottom: 22px; }
+  .ep-app .stat { padding: 16px; }
+  .ep-app .stat .stat-icon { width: 32px; height: 32px; margin-bottom: 12px; }
+  .ep-app .stat strong { font-size: 26px; overflow-wrap: anywhere; }
+  .ep-app .stat .stat-open { font-size: 12px; margin-top: 14px; }
+}
+
+@media (max-width: 600px) {
+  .ep-app .hero { min-height: 0; margin-top: 18px; border-radius: 18px; }
+  .ep-app .hero-content { padding: 30px 22px; }
+  .ep-app .hero h1 { font-size: clamp(31px, 8.5vw, 40px); line-height: 1.12; margin: 22px 0 18px; max-width: 100%; }
+  .ep-app .hero-label { font-size: 9px; line-height: 1.6; padding: 7px 10px; letter-spacing: .05em; }
+  .ep-app .hero-desc { font-size: 14px; line-height: 1.7; max-width: 33ch; }
+  .ep-app .hero-search { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 8px; padding: 10px; margin-top: 22px; }
+  .ep-app .hero-search > .icon { grid-area: 1 / 1; }
+  .ep-app .hero-search input { grid-area: 1 / 2 / 2 / -1; width: 100%; height: 44px; font-size: 16px; }
+  .ep-app .hero-search select { grid-area: 2 / 1 / 3 / 3; width: 100%; max-width: none; min-width: 0; height: 44px; padding: 8px 4px; font-size: 16px; border: 0; }
+  .ep-app .hero-search .btn { grid-area: 2 / 3; min-height: 44px; padding: 10px 12px; font-size: 13px; }
+  .ep-app .hero-note { font-size: 11px; line-height: 1.6; align-items: flex-start; }
+  .ep-app .hero-note .icon { flex-shrink: 0; margin-top: 2px; }
+  .ep-app .discover-banner { padding: 24px 20px; margin-top: 18px; }
+  .ep-app .discover-banner h1 { font-size: 27px; line-height: 1.25; }
+  .ep-app .discover-banner > p { font-size: 13px; line-height: 1.6; }
+  .ep-app .ep-discovery-categories { grid-auto-flow: column; grid-auto-columns: 86px; grid-template-columns: none; gap: 6px; margin: 18px 0; }
+  .ep-app .ep-discovery-categories .category { font-size: 11px; padding: 12px 4px; line-height: 1.4; }
+  .ep-app .filter-bar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 14px; }
+  .ep-app .filter-bar > label { grid-column: 1 / -1; width: 100%; min-width: 0; margin: 0; padding: 0 0 8px; }
+  .ep-app .filter-bar input { font-size: 16px; min-width: 0; }
+  .ep-app .filter-bar > .ep-city-filter { grid-column: 1 / -1; width: 100%; height: 44px; padding: 8px 0; border-bottom: 1px solid var(--ep-border); }
+  .ep-app .filter-bar > select { width: 100%; min-width: 0; height: 44px; padding: 8px 0; font-size: 14px; }
+  .ep-app .filter-bar > .btn { min-height: 44px; padding: 11px 16px; }
+  .ep-app .result-line { flex-wrap: wrap; gap: 12px; align-items: center; font-size: 13px; }
+  .ep-app .result-line > * { min-width: 0; }
+  .ep-app .ep-discovery-page > div > .mt-6 { padding: 12px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+  .ep-app .ep-discovery-page .ep-event-card .card-media { height: 190px; }
+  .ep-app .ep-discovery-page .ep-grid { grid-template-columns: minmax(0, 1fr); }
+  .ep-app .ep-discovery-page .ep-event-card .card h3 { font-size: 16px; }
+  .ep-app .ep-discovery-page .ep-event-card .meta { font-size: 12px; }
+  .ep-app .ep-discovery-page .ep-event-card .card-body { padding: 16px; }
+  .ep-app .ep-discovery-page .ep-event-card .card-bottom { padding-top: 14px; }
+
+  .ep-app .ep-team-access > .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ep-app .ep-team-access > .grid > div { min-width: 0; padding: 14px; }
+  .ep-app .ep-team-access > .grid > div:last-child { grid-column: 1 / -1; }
+  .ep-app .ep-team-access .text-2xl { font-size: 22px; }
+  .ep-app .ep-team-access .text-xs { font-size: 12px; line-height: 1.6; }
+  .ep-app .ep-team-access .ep-team-member { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 16px; }
+  .ep-app .ep-team-member-person, .ep-app .ep-team-member-person > div { min-width: 0; }
+  .ep-app .ep-team-member-name { flex-wrap: wrap; gap: 6px; }
+  .ep-app .ep-team-member-meta { flex-direction: column; align-items: flex-start; gap: 5px; overflow-wrap: anywhere; }
+  .ep-app .ep-team-member-meta > span { max-width: 100%; }
+  .ep-app .ep-team-access p, .ep-app .ep-team-access span { overflow-wrap: anywhere; }
+  .ep-app .ep-team-access .px-6 { padding-left: 16px; padding-right: 16px; }
+  .ep-app .ep-team-invitation-tabs { width: 100%; overflow-x: auto; align-items: stretch; }
+  .ep-app .ep-team-invitation-tabs > button { flex: 0 0 auto; min-height: 44px; max-width: 150px; padding: 8px 10px; font-size: 12px; line-height: 1.4; }
+  .ep-app .ep-team-access input { font-size: 16px; }
+  .ep-app .ep-team-access .flex > div { min-width: 0; }
+  .ep-app .workspace-main .btn { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: no-preference) and (max-width: 900px) {
+  .ep-app .ep-mobile-menu[open] { animation: ep-mobile-menu-arrive .18s ease-out; }
+  @keyframes ep-mobile-menu-arrive { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
+}

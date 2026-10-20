@@ -12,12 +12,22 @@ type Theme = 'light' | 'dark';
 function applyTheme(theme: Theme) {
   document.documentElement.classList.toggle('dark', theme === 'dark');
   window.localStorage.setItem('eventai_theme', theme);
+  window.dispatchEvent(new CustomEvent('eventpoint:themechange', { detail: theme }));
 }
 
 export function ThemeToggle() {
   const { user } = useAuth();
   const [theme, setTheme] = useState<Theme>('light');
   const [syncError, setSyncError] = useState(false);
+
+  useEffect(() => {
+    const changed = (event: Event) => {
+      const value = (event as CustomEvent).detail;
+      if (value === 'light' || value === 'dark') setTheme(value);
+    };
+    window.addEventListener('eventpoint:themechange', changed);
+    return () => window.removeEventListener('eventpoint:themechange', changed);
+  }, []);
 
   useEffect(() => {
     const saved = window.localStorage.getItem('eventai_theme');
