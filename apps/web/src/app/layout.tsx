@@ -6,6 +6,7 @@ import { Footer } from '@/components/layout/footer';
 import { WorkspaceShell } from '@/components/layout/workspace-shell';
 import './globals.css';
 import './approved-preview.css';
+import './ui-scale.css';
 
 export const viewport: Viewport = {
   width: 'device-width',

@@ -1,0 +1,23 @@
+/* One desktop density setting, shared by px/rem sizing and portalled dialogs.
+   Browser zoom remains available; mobile/tablet touch sizing is preserved. */
+:root {
+  --ep-ui-scale: 1;
+}
+
+@media screen and (min-width: 901px) {
+  :root {
+    --ep-ui-scale: 0.9;
+    zoom: var(--ep-ui-scale);
+  }
+}
+
+/* Viewport lengths are physical viewport units, so undo the UI scale when
+   sizing full-height surfaces. Normal text/spacing still scales to 90%. */
+.ep-app.min-h-screen,
+.ep-app .min-h-screen {
+  min-height: calc(100vh / var(--ep-ui-scale));
+}
+
+@media print {
+  :root { --ep-ui-scale: 1; zoom: 1; }
+}

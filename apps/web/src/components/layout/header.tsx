@@ -20,10 +20,11 @@ export function Header() {
   useEffect(() => {
     const node = headerRef.current;
     if (!node) return;
-    const observer = new ResizeObserver(() =>
+    const observer = new ResizeObserver(([entry]) =>
       document.documentElement.style.setProperty(
         '--ep-header-height',
-        node.getBoundingClientRect().height + 'px',
+        // Layout pixels stay correct when the desktop UI has CSS zoom.
+        (entry?.borderBoxSize?.[0]?.blockSize ?? node.offsetHeight) + 'px',
       ),
     );
     observer.observe(node);

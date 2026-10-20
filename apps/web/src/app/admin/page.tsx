@@ -711,7 +711,7 @@ function EventPreviewModal({
       aria-labelledby="preview-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-150"
     >
-      <div className="relative w-full max-w-3xl max-h-[90vh] flex flex-col rounded-xl border bg-card shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-3xl max-h-[calc(90vh/var(--ep-ui-scale))] flex flex-col rounded-xl border bg-card shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-start justify-between border-b px-6 py-4 bg-muted/20">
           <div>

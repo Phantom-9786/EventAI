@@ -300,7 +300,7 @@ export function EventGallery({ images, eventTitle }: EventGalleryProps) {
 
           {/* Main Enlarged Image */}
           <div
-            className="relative flex max-h-[82vh] max-w-[92vw] items-center justify-center"
+            className="relative flex max-h-[calc(82vh/var(--ep-ui-scale))] max-w-[calc(92vw/var(--ep-ui-scale))] items-center justify-center"
             onClick={(e) => e.stopPropagation()}
           >
             {imageErrors[currentIndex] ? (
@@ -317,7 +317,7 @@ export function EventGallery({ images, eventTitle }: EventGalleryProps) {
                 onError={() => {
                   setImageErrors((prev) => ({ ...prev, [currentIndex]: true }));
                 }}
-                className="max-h-[82vh] max-w-[92vw] rounded-lg object-contain shadow-2xl transition-opacity duration-200"
+                className="max-h-[calc(82vh/var(--ep-ui-scale))] max-w-[calc(92vw/var(--ep-ui-scale))] rounded-lg object-contain shadow-2xl transition-opacity duration-200"
               />
             )}
           </div>
