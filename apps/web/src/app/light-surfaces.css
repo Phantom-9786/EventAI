@@ -39,6 +39,16 @@ html:not(.dark) .ep-app .header-shell {
   box-shadow: 0 2px 10px rgb(23 34 61 / 4%);
 }
 
+/* Workspace navigation and supporting labels need a little more contrast. */
+html:not(.dark) .ep-app .workspace {
+  --ep-muted: #454e62;
+  --muted-foreground: 222 17% 33%;
+}
+
+html:not(.dark) .ep-app .side-nav .workspace-nav-link:not(.active) {
+  font-weight: 500;
+}
+
 /* Nested booking controls stay flat, retaining their selected-state tint. */
 html:not(.dark) .ep-app .ep-booking-widget {
   box-shadow: none;
