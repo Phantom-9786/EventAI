@@ -336,6 +336,7 @@ export class EventMediaService {
       where: {
         url: { in: uniqueUrls },
         eventId: null,
+        kind: 'generic',
       },
       data: { eventId },
     });
@@ -391,6 +392,7 @@ export class EventMediaService {
         .deleteMany({
           where: {
             url: mediaUrlOrPublicId,
+            kind: { not: 'category' },
             OR: [{ eventId: event.id }, { eventId: null }],
           },
         })
@@ -465,6 +467,8 @@ export class EventMediaService {
       });
 
       if (asset) {
+        // Category covers are shared platform media, not organizer-owned event files.
+        if (asset.kind === 'category') return;
         const provider = this.providers.find((p) => p.id === asset.providerId);
         if (provider) {
           await provider.destroy(asset.publicId);
