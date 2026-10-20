@@ -7,6 +7,7 @@ import { WorkspaceShell } from '@/components/layout/workspace-shell';
 import './globals.css';
 import './approved-preview.css';
 import './ui-scale.css';
+import './light-surfaces.css';
 
 export const viewport: Viewport = {
   width: 'device-width',
