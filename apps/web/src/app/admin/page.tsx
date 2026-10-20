@@ -28,8 +28,6 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { useAuth } from '@/components/auth/auth-provider';
 import {
-  createAdminCategory,
-  deactivateAdminCategory,
   listAdminEvents,
   getAdminEventDetail,
   getAdminBooking,
@@ -64,6 +62,7 @@ import { formatPrice } from '@/lib/api';
 import { PreviewHeading } from '@/components/approved/ui';
 import { AdminOverview } from '@/components/approved/admin-overview';
 import { TeamAccessSection } from '@/components/admin/team-access-section';
+import { CategoryManager } from '@/components/admin/category-manager';
 
 type Tab =
   | 'overview'
@@ -114,8 +113,6 @@ export default function AdminPage() {
     user?.role === 'ADMIN',
   );
   const [tab, setTab] = useState<Tab>('overview');
-  const [name, setName] = useState('');
-  const [color, setColor] = useState('#6366F1');
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -314,88 +311,7 @@ export default function AdminPage() {
               onSelect={handleSelectTab}
             />
           )}
-          <div className="rounded-2xl border border-border/80 bg-card/80 p-6 shadow-sm backdrop-blur-sm">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold tracking-tight">Event Categories</h2>
-                <p className="text-xs text-muted-foreground">
-                  Manage platform-wide event categorization tags.
-                </p>
-              </div>
-              <form
-                className="flex items-center gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void runAction(async () => {
-                    await createAdminCategory({ name, color });
-                    setName('');
-                  });
-                }}
-              >
-                <input
-                  id="cat-name"
-                  required
-                  minLength={2}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="New category name"
-                  aria-label="Category name"
-                  className="h-9 w-44 sm:w-56 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-                <input
-                  type="color"
-                  aria-label="Category color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  className="h-9 w-10 cursor-pointer rounded-md border border-input bg-background p-1"
-                />
-                <Button type="submit" size="sm" disabled={busy || name.trim().length < 2}>
-                  {busy && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-                  Create
-                </Button>
-              </form>
-            </div>
-
-            {!categories || categories.length === 0 ? (
-              <p className="mt-4 rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
-                No active categories. Create one above to get started.
-              </p>
-            ) : (
-              <div className="mt-4 divide-y rounded-lg border">
-                {categories.map((cat) => (
-                  <div
-                    key={cat.id}
-                    className="flex items-center justify-between gap-3 p-3.5"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span
-                        className="h-3.5 w-3.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: cat.color ?? '#6366F1' }}
-                      />
-                      <div>
-                        <p className="text-sm font-medium">{cat.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          /{cat.slug} · {cat.eventCount} published event
-                          {cat.eventCount === 1 ? '' : 's'}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      disabled={busy}
-                      onClick={() =>
-                        void runAction(() => deactivateAdminCategory(cat.id))
-                      }
-                    >
-                      Deactivate
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <CategoryManager categories={categories ?? []} busy={busy} onAction={runAction} />
         </div>
       )}
 

@@ -50,6 +50,7 @@ async function bootstrap() {
   try {
     await prisma.$connect();
     logger.log('PostgreSQL connection established for Express');
+    await prisma.$executeRawUnsafe('ALTER TABLE "categories" ADD COLUMN IF NOT EXISTS "cover_image" TEXT');
 
     // Ensure additive schema migration for email OTP verification tokens is applied
     try {

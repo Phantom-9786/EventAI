@@ -24,7 +24,7 @@ const covers: Record<string, string> = {
 };
 
 export function categorySpotlightCover(category: { slug: string; coverImage: string | null }) {
-  return covers[category.slug] ?? category.coverImage;
+  return category.coverImage || covers[category.slug];
 }
 
 export function categorySpotlightCopy(category: { name: string; slug: string }) {

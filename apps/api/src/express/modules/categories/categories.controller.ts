@@ -1,8 +1,19 @@
 import type { Request, Response, NextFunction } from 'express';
 import { CategoriesService } from '../../../modules/categories/categories.service';
+import { EventMediaService } from '../../../modules/events/event-media.service';
+import { UnauthorizedError } from '../../types';
 
 export class ExpressCategoriesController {
-  constructor(private readonly categoriesService: CategoriesService) {}
+  constructor(private readonly categoriesService: CategoriesService, private readonly mediaService?: EventMediaService) {}
+
+  uploadCover = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.authUser?.id ?? req.user?.id;
+      if (!userId) throw new UnauthorizedError('Unauthorized');
+      if (!this.mediaService) throw new Error('Media service unavailable');
+      res.status(201).json(await this.mediaService.uploadCategoryCover(userId, req.file));
+    } catch (error) { next(error); }
+  };
 
   spotlights = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
     try { res.json({ spotlights: await this.categoriesService.spotlights(), windowDays: 30 }); }

@@ -172,6 +172,7 @@ model Category {
   description String?
   icon        String?
   color       String?
+  coverImage  String? @map("cover_image")
   isActive    Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")

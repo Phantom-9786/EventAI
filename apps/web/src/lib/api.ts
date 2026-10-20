@@ -12,6 +12,7 @@ export interface Category {
   slug: string;
   icon: string | null;
   color: string | null;
+  coverImage?: string | null;
   _count?: { events: number };
 }
 

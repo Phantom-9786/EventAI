@@ -33,7 +33,7 @@ export function chooseCategorySpotlights(rows: CategorySpotlight[], day: string)
 
 @Injectable()
 export class CategoriesService {
-  private static readonly LIST_CACHE_KEY = 'categories:active';
+  private static readonly LIST_CACHE_KEY = 'categories:active:v2';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -65,7 +65,7 @@ export class CategoriesService {
   async spotlights() {
     const now = new Date();
     const day = now.toISOString().slice(0, 10);
-    const key = 'categories:spotlights:' + day;
+    const key = 'categories:spotlights:v2:' + day;
     const cached = await this.cache.get<CategorySpotlight[]>(key);
     if (cached) return cached;
     const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -81,8 +81,8 @@ export class CategoriesService {
           JOIN eligible sold ON sold.id=t.event_id
           WHERE sold.category_id=c.id AND b.status='CONFIRMED' AND p.status='CAPTURED'
             AND p.amount > 0 AND t.status IN ('VALID','USED') AND t.created_at >= ${cutoff}) AS "paidTickets",
-        (SELECT COALESCE(NULLIF(photo.cover_image,''), photo.images[1]) FROM eligible photo
-          WHERE photo.category_id=c.id ORDER BY photo.start_date, photo.id LIMIT 1) AS "coverImage"
+        COALESCE(NULLIF(c.cover_image,''), (SELECT COALESCE(NULLIF(photo.cover_image,''), photo.images[1]) FROM eligible photo
+          WHERE photo.category_id=c.id ORDER BY photo.start_date, photo.id LIMIT 1)) AS "coverImage"
       FROM categories c JOIN eligible e ON e.category_id=c.id
       GROUP BY c.id, c.name, c.slug`;
     const selected = chooseCategorySpotlights(rows, day);
@@ -101,6 +101,7 @@ export class CategoriesService {
         description: true,
         icon: true,
         color: true,
+        coverImage: true,
         _count: { select: { events: { where: { status: 'PUBLISHED' } } } },
       },
     });
@@ -122,6 +123,7 @@ export class CategoriesService {
         description: input.description,
         icon: input.icon,
         color: input.color,
+        coverImage: input.coverImage,
       },
     }).then(async (created) => {
       await this.invalidateList();
@@ -149,6 +151,7 @@ export class CategoriesService {
           ...(input.description !== undefined && { description: input.description }),
           ...(input.icon !== undefined && { icon: input.icon }),
           ...(input.color !== undefined && { color: input.color }),
+          ...(input.coverImage !== undefined && { coverImage: input.coverImage }),
           ...(input.isActive !== undefined && { isActive: input.isActive }),
         },
       });

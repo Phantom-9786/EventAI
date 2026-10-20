@@ -50,7 +50,7 @@ export function OrganizerEventsList() {
   });
 
   return (
-    <div>
+    <div className="ep-organizer-events">
       {isCreationMaintenance && (
         <div className="mb-6 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 text-amber-800 dark:text-amber-300 flex items-center gap-2.5 text-xs sm:text-sm font-medium">
           <Wrench className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
@@ -120,9 +120,9 @@ export function OrganizerEventsList() {
               const modStatus = event.moderation?.status ?? 'DRAFT';
               return (
                 <article key={event.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="truncate font-semibold">{event.title}</h2>
+                      <h2 className="ep-organizer-event-title">{event.title}</h2>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                         event.status === 'PUBLISHED' ? 'bg-green-500/15 text-green-700 dark:text-green-300' :
                         modStatus === 'PENDING_APPROVAL' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' :

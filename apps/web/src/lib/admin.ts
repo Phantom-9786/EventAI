@@ -33,6 +33,7 @@ export interface AdminCategory {
   description: string | null;
   icon: string | null;
   color: string | null;
+  coverImage: string | null;
   eventCount: number;
 }
 
@@ -396,6 +397,7 @@ export async function listAdminCategories(): Promise<AdminCategory[]> {
       description: string | null;
       icon: string | null;
       color: string | null;
+      coverImage: string | null;
       _count: { events: number };
     }[];
   };
@@ -421,7 +423,20 @@ export const createAdminCategory = (input: {
   name: string;
   description?: string;
   color?: string;
+  coverImage?: string;
 }) => adminMutation('/categories', 'POST', input);
+
+export const updateAdminCategoryCover = (id: string, coverImage: string) =>
+  adminMutation(`/categories/${id}`, 'PATCH', { coverImage });
+
+export async function uploadAdminCategoryCover(file: File): Promise<string> {
+  const body = new FormData();
+  body.append('file', file);
+  const res = await authFetch('/categories/upload-cover', { method: 'POST', body });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message ?? 'Cover upload failed');
+  return data.url;
+}
 
 export const deactivateAdminCategory = (id: string) =>
   adminMutation(`/categories/${id}`, 'DELETE');

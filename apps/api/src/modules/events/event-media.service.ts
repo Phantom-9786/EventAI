@@ -263,6 +263,24 @@ export class EventMediaService {
     });
     if (!organizer) throw new ForbiddenException('Organizer profile required');
 
+    return this.uploadUnattached(organizer.id, 'generic', file);
+  }
+
+  async uploadCategoryCover(
+    userId: string,
+    file?: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<{ url: string; publicId?: string; providerId?: string }> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (user?.role !== 'ADMIN') throw new ForbiddenException('Admin access required');
+    return this.uploadUnattached(userId, 'category', file);
+  }
+
+  private async uploadUnattached(
+    ownerId: string,
+    kind: 'generic' | 'category',
+    file?: { buffer: Buffer; mimetype: string; size: number },
+  ): Promise<{ url: string; publicId?: string; providerId?: string }> {
+    if (!this.isUploadsEnabled()) throw new ServiceUnavailableException('Media uploads are temporarily disabled by policy.');
     const maxBytes = this.getMaxFileSizeBytes();
     if (!file || !file.buffer?.length || file.size !== file.buffer.length) {
       throw new UnsupportedMediaTypeException('Choose a valid image file');
@@ -281,7 +299,7 @@ export class EventMediaService {
 
     if (!this.isCloudinaryConfigured()) {
       if (process.env.ALLOW_LOCAL_UPLOADS === 'true' && process.env.NODE_ENV !== 'production') {
-        const filename = `event-media-${organizer.id}-${randomUUID()}${extension}`;
+        const filename = `${kind === 'category' ? 'category' : 'event'}-media-${ownerId}-${randomUUID()}${extension}`;
         await mkdir(this.uploadDir, { recursive: true });
         await writeFile(join(this.uploadDir, filename), file.buffer, { flag: 'wx' });
         return { url: `/uploads/${filename}` };
@@ -291,15 +309,15 @@ export class EventMediaService {
 
     await this.checkUsageAllowance();
 
-    const publicId = `event-media-${organizer.id}-${randomUUID()}`;
-    const result = await this.router.upload(file.buffer, this.folder, publicId);
+    const publicId = `${kind === 'category' ? 'category' : 'event'}-media-${ownerId}-${randomUUID()}`;
+    const result = await this.router.upload(file.buffer, kind === 'category' ? 'eventai/categories' : this.folder, publicId);
 
     await this.prisma.eventMediaAsset.create({
       data: {
         url: result.url,
         providerId: result.providerId,
         publicId: result.publicId,
-        kind: 'generic',
+        kind,
       },
     });
 

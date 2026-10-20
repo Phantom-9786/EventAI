@@ -293,7 +293,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     frontendUrl,
   );
   const usersController = new ExpressUsersController(usersService);
-  const categoriesController = new ExpressCategoriesController(categoriesService);
+  const categoriesController = new ExpressCategoriesController(categoriesService, mediaService);
   const venuesController = new ExpressVenuesController(venuesService);
   const organizersController = new ExpressOrganizersController(
     organizersService,
