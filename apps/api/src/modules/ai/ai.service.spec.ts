@@ -662,6 +662,22 @@ describe('Structured discovery filters', () => {
     expect(provider).toHaveBeenCalledTimes(2);
   });
 
+  it('recovers a rejected native tool call with a JSON-only turn', async () => {
+    process.env.GROQ_API_KEY = KEY_A;
+    const service = new AiService(makePrismaMock() as never, { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined), providerCooldownMs: jest.fn().mockResolvedValue(0) } as never);
+    const provider = jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(groqResponse(400, { error: { code: 'tool_use_failed' } }))
+      .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ intent: 'answer', reply: 'Hello! What are you in the mood for?', search: null, slugs: [] }) } }] }));
+    const result = await service.chat([{ role: 'user', content: 'hi' }]);
+    expect(result.reply).toBe('Hello! What are you in the mood for?');
+    expect(result.events).toEqual([]);
+    expect(provider).toHaveBeenCalledTimes(2);
+    const payload = JSON.parse(provider.mock.calls[1][1]!.body as string);
+    expect(payload.tool_choice).toBe('none');
+    expect(payload.messages.at(-1).content).toContain('Never call a function or tool');
+    expect(payload.messages[0].content).toContain('Reply in English by default');
+  });
+
   it.each([null, { category: 'music', semanticQuery: 'relaxed evening' }])('handles a new conversational category request even with search=%j', async search => {
     process.env.GROQ_API_KEY = KEY_A;
     const database = { searchEvents: jest.fn().mockResolvedValue({ events: [CATALOG_ROW], total: 1 }) };

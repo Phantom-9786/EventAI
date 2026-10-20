@@ -1,4 +1,5 @@
 'use client';
+import { lockPageScroll } from '@/lib/scroll-lock';
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -23,12 +24,11 @@ export function VenueMap(props: { lat: number; lng: number; name: string }) {
     const node = dialog.current;
     const triggerButton = trigger.current;
     node?.showModal();
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlockScroll = lockPageScroll();
     return () => {
       node?.close();
       triggerButton?.focus();
-      document.body.style.overflow = previous;
+      unlockScroll();
     };
   }, [expanded]);
   return (

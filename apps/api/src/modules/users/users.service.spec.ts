@@ -210,6 +210,11 @@ describe('UsersService', () => {
   });
 
   describe('deactivateAccount', () => {
+    it('protects the platform owner without changing data or sessions', async () => {
+      prisma.user.findUnique.mockResolvedValue({ isActive: true, role: 'ADMIN', adminRole: 'OWNER' });
+      await expect(service.deactivateAccount('owner')).rejects.toThrow(ConflictException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
     it('deactivates and revokes sessions in one transaction', async () => {
       prisma.user.findUnique.mockResolvedValue({ isActive: true });
       const result = await service.deactivateAccount('user-1');
@@ -260,6 +265,11 @@ describe('UsersService', () => {
   });
 
   describe('deleteAccount', () => {
+    it('protects the platform owner even with a valid deletion confirmation', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'owner', isActive: true, role: 'ADMIN', adminRole: 'OWNER' });
+      await expect(service.deleteAccount('owner', 'DELETE')).rejects.toThrow(ConflictException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
     it('throws BadRequestException if confirmation is not DELETE', async () => {
       await expect(service.deleteAccount('user-1', 'NO')).rejects.toThrow(
         BadRequestException,

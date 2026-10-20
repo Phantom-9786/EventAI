@@ -1,4 +1,5 @@
 'use client';
+import { lockPageScroll } from '@/lib/scroll-lock';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/auth/auth-provider';
@@ -145,8 +146,7 @@ export function Conversation({
   }, [autoSend, initialPrompt, maintenance, authLoading, storageKey, restoredKey, onInitialPromptConsumed]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!expanded) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlockScroll = lockPageScroll();
     inputRef.current?.focus();
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -173,7 +173,7 @@ export function Conversation({
     };
     document.addEventListener('keydown', key, true);
     return () => {
-      document.body.style.overflow = previous;
+      unlockScroll();
       document.removeEventListener('keydown', key, true);
     };
   }, [expanded]);

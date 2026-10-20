@@ -29,8 +29,11 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const pathname = usePathname();
+  const controlsInFlight = React.useRef(false);
 
   const loadControls = useCallback(async () => {
+    if (controlsInFlight.current) return;
+    controlsInFlight.current = true;
     try {
       const data = await getPublicSystemControls();
       setControls(data);
@@ -38,6 +41,7 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
       // Safe fallback on network failure: do not lock users out
       setControls(null);
     } finally {
+      controlsInFlight.current = false;
       setLoading(false);
     }
   }, []);
@@ -46,9 +50,11 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
     void loadControls();
     // Poll every 15 seconds to detect live maintenance toggles across clients
     const timer = setInterval(() => {
-      void loadControls();
+      if (document.visibilityState === 'visible') void loadControls();
     }, 15000);
-    return () => clearInterval(timer);
+    const onVisible = () => { if (document.visibilityState === 'visible') void loadControls(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [loadControls]);
 
   const isAdmin = user?.role === 'ADMIN';

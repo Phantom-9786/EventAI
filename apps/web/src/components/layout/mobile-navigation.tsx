@@ -1,4 +1,5 @@
 'use client';
+import { lockPageScroll } from '@/lib/scroll-lock';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -54,14 +55,13 @@ export function MobileNavigation({ dashboard, workspace, canOrganize, hasApplica
     const node = dialog.current;
     const opener = trigger.current;
     node.showModal();
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlockScroll = lockPageScroll();
     const mobile = window.matchMedia('(max-width: 900px)');
     const resized = () => { if (!mobile.matches) setOpen(false); };
     mobile.addEventListener('change', resized);
     return () => {
       if (node.open) node.close();
-      document.body.style.overflow = previousOverflow;
+      unlockScroll();
       mobile.removeEventListener('change', resized);
       opener?.focus({ preventScroll: true });
     };

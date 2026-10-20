@@ -30,6 +30,7 @@ interface OwnProfile {
   bio: string | null;
   location: string | null;
   role: string;
+  adminRole?: string | null;
   isEmailVerified: boolean;
   preferences?: {
     phoneNumber?: string;
@@ -480,7 +481,7 @@ export default function AccountPage() {
       </form>
 
       {/* Account Actions / Danger Zone */}
-      <section className="mt-10 space-y-4 rounded-xl border border-destructive/20 bg-destructive/5 p-6">
+      {profile?.adminRole !== 'OWNER' && user.adminRole !== 'OWNER' && <section className="mt-10 space-y-4 rounded-xl border border-destructive/20 bg-destructive/5 p-6">
         <div>
           <h2 className="text-base font-semibold text-destructive flex items-center gap-2">
             <Shield className="h-4 w-4" />
@@ -645,7 +646,7 @@ export default function AccountPage() {
             </div>
           </div>
         )}
-      </section>
+      </section>}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowLeftRight, ShieldCheck, Ticket } from 'lucide-react';
+import { ArrowLeftRight, Bell, ShieldCheck, Ticket } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
@@ -211,7 +211,10 @@ export function Header() {
           )}
           <ThemeToggle />
         </div>
-        <MobileNavigation dashboard={dashboard} workspace={workspace} canOrganize={canOrganize} hasApplication={Boolean(organizerProfile)} />
+        <div className="ep-mobile-header-actions">
+          {user && <Link href="/notifications" className="ep-mobile-notification-link" aria-label="Notifications"><Bell className="icon" /></Link>}
+          <MobileNavigation dashboard={dashboard} workspace={workspace} canOrganize={canOrganize} hasApplication={Boolean(organizerProfile)} />
+        </div>
       </div>
       <EmailVerificationBanner />
     </header>

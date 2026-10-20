@@ -543,7 +543,7 @@ export async function updateAdminSystemControls(
 
 export async function getPublicSystemControls(): Promise<SystemControlsSettings> {
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-  const res = await fetch(`${apiBase}/system-controls`, { cache: 'no-store' });
+  const res = await fetch(`${apiBase}/system-controls`, { cache: 'no-store', signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`Failed to fetch system controls (${res.status})`);
   return res.json();
 }

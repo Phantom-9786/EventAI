@@ -15,7 +15,7 @@ export function PreviewHeading({
   action?: ReactNode;
 }) {
   return (
-    <div className="page-head">
+    <div className={'page-head' + (action ? ' ep-page-head-action' : '')}>
       <div>
         <p className="eyebrow">{eyebrow}</p>
         <h1>{title}</h1>

@@ -143,6 +143,7 @@ async function getJson<T>(path: string): Promise<T> {
 
   const res = await fetch(`${API_URL}${path}`, {
     cache: 'no-store',
+    signal: AbortSignal.timeout(20_000),
     headers,
     ...(typeof window !== 'undefined' ? { credentials: 'include' as const } : {}),
   });

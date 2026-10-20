@@ -43,6 +43,7 @@ const OWN_PROFILE_SELECT = {
   profileImage: true,
   location: true,
   role: true,
+  adminRole: true,
   isEmailVerified: true,
   preferences: true,
   createdAt: true,
@@ -232,13 +233,16 @@ export class UsersService {
   async deactivateAccount(userId: string): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { isActive: true, role: true },
+      select: { isActive: true, role: true, adminRole: true },
     });
     if (!user) {
       throw new NotFoundException('User not found');
     }
     if (!user.isActive) {
       return { message: 'Account is already deactivated' };
+    }
+    if (user.adminRole === 'OWNER') {
+      throw new ConflictException('The platform owner account cannot be deactivated. Transfer ownership before closing this account.');
     }
     if (user.role === 'ORGANIZER') {
       const organizer = await this.prisma.organizer.findUnique({
@@ -402,12 +406,15 @@ export class UsersService {
     }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, isActive: true, role: true, email: true },
+      select: { id: true, isActive: true, role: true, email: true, adminRole: true },
     });
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
+    if (user.adminRole === 'OWNER') {
+      throw new ConflictException('The platform owner account cannot be deleted. Transfer ownership before closing this account.');
+    }
     const { canDelete, blockers } = await this.getDeletionBlockers(userId);
     if (!canDelete) {
       if (user.role === 'ORGANIZER') {

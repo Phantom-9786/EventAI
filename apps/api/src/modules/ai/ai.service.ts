@@ -278,6 +278,7 @@ export class AiService {
         messages: payload,
         temperature: 0.2,
         response_format: { type: 'json_object' },
+        tool_choice: 'none',
         ...(model.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low' } : {}),
         max_tokens: maxTokens,
       }),
@@ -558,10 +559,14 @@ export class AiService {
           const code = errorBody.error?.code;
           // Groq can reject a generated JSON object even with HTTP 400. Repair once,
           // without retrying permanent configuration errors or exposing provider text.
-          if (response.status === 400 && code === 'json_validate_failed' && outputRetries < 1) {
+          if (response.status === 400 && (code === 'json_validate_failed' || code === 'tool_use_failed') && outputRetries < 1) {
             outputRetries++;
-            payload.push({ role: 'system', content: 'Your last response failed JSON validation. Return one valid JSON object with reply, search and slugs. No markdown or prose outside JSON. Use null for search only for non-discovery questions.' });
+            payload.push({ role: 'system', content: 'Your last generation was rejected. No tools or functions exist in this endpoint. Respond directly with one JSON object: intent (answer, clarify, search, details), nonempty reply, search (object only for search intent; otherwise null), slugs (only details uses known references), optional memory. Details also requires evidenceQuery. Never call a function or tool. No markdown or prose outside JSON. Follow the language policy.' });
             continue;
+          }
+          if (response.status === 400 && code === 'tool_use_failed' && !escalated) {
+            const strongerModel = nextCapableModel(complexity, this.profiles, model);
+            if (strongerModel) { model = strongerModel; escalated = true; continue; }
           }
           // Other 4xx (bad request, unknown model, …) — permanent for this
           // request shape; retrying would not help.
@@ -581,7 +586,7 @@ export class AiService {
         if (!rawReply) {
           if (outputRetries < 1) {
             outputRetries++;
-            payload.push({ role: 'system', content: 'Return a concise nonempty JSON object with reply, search and slugs. Do not leave the answer empty.' });
+            payload.push({ role: 'system', content: 'Return a concise nonempty JSON object with intent, reply, search (null unless intent=search) and slugs. Do not call tools or leave the answer empty. Follow the language policy.' });
             continue;
           }
           this.unavailable('The AI assistant returned an empty reply.');

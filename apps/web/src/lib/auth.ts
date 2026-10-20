@@ -35,6 +35,7 @@ export interface AuthUser {
   firstName: string | null;
   lastName: string | null;
   role: 'CUSTOMER' | 'ORGANIZER' | 'ADMIN';
+  adminRole?: 'OWNER' | 'ADMIN' | null;
   isEmailVerified?: boolean;
   isMaintenanceTester?: boolean;
 }

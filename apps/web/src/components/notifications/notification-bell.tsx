@@ -42,8 +42,10 @@ export function NotificationBell({ inline = false }: { inline?: boolean } = {}) 
   const panelRef = useRef<HTMLDivElement>(null);
 
   const [refreshing, setRefreshing] = useState(false);
+  const requestInFlight = useRef(false);
   const fetchItems = useCallback(async () => {
-    if (!user) return;
+    if (!user || requestInFlight.current) return;
+    requestInFlight.current = true;
     setRefreshing(true);
     try {
       const data = await getNotifications();
@@ -53,6 +55,7 @@ export function NotificationBell({ inline = false }: { inline?: boolean } = {}) 
     } catch {
       setActionError('Unable to refresh notifications. Please try again.');
     } finally {
+      requestInFlight.current = false;
       setRefreshing(false);
     }
   }, [user]);
@@ -60,7 +63,7 @@ export function NotificationBell({ inline = false }: { inline?: boolean } = {}) 
   useEffect(() => {
     void fetchItems();
     const interval = setInterval(() => {
-      void fetchItems();
+      if (document.visibilityState === 'visible') void fetchItems();
     }, 30_000);
     return () => clearInterval(interval);
   }, [fetchItems]);
@@ -167,7 +170,7 @@ export function NotificationBell({ inline = false }: { inline?: boolean } = {}) 
               : 'absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border bg-card p-0 shadow-lg ring-1 ring-black/5 z-50 animate-in fade-in-50 zoom-in-95'
           }
         >
-          <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="ep-notification-toolbar flex items-center justify-between border-b px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="font-semibold text-sm">Notifications</span>
               {unreadCount > 0 && (
@@ -176,7 +179,7 @@ export function NotificationBell({ inline = false }: { inline?: boolean } = {}) 
                 </span>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="ep-notification-actions flex flex-wrap items-center gap-3">
               <RefreshButton
                 type="button"
                 aria-label="Refresh notifications"

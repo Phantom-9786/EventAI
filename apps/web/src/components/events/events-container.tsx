@@ -100,6 +100,14 @@ export function EventsContainer({
   const category = currentFilters.category;
   const city = currentFilters.city;
   const sort = currentFilters.sort ?? 'date:asc';
+  const [searchDraft, setSearchDraft] = useState(query ?? '');
+  const [cityDraft, setCityDraft] = useState(city ?? '');
+  const [sortDraft, setSortDraft] = useState(sort);
+  useEffect(() => {
+    setSearchDraft(query ?? '');
+    setCityDraft(city ?? '');
+    setSortDraft(sort);
+  }, [query, city, sort]);
   const page = Math.max(1, Number.parseInt(currentFilters.page, 10) || 1);
 
   const isAdmin = user?.role === 'ADMIN';
@@ -134,6 +142,7 @@ export function EventsContainer({
       params.set('limit', '12');
 
       const res = await fetch(`${apiBase}/events?${params.toString()}`, {
+        signal: AbortSignal.timeout(20_000),
         headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${token}`,
@@ -268,7 +277,8 @@ export function EventsContainer({
           <input
             name="q"
             type="search"
-            defaultValue={query}
+            value={searchDraft}
+            onChange={event => setSearchDraft(event.target.value)}
             aria-label="Search events"
             placeholder="Search events, artists or experiences…"
           />
@@ -276,12 +286,13 @@ export function EventsContainer({
         <input
           name="city"
           type="text"
-          defaultValue={city}
+          value={cityDraft}
+          onChange={event => setCityDraft(event.target.value)}
           aria-label="Filter by city"
           placeholder="All cities"
           className="ep-city-filter"
         />
-        <select name="sort" defaultValue={sort} aria-label="Sort events">
+        <select name="sort" value={sortDraft} onChange={event => setSortDraft(event.target.value)} aria-label="Sort events">
           {sortOptions.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -324,7 +335,9 @@ export function EventsContainer({
           >
             <List className="icon" />
           </button>
-          <Link href="/events">Clear filters</Link>
+          <Link href="/events" onClick={() => {
+            setSearchDraft(''); setCityDraft(''); setSortDraft('date:asc');
+          }}>Clear filters</Link>
         </div>
       </div>
       {/* Admin Attendee Testing Banner & Switcher */}

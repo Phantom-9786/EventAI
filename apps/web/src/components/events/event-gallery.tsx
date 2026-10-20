@@ -1,4 +1,5 @@
 'use client';
+import { lockPageScroll } from '@/lib/scroll-lock';
 
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -100,12 +101,11 @@ export function EventGallery({ images, eventTitle }: EventGalleryProps) {
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlockScroll = lockPageScroll();
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = originalOverflow;
+      unlockScroll();
     };
   }, [isOpen, handleClose, handlePrev, handleNext]);
 

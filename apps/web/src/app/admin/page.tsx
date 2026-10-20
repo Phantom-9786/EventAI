@@ -2637,7 +2637,7 @@ function SystemControlsTab() {
   }
 
   return (
-    <div className="space-y-6 pt-4 max-w-4xl">
+    <div className="ep-system-controls space-y-6 pt-4 max-w-4xl">
       <div>
         <p className="text-sm text-muted-foreground mt-1">
           Manage website availability, booking access and assistant maintenance.
@@ -2675,7 +2675,7 @@ function SystemControlsTab() {
         >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-1">
-              <div className="flex items-center gap-2.5">
+              <div className="ep-control-heading flex items-center gap-2.5">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
                   <ShieldAlert className="h-4 w-4" />
                 </span>
@@ -2683,7 +2683,7 @@ function SystemControlsTab() {
                   Website Maintenance Mode
                 </h3>
                 <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  className={`ep-control-status inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                     controls?.websiteMaintenance
                       ? 'bg-amber-500 text-amber-950 font-bold animate-pulse'
                       : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
@@ -2725,12 +2725,12 @@ function SystemControlsTab() {
               Public Maintenance Notice Message
             </label>
             <div className="flex flex-col sm:flex-row gap-2">
-              <input
+              <textarea rows={2}
                 id="website-msg"
                 value={websiteMsg}
                 onChange={(e) => setWebsiteMsg(e.target.value)}
                 placeholder="EventPoint is temporarily undergoing maintenance. Please check back soon."
-                className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="min-h-[72px] py-2 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
               <Button
                 type="button"
@@ -2769,7 +2769,7 @@ function SystemControlsTab() {
         >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-1">
-              <div className="flex items-center gap-2.5">
+              <div className="ep-control-heading flex items-center gap-2.5">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Sparkles className="h-4 w-4" />
                 </span>
@@ -2777,7 +2777,7 @@ function SystemControlsTab() {
                   AI Assistant Maintenance Mode
                 </h3>
                 <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  className={`ep-control-status inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                     controls?.aiMaintenance
                       ? 'bg-amber-500 text-amber-950 font-bold'
                       : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
@@ -2821,12 +2821,12 @@ function SystemControlsTab() {
               AI Assistant Offline Message
             </label>
             <div className="flex flex-col sm:flex-row gap-2">
-              <input
+              <textarea rows={2}
                 id="ai-msg"
                 value={aiMsg}
                 onChange={(e) => setAiMsg(e.target.value)}
                 placeholder="AI Assistant is temporarily unavailable for maintenance. Please try again later."
-                className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="min-h-[72px] py-2 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
               <Button
                 type="button"
@@ -2861,7 +2861,7 @@ function SystemControlsTab() {
         >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-1">
-              <div className="flex items-center gap-2.5">
+              <div className="ep-control-heading flex items-center gap-2.5">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
                   <CalendarDays className="h-4 w-4" />
                 </span>
@@ -2869,7 +2869,7 @@ function SystemControlsTab() {
                   Event Creation Maintenance Mode
                 </h3>
                 <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                  className={`ep-control-status inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                     controls?.eventCreationMaintenance
                       ? 'bg-amber-500 text-amber-950 font-bold'
                       : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20'
@@ -2918,12 +2918,12 @@ function SystemControlsTab() {
               Event Creation Paused Notice Message
             </label>
             <div className="flex flex-col sm:flex-row gap-2">
-              <input
+              <textarea rows={2}
                 id="event-creation-msg"
                 value={eventCreationMsg}
                 onChange={(e) => setEventCreationMsg(e.target.value)}
                 placeholder="New event creation is temporarily unavailable. Existing events remain accessible."
-                className="h-9 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="min-h-[72px] py-2 flex-1 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
               <Button
                 type="button"
