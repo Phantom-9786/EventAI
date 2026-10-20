@@ -271,7 +271,14 @@ export function EventsContainer({
           </Link>
         ))}
       </div>
-      <form action="/events" method="get" className="filter-bar">
+      <form action="/events" method="get" className="filter-bar" onSubmit={event => {
+        event.preventDefault();
+        const params = new URLSearchParams();
+        new FormData(event.currentTarget).forEach((value, key) => {
+          if (typeof value === 'string' && value.trim()) params.set(key, value.trim());
+        });
+        router.push('/events' + (params.size ? '?' + params.toString() : ''));
+      }}>
         <label>
           <Search className="icon" />
           <input

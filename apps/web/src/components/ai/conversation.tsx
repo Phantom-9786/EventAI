@@ -84,7 +84,7 @@ export function Conversation({
   useEffect(() => {
     if (initialPrompt) {
       setInput(initialPrompt);
-      inputRef.current?.focus();
+      inputRef.current?.focus({ preventScroll: true });
     }
   }, [initialPrompt]);
   useEffect(() => {
@@ -127,7 +127,7 @@ export function Conversation({
       if (serial.current === request) {
         active.current = null;
         setBusy(false);
-        inputRef.current?.focus();
+        inputRef.current?.focus({ preventScroll: true });
       }
     }
   }
@@ -147,7 +147,7 @@ export function Conversation({
   useEffect(() => {
     if (!expanded) return;
     const unlockScroll = lockPageScroll();
-    inputRef.current?.focus();
+    inputRef.current?.focus({ preventScroll: true });
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopImmediatePropagation();
@@ -249,7 +249,7 @@ export function Conversation({
             setMessages([greeting]);
             setError('');
             setInput('');
-            inputRef.current?.focus();
+            inputRef.current?.focus({ preventScroll: true });
           }}
         >
           <RotateCcw
