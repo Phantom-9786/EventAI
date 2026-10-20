@@ -118,6 +118,7 @@ export class EventsService {
     this.semantics?.invalidateIndex();
     await this.cache.invalidatePrefix('event:detail:');
     await this.cache.invalidatePrefix('events:similar:');
+    await this.cache.invalidatePrefix('categories:spotlights:');
   }
 
   async createEvent(organizerId: string, input: CreateEventInput) {

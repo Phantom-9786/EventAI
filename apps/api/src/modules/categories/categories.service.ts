@@ -6,6 +6,24 @@ import {
 import type { CreateCategoryInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/cache/cache.service';
+import { createHash } from 'crypto';
+
+export interface CategorySpotlight {
+  id: string;
+  name: string;
+  slug: string;
+  upcomingEvents: number;
+  paidTickets: number;
+  coverImage: string | null;
+}
+
+/** Daily, stable tie rotation avoids flicker and gives equal categories a turn. */
+export function chooseCategorySpotlights(rows: CategorySpotlight[], day: string): CategorySpotlight[] {
+  const tie = (slug: string) => createHash('sha256').update(day + ':' + slug).digest('hex');
+  return rows.filter(row => row.upcomingEvents > 0).sort((a, b) =>
+    b.paidTickets - a.paidTickets || tie(a.slug).localeCompare(tie(b.slug)),
+  ).slice(0, 2);
+}
 
 // ═══════════════════════════════════════════════════
 // Categories: public browsing + admin management.
@@ -42,6 +60,34 @@ export class CategoriesService {
     const categories = await this.listActiveUncached();
     await this.cache.set(CategoriesService.LIST_CACHE_KEY, categories, 300);
     return categories;
+  }
+
+  async spotlights() {
+    const now = new Date();
+    const day = now.toISOString().slice(0, 10);
+    const key = 'categories:spotlights:' + day;
+    const cached = await this.cache.get<CategorySpotlight[]>(key);
+    if (cached) return cached;
+    const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const rows = await this.prisma.$queryRaw<CategorySpotlight[]>`
+      WITH eligible AS (
+        SELECT e.id, e.category_id, e.start_date, e.cover_image, e.images
+        FROM events e JOIN categories c ON c.id=e.category_id
+        WHERE e.status='PUBLISHED' AND e.start_date >= ${now} AND c.is_active=true
+      )
+      SELECT c.id, c.name, c.slug, COUNT(e.id)::int AS "upcomingEvents",
+        (SELECT COUNT(t.id)::int FROM tickets t
+          JOIN bookings b ON b.id=t.booking_id JOIN payments p ON p.booking_id=b.id
+          JOIN eligible sold ON sold.id=t.event_id
+          WHERE sold.category_id=c.id AND b.status='CONFIRMED' AND p.status='CAPTURED'
+            AND p.amount > 0 AND t.status IN ('VALID','USED') AND t.created_at >= ${cutoff}) AS "paidTickets",
+        (SELECT COALESCE(NULLIF(photo.cover_image,''), photo.images[1]) FROM eligible photo
+          WHERE photo.category_id=c.id ORDER BY photo.start_date, photo.id LIMIT 1) AS "coverImage"
+      FROM categories c JOIN eligible e ON e.category_id=c.id
+      GROUP BY c.id, c.name, c.slug`;
+    const selected = chooseCategorySpotlights(rows, day);
+    await this.cache.set(key, selected, 60);
+    return selected;
   }
 
   private listActiveUncached() {

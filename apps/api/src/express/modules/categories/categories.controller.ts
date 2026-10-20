@@ -4,6 +4,11 @@ import { CategoriesService } from '../../../modules/categories/categories.servic
 export class ExpressCategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
+  spotlights = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try { res.json({ spotlights: await this.categoriesService.spotlights(), windowDays: 30 }); }
+    catch (error) { next(error); }
+  };
+
   list = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const categories = await this.categoriesService.listActive();

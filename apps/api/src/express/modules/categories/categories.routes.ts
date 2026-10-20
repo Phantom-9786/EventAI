@@ -19,6 +19,7 @@ export function createCategoriesRouter({
 
   // Public category listing
   router.get('/', controller.list);
+  router.get('/spotlights', controller.spotlights);
 
   // Admin-only management
   router.post(

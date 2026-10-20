@@ -12,7 +12,9 @@ import {
   GraduationCap,
   Grid2X2,
 } from 'lucide-react';
-import { getCategories, searchEvents } from '@/lib/api';
+import { getCategories, getCategorySpotlights, searchEvents } from '@/lib/api';
+import { categorySpotlightCopy, categorySpotlightCover } from '@/lib/category-spotlights';
+import { EventImage } from '@/components/approved/event-image';
 import { EventCard } from '@/components/events/event-card';
 export const dynamic = 'force-dynamic';
 const categoryIcons = [
@@ -25,9 +27,10 @@ const categoryIcons = [
   CalendarDays,
 ];
 export default async function HomePage() {
-  const [categories, result] = await Promise.all([
+  const [categories, result, spotlights] = await Promise.all([
     getCategories().catch(() => []),
     searchEvents({ sortBy: 'date', sortDir: 'asc', limit: 8 }).catch(() => null),
+    getCategorySpotlights().catch(() => []),
   ]);
   const featured = result?.events ?? [];
   return (
@@ -108,46 +111,28 @@ export default async function HomePage() {
           </Link>
         </div>
       </section>
-      <section className="wrap section">
+      {spotlights.length > 0 && <section className="wrap section">
         <div className="section-heading">
           <div>
             <p className="small-label">Change the pace</p>
             <h2>Make room for a little more</h2>
           </div>
         </div>
-        <div className="spotlight-grid">
-          <Link href="/events?category=music" className="spotlight">
-            <img
-              src="https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=85"
-              alt="Live music audience"
-              loading="lazy"
-            />
-            <div>
-              <span className="eyebrow">Find your sound</span>
-              <h3>Music. Better together.</h3>
-              <p>Small rooms, big stages, and everything in between.</p>
-            </div>
-            <span className="round-arrow">
-              <ArrowRight className="icon" />
-            </span>
-          </Link>
-          <Link href="/events?category=health-wellness" className="spotlight">
-            <img
-              src="https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=900&q=85"
-              alt="Outdoor yoga practice"
-              loading="lazy"
-            />
-            <div>
-              <span className="eyebrow">A slower kind of Sunday</span>
-              <h3>Breathe. Reset. Begin.</h3>
-              <p>A little time for yourself.</p>
-            </div>
-            <span className="round-arrow">
-              <ArrowRight className="icon" />
-            </span>
-          </Link>
+        <div className={'spotlight-grid' + (spotlights.length === 1 ? ' spotlight-single' : '')}>
+          {spotlights.map(category => {
+            const wording = categorySpotlightCopy(category);
+            return <Link key={category.id} href={'/events?category=' + encodeURIComponent(category.slug)} className="spotlight">
+              <EventImage src={categorySpotlightCover(category)} fallbacks={category.coverImage ? [category.coverImage] : []} alt={category.name + ' experiences'} className="ep-spotlight-cover" />
+              <div>
+                <span className="eyebrow">{wording.eyebrow}</span>
+                <h3>{wording.title}</h3>
+                <p>{wording.description}</p>
+              </div>
+              <span className="round-arrow"><ArrowRight className="icon" /></span>
+            </Link>;
+          })}
         </div>
-      </section>
+      </section>}
     </>
   );
 }

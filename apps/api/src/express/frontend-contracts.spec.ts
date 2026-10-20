@@ -140,6 +140,7 @@ describe('Frontend-to-Express API Contract Verification', () => {
     };
 
     mockCategoriesService = {
+      spotlights: jest.fn().mockResolvedValue([{ id: 'cat-1', name: 'Music', slug: 'music', upcomingEvents: 2, paidTickets: 4, coverImage: null }]),
       listActive: jest.fn().mockResolvedValue([
         { id: 'cat-1', name: 'Music', slug: 'music', icon: 'music', color: '#ff0000', _count: { events: 5 } },
       ]),
@@ -370,6 +371,14 @@ describe('Frontend-to-Express API Contract Verification', () => {
       expect(data.event).toBeDefined();
       expect(data.event.id).toBe(eventId);
       expect(data.event.ticketTypes).toHaveLength(1);
+    });
+
+    it('serves automatic category spotlights publicly', async () => {
+      const res = await fetch(`${baseUrl}/api/categories/spotlights`);
+      expect(res.status).toBe(200);
+      const data = await res.json() as any;
+      expect(data.windowDays).toBe(30);
+      expect(data.spotlights[0]).toMatchObject({ slug: 'music', upcomingEvents: 2 });
     });
 
     it('matches getCategories response shape: { categories }', async () => {

@@ -54,7 +54,7 @@ export default async function EventDetailPage({ params }: Props) {
     new Set([event.coverImage, ...event.images].filter((v): v is string => Boolean(v))),
   );
   return (
-    <div className="wrap">
+    <div className="wrap ep-event-detail">
       <div className="breadcrumb">
         <Link href="/">Home</Link>
         <span>›</span>

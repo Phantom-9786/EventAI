@@ -183,6 +183,19 @@ export async function getCategories(): Promise<Category[]> {
   return categories;
 }
 
+export interface CategorySpotlight {
+  id: string;
+  name: string;
+  slug: string;
+  upcomingEvents: number;
+  paidTickets: number;
+  coverImage: string | null;
+}
+
+export async function getCategorySpotlights(): Promise<CategorySpotlight[]> {
+  return (await getJson<{ spotlights: CategorySpotlight[] }>('/categories/spotlights')).spotlights;
+}
+
 export interface VenueSummary {
   id: string;
   name: string;
