@@ -233,8 +233,18 @@ export class AiService {
       ...event.faqs.flatMap((faq, index) => eventChunks(event.slug, event.title, `FAQ ${index + 1}`, faq.question + ': ' + faq.answer)),
       ...event.ticketTypes.flatMap(ticket => eventChunks(event.slug, event.title, 'Ticket ' + ticket.name, ticket.description)),
     ]);
-    const retrieved = this.semantics ? await this.semantics.retrievePassages(query, chunks)
-      : { mode: 'keyword-fallback', chunks: selectEvidence(chunks, lexicalChunkScores(query, chunks), 6) };
+    const fallback = () => ({ mode: 'keyword-fallback' as const,
+      chunks: selectEvidence(chunks, lexicalChunkScores(query, chunks), 6) });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let retrieved;
+    try {
+      // Native encoder work cannot be cancelled; a late result may warm its
+      // content-hash cache, while this request continues with lexical evidence.
+      retrieved = this.semantics ? await Promise.race([
+        this.semantics.retrievePassages(query, chunks),
+        new Promise<ReturnType<typeof fallback>>(resolve => { timer = setTimeout(() => resolve(fallback()), 3_000); }),
+      ]) : fallback();
+    } finally { if (timer) clearTimeout(timer); }
     const needsTickets = /\b(tickets?|passes|pass|pricing|price|cost|availability|stock|capacity|book|booking|group|seats?|tiers?)\b/i.test(query);
     return { retrievalMode: retrieved.mode, passages: retrieved.chunks,
       events: events.map(event => ({ slug: event.slug, title: event.title,

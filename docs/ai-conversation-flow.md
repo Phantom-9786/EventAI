@@ -47,6 +47,8 @@ validated. Invalid structured output gets one bounded repair attempt.
   with reciprocal rank fusion. At most 16 candidates are embedded/ranked; at most
   six passages are sent to Groq. A 512-entry content-hash cache reuses passage/query
   vectors and naturally invalidates edited text. No external embedding API is used.
+  A three-second encoder deadline returns lexical evidence during a cold start;
+  the bounded background work can still warm the vector cache.
 - Ticket prices, stock and booking limits are read live rather than embedded.
   Passage answers distinguish incomplete evidence from a confirmed absence.
 
