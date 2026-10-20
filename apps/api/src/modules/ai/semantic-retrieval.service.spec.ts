@@ -24,6 +24,10 @@ describe('Semantic retrieval', () => {
     expect(await service.queryVector('quiet evening')).toEqual(vector);
     expect(await service.queryVector('quiet evening')).toEqual(vector);
     expect(embed).toHaveBeenCalledTimes(1);
+    expect(prisma.event.findMany).toHaveBeenCalledTimes(1);
+    service.invalidateIndex();
+    await service.queryVector('quiet evening');
+    expect(prisma.event.findMany).toHaveBeenCalledTimes(2);
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
 

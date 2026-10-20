@@ -36,12 +36,19 @@ export async function askEvents(
       }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok)
-      throw new Error(
+    if (!res.ok) {
+      const retrySeconds = Number(data.retryAfterSeconds ?? res.headers.get('Retry-After'));
+      const retryHint = retrySeconds > 0 ? ' Try again in ' + Math.ceil(retrySeconds) + ' seconds.' : '';
+      throw new Error(res.status === 429
+        ? 'You’ve reached the chat request limit.' + retryHint
+        : typeof data.message === 'string' && /rate limit/i.test(data.message)
+          ? 'The AI provider is temporarily at capacity.' + retryHint
+          : (
         typeof data.message === 'string'
           ? data.message
-          : 'The assistant is unavailable. Please try again.',
-      );
+          : 'The assistant is unavailable. Please try again.'
+      ));
+    }
     return {
       reply:
         typeof data.reply === 'string' ? data.reply : 'Here are the matching events.',
@@ -49,6 +56,9 @@ export async function askEvents(
       moreEventsUrl: typeof data.moreEventsUrl === 'string' && data.moreEventsUrl.startsWith('/events?') ? data.moreEventsUrl : undefined,
       total: typeof data.total === 'number' ? data.total : undefined,
     };
+  } catch (error) {
+    if (timeout.aborted && !signal?.aborted) throw new Error('The assistant took too long to respond. Please retry your message.');
+    throw error;
   } finally {
     timeout.removeEventListener('abort', abort);
     signal?.removeEventListener('abort', abort);

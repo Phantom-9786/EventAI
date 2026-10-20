@@ -115,6 +115,7 @@ export class EventsService {
 
   /** Bumps the public event cache after any write that can affect it. */
   async invalidateEventCache() {
+    this.semantics?.invalidateIndex();
     await this.cache.invalidatePrefix('event:detail:');
     await this.cache.invalidatePrefix('events:similar:');
   }

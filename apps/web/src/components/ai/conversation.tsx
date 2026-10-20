@@ -100,7 +100,10 @@ export function Conversation({
     const controller = new AbortController();
     active.current = controller;
     const request = ++serial.current;
-    const next = [...messages, { role: 'user' as const, content: text }];
+    // Retry an unanswered message without duplicating it in the transcript.
+    const last = messages[messages.length - 1];
+    const next = last?.role === 'user' && last.content === text
+      ? messages : [...messages, { role: 'user' as const, content: text }];
     setMessages(next);
     setInput('');
     setError('');
@@ -321,9 +324,9 @@ export function Conversation({
                   ))}
                 </div>
               )}
-              {m.moreEventsUrl?.startsWith('/events?') && (
+              {m.moreEventsUrl?.startsWith('/events?') && (m.total ?? 0) > Math.min(m.events?.length ?? 0, 6) && (
                 <Link className="ep-chat-more" href={m.moreEventsUrl}>
-                  More related events{m.total ? ' (' + m.total + ')' : ''} →
+                  More related events →
                 </Link>
               )}
             </div>

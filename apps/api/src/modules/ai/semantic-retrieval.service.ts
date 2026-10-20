@@ -17,6 +17,8 @@ export class SemanticRetrievalService {
   private readonly logger = new Logger(SemanticRetrievalService.name);
   private extractor?: Promise<Extractor>;
   private indexing?: Promise<void>;
+  private indexFreshUntil = 0;
+  private indexRevision = 0;
   private queue: Promise<unknown> = Promise.resolve();
   private readonly queryCache = new Map<string, number[]>();
 
@@ -61,9 +63,15 @@ export class SemanticRetrievalService {
   }
 
   /** Hashes ensure edits are re-embedded. Live SQL checks version timestamps too. */
+  invalidateIndex(): void { this.indexRevision++; this.indexFreshUntil = 0; }
+
   async refreshIndex(): Promise<void> {
     if (this.indexing) return this.indexing;
-    this.indexing = this.indexPublished().finally(() => { this.indexing = undefined; });
+    if (Date.now() < this.indexFreshUntil) return;
+    const revision = this.indexRevision;
+    this.indexing = this.indexPublished().then(() => {
+      if (revision === this.indexRevision) this.indexFreshUntil = Date.now() + 15_000;
+    }).finally(() => { this.indexing = undefined; });
     return this.indexing;
   }
 

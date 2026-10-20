@@ -9,14 +9,14 @@ Mood/vibe requests use pretrained semantic retrieval alongside existing structur
 3. Groq returns positive English semanticQuery plus dates, city, price ceiling, party size and excluded activities.
 4. Validate the filter; enforce dates, price, availability and group limits in SQL. Score current published event embeddings using cosine similarity (normalized dot product), with a minimum similarity of 0.28.
 5. Rank relevance in 0.05-wide buckets, then confirmed paid admissions and earlier-created listings.
-6. Return at most six cards. More related events carries the same semantic and structured filter to paginated Discover.
+6. Return at most six cards. More related events appears only when additional matches exist, without a misleading total in the label, and carries the same semantic and structured filter to paginated Discover.
 
 ## Embeddings and storage
 The encoder is Xenova/all-MiniLM-L6-v2, quantized q8, 384 dimensions, using Transformers.js 3.8.1 and ONNX Runtime on CPU. No event or user text is sent to an embedding API. The public model is downloaded from Hugging Face and cached on the server. Groq continues to receive the conversational prompt and selected public event facts as before.
 Vectors live in event_semantic_embeddings, a PostgreSQL table with double-precision arrays, source timestamps, model IDs and content hashes. No separate vector service or pgvector extension is required for the current small catalog. Exact similarity scanning is intentional for phase three; a larger catalog should move scoring to an indexed pgvector/hybrid retrieval plan after measurement. This is real pretrained embedding retrieval, not a mood-keyword lookup table.
 
 ## Freshness and fallback
-On semantic searches, index missing/changed future published events in batches of four. Hash and source_updated_at checks prevent stale vectors from being used after edits. Current status/date/stock constraints apply during retrieval. Event deletion cascades to its vector row. Query vectors have a bounded 100-entry in-process cache.
+On semantic searches, index missing/changed future published events in batches of four. Successful index checks are reused for 15 seconds; event-cache invalidation resets this window on the current API instance. Other instances pick up edits at the next check. Hash and source_updated_at checks prevent stale vectors from being used after edits. Current status/date/stock constraints apply during retrieval. Event deletion cascades to its vector row. Query vectors have a bounded 100-entry in-process cache. Catalog facts for prompts/suggestions use a separate 15-second cache; final results always query live data.
 The API warms the encoder asynchronously. A cold model download or index taking more than ten seconds produces an explicit keyword-fallback message, preserving hard filters; it is never labelled a successful semantic result. Regular searches and factual pass-tier answers do not need semantic inference.
 
 ## Deployment

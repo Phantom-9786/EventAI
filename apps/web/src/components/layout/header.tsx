@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ArrowLeftRight, Briefcase, ShieldCheck, Ticket } from 'lucide-react';
+import { ArrowLeftRight, ShieldCheck, Ticket } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { EmailVerificationBanner } from '@/components/auth/email-verification-banner';
 import { ThemeToggle } from '@/components/layout/theme-toggle';
@@ -123,16 +123,12 @@ export function Header() {
                 className="workspace-switch"
                 href={workspace ? '/overview' : '/dashboard'}
               >
-                {workspace ? (
-                  <ArrowLeftRight className="icon" />
-                ) : (
-                  <Briefcase className="icon" />
-                )}
+                <ArrowLeftRight className="icon" />
                 <span>
                   {workspace
                     ? 'Attendee view'
                     : canOrganize
-                      ? 'Switch to organizer'
+                      ? 'Organizer'
                       : organizerProfile
                         ? 'Organizer application'
                         : 'Become an organizer'}

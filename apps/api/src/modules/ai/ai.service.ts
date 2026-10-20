@@ -6,6 +6,7 @@ import {
 } from '../../common/exceptions';
 import { aiEventFilterSchema } from '@eventai/validation';
 import { isMoodSearch } from './semantic-retrieval.service';
+import { acceptsAnyCity, moodContext, moodQuery, normalizeDiscoveryFilter } from './discovery-intent';
 import { EventsService } from '../events/events.service';
 import type { AiChatInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -70,6 +71,8 @@ export class AiService {
   private readonly logger = new Logger(AiService.name);
   private readonly keyPool: GroqKeyPool;
   private readonly profiles = resolveModelProfiles();
+  private catalogCache?: { expiresAt: number; rows: Awaited<ReturnType<AiService['readCatalog']>> };
+  private catalogLoading?: Promise<Awaited<ReturnType<AiService['readCatalog']>>>;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -85,6 +88,19 @@ export class AiService {
   }
 
   private async loadCatalog() {
+    // Only prompt/suggestion facts are cached. Final results always query live
+    // publication status, dates, prices and capacity through EventsService.
+    if (this.catalogCache && this.catalogCache.expiresAt > Date.now()) return [...this.catalogCache.rows];
+    if (!this.catalogLoading) {
+      this.catalogLoading = this.readCatalog().then(rows => {
+        this.catalogCache = { rows, expiresAt: Date.now() + 15_000 };
+        return rows;
+      }).finally(() => { this.catalogLoading = undefined; });
+    }
+    return [...await this.catalogLoading];
+  }
+
+  private async readCatalog() {
     const events = await this.prisma.event.findMany({
       where: { status: 'PUBLISHED', startDate: { gte: new Date() } },
       orderBy: { startDate: 'asc' },
@@ -155,6 +171,7 @@ export class AiService {
     key: string,
     payload: ChatMessage[],
     model: string,
+    remainingMs = 40_000,
   ): Promise<Response> {
     const timeoutMs = this.numberEnv(
       'AI_REQUEST_TIMEOUT_MS',
@@ -177,7 +194,7 @@ export class AiService {
         ...(model.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low' } : {}),
         max_tokens: maxTokens,
       }),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(Math.max(1, Math.min(timeoutMs, remainingMs))),
     });
   }
 
@@ -277,6 +294,7 @@ export class AiService {
     messages: AiChatInput['messages'],
     eventId?: string,
   ): Promise<{ reply: string; events: AiEventCard[]; moreEventsUrl?: string; total?: number }> {
+    const deadline = Date.now() + 40_000;
     if (!this.isConfigured()) {
       throw new ServiceUnavailableException(
         'The AI assistant is not configured on this server yet (missing GROQ_API_KEY).',
@@ -355,7 +373,7 @@ export class AiService {
     const moodRequest = isMoodSearch(latestUserMessage?.content ?? '');
     let semanticContext = '';
     if (!eventId && moodRequest && this.eventSearch) {
-      const retrieved = await this.eventSearch.searchEvents({ aiFilters: JSON.stringify({ semanticQuery: latestUserMessage!.content.slice(0, 500) }), page: 1, limit: 6 });
+      const retrieved = await this.eventSearch.searchEvents({ aiFilters: JSON.stringify({ semanticQuery: moodQuery(latestUserMessage!.content) }), page: 1, limit: 6 });
       if (retrieved.retrievalMode === 'hybrid') semanticContext = '\n\nSemantically related event facts (examples only; exact constraints are applied by the server):\n' + JSON.stringify(retrieved.events.map(event => ({ title: event.title, slug: event.slug, description: event.description?.slice(0, 650), category: event.category.name, city: event.venue.city, minPrice: event.minPrice })));
     }
     // Explicit short artist/genre searches must not silently broaden to all music.
@@ -458,6 +476,7 @@ export class AiService {
           '\nOUTPUT CONTRACT: Return a JSON object only, with keys reply (short conversational answer), search (filter object for ANY discovery/recommendation request, otherwise null), and slugs (array of catalog slugs, possibly empty). Do not output SEARCH or EVENTS trailers outside JSON. ' +
           'search must use only query, category, city, dateFrom, dateTo, priceMin, priceMax, partySize (integer people count), excludedKeywords (array of unwanted activities), semanticQuery (positive mood/atmosphere preferences in English). Set search={} for all events. A one-word category such as music means search={"category":"music"}. Search the full database even if the catalog sample has few matches. Never limit the search to the six slugs. ' +
           'Interpret the whole conversation: retain city/date/budget during refinements, but explicit all events resets previous category/city constraints. Prices in search are paise. For a TOTAL group budget divide it by party size before setting priceMax; for a per-person budget do not divide. If unclear ask a short clarification. ' +
+          'City, date and budget are OPTIONAL: search upcoming events across all cities when unspecified. Any city / anywhere means omit city, never search for a city literally called any. For an experiential request such as tired friends seeking a relaxed evening, return search immediately; do not demand city, dates or budget first. When the user answers a clarification, retain their earlier mood and group size and search. Do not invent a weekend/date limit or price ceiling the user did not give. ' +
           'For mood/vibe requests set semanticQuery to positive experiential preferences in English, e.g. a quiet intimate acoustic evening. Do not put mood synonyms into query: query is for exact artist/title/genre terms. Use excludedKeywords for unwanted activities and partySize for group size. Never assert group capacity unless stock and max-per-booking permit it, and never book or promise payment yourself. ' +
           'A greeting should warmly ask about city, dates, interests and budget with search=null. Opinions should explain fit using event facts rather than promise quality or safety.',
       },
@@ -468,6 +487,7 @@ export class AiService {
     // and at most one escalation to a more capable profile.
     const maxAttempts = this.keyPool.size + GROQ_TRANSIENT_RETRIES + 1;
     let transientRetries = 0;
+    let outputRetries = 0;
     let escalated = false;
     let attempts = 0;
 
@@ -496,9 +516,10 @@ export class AiService {
       if (!key) break;
 
       let response: Response;
+      if (deadline - Date.now() < 1000) this.unavailable('The assistant took too long to respond. Please retry your message.');
       attempts++;
       try {
-        response = await this.callGroq(key, payload, model);
+        response = await this.callGroq(key, payload, model, deadline - Date.now());
       } catch {
         // Network failure or timeout — transient. One bounded backoff retry
         // on the same key, then give up.
@@ -578,9 +599,18 @@ export class AiService {
       }
 
       if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({})) as { error?: { code?: string; type?: string } };
+        const code = errorBody.error?.code;
+        // Groq can reject a generated JSON object even with HTTP 400. Repair once,
+        // without retrying permanent configuration errors or exposing provider text.
+        if (response.status === 400 && code === 'json_validate_failed' && outputRetries < 1) {
+          outputRetries++;
+          payload.push({ role: 'system', content: 'Your last response failed JSON validation. Return one valid JSON object with reply, search and slugs. No markdown or prose outside JSON. Use null for search only for non-discovery questions.' });
+          continue;
+        }
         // Other 4xx (bad request, unknown model, …) — permanent for this
         // request shape; retrying would not help.
-        this.logger.warn(`Groq request rejected (HTTP ${response.status})`);
+        this.logger.warn(`Groq request rejected (HTTP ${response.status}; code: ${typeof code === 'string' ? code.replace(/[^a-z0-9_]/gi, '').slice(0, 60) : 'unknown'})`);
         this.unavailable(
           'The AI assistant could not process this request. Please try again later.',
         );
@@ -589,6 +619,11 @@ export class AiService {
       const body = (await response.json()) as LlmCompletionResponse;
       let rawReply = body.choices?.[0]?.message?.content?.trim();
       if (!rawReply) {
+        if (outputRetries < 1) {
+          outputRetries++;
+          payload.push({ role: 'system', content: 'Return a concise nonempty JSON object with reply, search and slugs. Do not leave the answer empty.' });
+          continue;
+        }
         this.unavailable('The AI assistant returned an empty reply.');
       }
       try {
@@ -597,8 +632,18 @@ export class AiService {
           rawReply = output.reply +
             (output.search && typeof output.search === 'object' && !Array.isArray(output.search) ? '\nSEARCH: ' + JSON.stringify(output.search) : '') +
             (Array.isArray(output.slugs) && output.slugs.length ? '\nEVENTS: ' + output.slugs.filter((slug: unknown) => typeof slug === 'string').slice(0, 6).join(', ') : '');
+        } else throw new Error('Missing reply field');
+      } catch {
+        // Plain text remains supported, but never show broken JSON as a reply.
+        if (/^(?:\x60{3}(?:json)?\s*)?(?:\{|\[)/.test(rawReply)) {
+          if (outputRetries < 1) {
+            outputRetries++;
+            payload.push({ role: 'system', content: 'Return valid JSON with a nonempty string reply, search object or null, and slugs array. Keep the reply concise.' });
+            continue;
+          }
+          this.unavailable('The assistant received an invalid response. Please retry your message.');
         }
-      } catch { /* Compatibility with existing text responses. */ }
+      }
       // Recover a missing filter for unequivocal browse requests AFTER the model call.
       // This keeps model routing while guaranteeing a complete Discover link.
       const browse = (latestUserMessage?.content ?? '').toLowerCase().replace(/[.!?]/g, '').trim();
@@ -608,14 +653,17 @@ export class AiService {
       if (!/^\s*SEARCH:/m.test(rawReply) && !eventId && (allEvents || categoryMatch)) {
         rawReply += '\nSEARCH: ' + JSON.stringify(allEvents ? {} : { category: categoryMatch!.categorySlug });
       }
+      if (!/^\s*SEARCH:/m.test(rawReply) && !eventId && (moodRequest || (acceptsAnyCity(latestUserMessage?.content ?? '') && moodContext(messages)))) {
+        rawReply += '\nSEARCH: ' + JSON.stringify({ semanticQuery: moodContext(messages) });
+      }
       const searchLine = rawReply.match(/^\s*SEARCH:\s*(\{[^\n]*\})\s*$/m);
       const cleanReply = rawReply.replace(/^\s*SEARCH:.*$/gm, '').trim();
       if (searchLine && this.eventSearch) {
         let filter;
         try {
-          const candidate = JSON.parse(searchLine[1]);
+          const candidate = allEvents ? {} : JSON.parse(searchLine[1]);
           // JSON generators often include absent optional fields as null.
-          const normalized = Object.fromEntries(Object.entries(candidate).filter(([, value]) => value !== null));
+          const normalized = normalizeDiscoveryFilter(candidate, messages, Boolean(allEvents || categoryMatch));
           for (const key of ['dateFrom', 'dateTo']) {
             const value = normalized[key];
             if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) normalized[key] = value + (key === 'dateTo' ? 'T23:59:59.999Z' : 'T00:00:00.000Z');
@@ -635,10 +683,10 @@ export class AiService {
           const aiFilters = JSON.stringify({ ...filter.data, dateFrom: filter.data.dateFrom ?? new Date().toISOString() });
           const result = await this.eventSearch.searchEvents({ aiFilters, page: 1, limit: 6 });
           return {
-            reply: result.retrievalMode === 'keyword-fallback' ? 'Semantic matching is warming up or temporarily unavailable. These results use keyword matching and your exact filters.' : result.total ? 'Here are events matching your plans. Select a card to explore.' : 'No upcoming events match these filters. Try another city, date or budget.',
+            reply: result.retrievalMode === 'keyword-fallback' ? 'Semantic matching is warming up or temporarily unavailable. These results use keyword matching and your exact filters.' : result.total ? 'Here are events matching your plans. Select a card to explore.' : filter.data.semanticQuery ? 'I couldn’t find a close match for that atmosphere with your current preferences. You can broaden the mood, or ask for a category such as music or food.' : 'No upcoming events match your current preferences. You can broaden the category, date or budget.',
             events: result.events as unknown as AiEventCard[],
             total: result.total,
-            moreEventsUrl: result.total > 0 ? '/events?' + new URLSearchParams({ aiFilters }).toString() : undefined,
+            moreEventsUrl: result.total > Math.min(result.events.length, 6) ? '/events?' + new URLSearchParams({ aiFilters }).toString() : undefined,
           };
         }
       }

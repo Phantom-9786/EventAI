@@ -232,3 +232,21 @@ html.dark .ep-app { --ep-muted: #b5b5c2; }
   letter-spacing: -1.3px;
 }
 .ep-app .header .ep-brand-name b { font-family: inherit; font-weight: inherit; }
+
+/* Compact discovery suggestions without a separate scrolling panel. */
+.ep-app .ep-conversation-full .ep-ai-ideas { padding: 14px 12px; gap: 8px; }
+.ep-app .ep-conversation-full .ep-ai-ideas h2 { font-size: 13px; }
+.ep-app .ep-conversation-full .ep-ai-ideas > p,
+.ep-app .ep-conversation-full .ep-ai-ideas small { display: none; }
+.ep-app .ep-conversation-full .ep-ai-ideas > button { padding: 9px; gap: 7px; border-radius: 10px; }
+.ep-app .ep-conversation-full .ep-ai-ideas strong { font-size: 12px; line-height: 1.4; }
+.ep-app .ep-conversation-full .ep-ai-ideas .ep-idea-icon { width: 23px; height: 23px; }
+.ep-app .ep-conversation-full .ep-ai-ideas { overflow: visible; }
+.ep-app .header .workspace-switch { padding: 10px 12px; white-space: nowrap; }
+@media (min-width: 801px) and (max-height: 650px) {
+  .ep-app .ep-conversation-full .ep-ai-ideas { padding: 10px; gap: 6px; }
+  .ep-app .ep-conversation-full .ep-ai-ideas > button { padding: 7px; }
+}
+@media (max-width: 800px) {
+  .ep-app .ep-conversation-full .ep-ai-ideas { max-height: none; }
+}

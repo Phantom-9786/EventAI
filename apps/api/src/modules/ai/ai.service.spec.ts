@@ -304,10 +304,10 @@ describe('AiService key management', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects empty replies with 503', async () => {
+  it('retries an empty reply once before returning 503', async () => {
     jest
       .spyOn(global, 'fetch')
-      .mockResolvedValue(
+      .mockImplementation(async () =>
         groqResponse(200, { choices: [{ message: { content: '   ' } }] }),
       );
     const service = await makeService({ key: KEY_A });
@@ -627,5 +627,33 @@ describe('Structured discovery filters', () => {
     const filters = JSON.parse(new URL(result.moreEventsUrl!, 'http://localhost').searchParams.get('aiFilters')!);
     expect(filters).toMatchObject(search);
     expect(database.searchEvents).toHaveBeenCalledWith(expect.objectContaining({ page: 1, limit: 6, aiFilters: JSON.stringify(filters) }));
+  });
+
+  it.each([0, 2, 6])('omits More events when all %s matches fit in chat', async total => {
+    process.env.GROQ_API_KEY = KEY_A;
+    const database = { searchEvents: jest.fn().mockResolvedValue({ events: Array(total).fill(CATALOG_ROW), total }) };
+    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
+    jest.spyOn(global, 'fetch').mockResolvedValue(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'Found', search: { category: 'music' }, slugs: [] }) } }] }));
+    expect((await service.chat([{ role: 'user', content: 'music' }])).moreEventsUrl).toBeUndefined();
+  });
+
+  it('searches prior mood after any-city even when the model asks another clarification', async () => {
+    process.env.GROQ_API_KEY = KEY_A;
+    const database = { searchEvents: jest.fn().mockResolvedValue({ events: [CATALOG_ROW], total: 1, retrievalMode: 'hybrid' }) };
+    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
+    jest.spyOn(global, 'fetch').mockResolvedValue(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'What budget?', search: null, slugs: [] }) } }] }));
+    const result = await service.chat([{ role: 'user', content: 'We are three friends wanting a relaxed evening' }, { role: 'assistant', content: 'Which city?' }, { role: 'user', content: 'We are free to choose any city' }]);
+    expect(result.events).toHaveLength(1);
+    expect(JSON.parse(database.searchEvents.mock.calls[0][0].aiFilters)).toMatchObject({ partySize: 3 });
+  });
+
+  it('repairs a Groq JSON-validation rejection once', async () => {
+    process.env.GROQ_API_KEY = KEY_A;
+    const service = new AiService(makePrismaMock() as never, { providerCooldownMs: jest.fn().mockResolvedValue(0) } as never);
+    const provider = jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(groqResponse(400, { error: { code: 'json_validate_failed' } }))
+      .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'Hello!', search: null, slugs: [] }) } }] }));
+    expect((await service.chat([{ role: 'user', content: 'Hello' }])).reply).toBe('Hello!');
+    expect(provider).toHaveBeenCalledTimes(2);
   });
 });

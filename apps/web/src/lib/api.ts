@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-// Server-side API client for the EventAI NestJS backend.
+// API client for the EventAI Express backend.
 // All prices are integers in paise (INR).
 // ═══════════════════════════════════════════════════
 

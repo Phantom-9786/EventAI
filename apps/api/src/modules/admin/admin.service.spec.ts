@@ -46,11 +46,18 @@ describe('AdminService', () => {
     ticket: { groupBy: jest.Mock; updateMany: jest.Mock };
     payment: { updateMany: jest.Mock };
     session: { deleteMany: jest.Mock };
-    auditLog: { create: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    auditLog: { create: jest.Mock; findMany: jest.Mock; findFirst: jest.Mock; count: jest.Mock };
     $transaction: jest.Mock;
   };
   let eventsService: { invalidateEventCache: jest.Mock };
   let notificationsService: { sendEventCancellationNotice: jest.Mock };
+
+  it.each(['EVENT_APPROVED', 'EVENT_REJECTED'])('only exposes rejection reasons for a rejection (%s)', async action => {
+    prisma.event.findUnique.mockResolvedValue({ id: 'event-1', status: 'PUBLISHED' });
+    prisma.auditLog.findFirst.mockResolvedValue({ action, details: { reason: 'Review note' }, createdAt: new Date(), userId: 'admin-1' });
+    const result = await service.getEventDetail('event-1');
+    expect(result.moderation.rejectionReason).toBe(action === 'EVENT_REJECTED' ? 'Review note' : undefined);
+  });
 
   beforeEach(async () => {
     prisma = {
@@ -92,7 +99,7 @@ describe('AdminService', () => {
       },
       payment: { updateMany: jest.fn() },
       session: { deleteMany: jest.fn().mockResolvedValue({ count: 3 }) },
-      auditLog: { create: jest.fn(), findMany: jest.fn(), count: jest.fn() },
+      auditLog: { create: jest.fn(), findMany: jest.fn(), findFirst: jest.fn(), count: jest.fn() },
       $transaction: jest.fn(),
     };
 

@@ -502,7 +502,8 @@ export class AdminService {
                 : latestAudit.action === 'EVENT_REJECTED'
                   ? 'REJECTED'
                   : 'PENDING_APPROVAL',
-            rejectionReason: (latestAudit.details as any)?.reason,
+            rejectionReason: latestAudit.action === 'EVENT_REJECTED'
+              ? (latestAudit.details as any)?.reason : undefined,
             reviewedAt: latestAudit.createdAt.toISOString(),
             reviewedBy: latestAudit.userId,
           }

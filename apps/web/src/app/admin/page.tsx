@@ -1012,10 +1012,10 @@ function EventPreviewModal({
               )}
 
               {/* Moderation History & Rejection notes */}
-              {detail.moderation?.rejectionReason && (
+              {detail.moderation?.status === 'REJECTED' && detail.moderation.rejectionReason && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 space-y-1">
                   <p className="text-xs font-semibold text-destructive">
-                    Previous Rejection Reason:
+                    Rejection reason:
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {detail.moderation.rejectionReason}
