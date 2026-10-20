@@ -650,6 +650,10 @@ export class AiService {
       const allEvents = /^(?:(?:please )?(?:show|show me|list|find|give me)(?: me)? )?(?:all|all the)(?: upcoming| available)? events(?: please)?$/.test(browse);
       const categoryText = browse.replace(/^(?:show me|show|find|suggest|recommend)\s+(?:me\s+)?/, '').replace(/^(?:all|some)\s+/, '').replace(/\s+events$/, '');
       const categoryMatch = catalog.find((event) => event.category.toLowerCase() === categoryText || event.categorySlug === categoryText);
+      // An explicit category request starts a new discovery intent even when
+      // phrased conversationally ("some music events, don't you have any?").
+      const categoryReset = !moodRequest && catalog.some(event =>
+        (' ' + normalizeSearch(browse) + ' ').includes(' ' + normalizeSearch(event.category) + ' '));
       if (!/^\s*SEARCH:/m.test(rawReply) && !eventId && (allEvents || categoryMatch)) {
         rawReply += '\nSEARCH: ' + JSON.stringify(allEvents ? {} : { category: categoryMatch!.categorySlug });
       }
@@ -663,7 +667,7 @@ export class AiService {
         try {
           const candidate = allEvents ? {} : JSON.parse(searchLine[1]);
           // JSON generators often include absent optional fields as null.
-          const normalized = normalizeDiscoveryFilter(candidate, messages, Boolean(allEvents || categoryMatch));
+          const normalized = normalizeDiscoveryFilter(candidate, messages, Boolean(allEvents || categoryMatch || categoryReset));
           for (const key of ['dateFrom', 'dateTo']) {
             const value = normalized[key];
             if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) normalized[key] = value + (key === 'dateTo' ? 'T23:59:59.999Z' : 'T00:00:00.000Z');
