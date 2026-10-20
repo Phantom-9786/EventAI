@@ -652,10 +652,11 @@ export class AiService {
       const categoryMatch = catalog.find((event) => event.category.toLowerCase() === categoryText || event.categorySlug === categoryText);
       // An explicit category request starts a new discovery intent even when
       // phrased conversationally ("some music events, don't you have any?").
-      const categoryReset = !moodRequest && catalog.some(event =>
-        (' ' + normalizeSearch(browse) + ' ').includes(' ' + normalizeSearch(event.category) + ' '));
-      if (!/^\s*SEARCH:/m.test(rawReply) && !eventId && (allEvents || categoryMatch)) {
-        rawReply += '\nSEARCH: ' + JSON.stringify(allEvents ? {} : { category: categoryMatch!.categorySlug });
+      const requestedCategory = !moodRequest && /\b(events?|show|find|suggest|recommend)\b/.test(browse)
+        ? catalog.find(event => (' ' + normalizeSearch(browse) + ' ').includes(' ' + normalizeSearch(event.category) + ' ')) : undefined;
+      const categoryReset = Boolean(requestedCategory);
+      if (!/^\s*SEARCH:/m.test(rawReply) && !eventId && (allEvents || categoryMatch || (requestedCategory && !requiredPhrase))) {
+        rawReply += '\nSEARCH: ' + JSON.stringify(allEvents ? {} : { category: (categoryMatch ?? requestedCategory)!.categorySlug });
       }
       if (!/^\s*SEARCH:/m.test(rawReply) && !eventId && (moodRequest || (acceptsAnyCity(latestUserMessage?.content ?? '') && moodContext(messages)))) {
         rawReply += '\nSEARCH: ' + JSON.stringify({ semanticQuery: moodContext(messages) });

@@ -657,11 +657,11 @@ describe('Structured discovery filters', () => {
     expect(provider).toHaveBeenCalledTimes(2);
   });
 
-  it('does not carry an old mood into a new conversational category request', async () => {
+  it.each([null, { category: 'music', semanticQuery: 'relaxed evening' }])('handles a new conversational category request even with search=%j', async search => {
     process.env.GROQ_API_KEY = KEY_A;
     const database = { searchEvents: jest.fn().mockResolvedValue({ events: [CATALOG_ROW], total: 1 }) };
     const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
-    jest.spyOn(global, 'fetch').mockResolvedValue(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'Found', search: { category: 'music', semanticQuery: 'relaxed evening' }, slugs: [] }) } }] }));
+    jest.spyOn(global, 'fetch').mockResolvedValue(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ reply: 'What budget?', search, slugs: [] }) } }] }));
     await service.chat([{ role: 'user', content: 'We want a relaxed evening' }, { role: 'assistant', content: 'Here are some ideas' }, { role: 'user', content: 'some music events dont u have for us' }]);
     const filters = JSON.parse(database.searchEvents.mock.calls[0][0].aiFilters);
     expect(filters.category).toBe('music');
