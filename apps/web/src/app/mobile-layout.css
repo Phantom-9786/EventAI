@@ -105,9 +105,9 @@
   .ep-app .ep-category-row .ep-actions button { white-space: normal; height: auto; min-height: 44px; }
   .ep-app .ep-category-cover-preview { padding: 18px; height: auto; min-height: 230px; }
   .ep-app .ep-category-cover-preview h3 { overflow-wrap: anywhere; }
-  .ep-app .ep-system-controls .ep-control-heading { flex-wrap: wrap; }
+  .ep-app .ep-system-controls .ep-control-heading { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 8px 10px; align-items: center; }
   .ep-app .ep-system-controls .ep-control-heading h3 { flex: 1; min-width: 0; font-size: 16px; }
-  .ep-app .ep-system-controls .ep-control-status { flex: 0 0 auto; width: fit-content; justify-content: center; text-align: center; white-space: nowrap; margin-left: 42px; }
+  .ep-app .ep-system-controls .ep-control-status { grid-column: 2; width: fit-content; justify-content: center; text-align: center; white-space: nowrap; margin-left: 0; }
   .ep-app .ep-system-controls textarea { width: 100%; min-width: 0; min-height: 82px; padding: 10px 12px; resize: vertical; font: inherit; line-height: 1.6; }
   .ep-app .ep-system-controls .shrink-0 { align-self: flex-start; }
   .ep-app .stat { padding: 16px; }
@@ -193,4 +193,9 @@
 @media (prefers-reduced-motion: no-preference) and (max-width: 900px) {
   .ep-app .ep-mobile-menu[open] { animation: ep-mobile-menu-arrive .18s ease-out; }
   @keyframes ep-mobile-menu-arrive { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
+}
+
+@media (max-width: 360px) {
+  .ep-app .ep-mobile-menu-trigger > span { display: none; }
+  .ep-app .ep-mobile-menu-trigger { padding: 10px; }
 }
