@@ -6,7 +6,7 @@ import {
 } from '../../common/exceptions';
 import { aiEventFilterSchema } from '@eventai/validation';
 import { isMoodSearch } from './semantic-retrieval.service';
-import { acceptsAnyCity, moodContext, moodQuery, normalizeDiscoveryFilter } from './discovery-intent';
+import { acceptsAnyCity, moodContext, moodQuery, normalizeDiscoveryFilter, socialTurnReply } from './discovery-intent';
 import { EventsService } from '../events/events.service';
 import type { AiChatInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -294,6 +294,13 @@ export class AiService {
     messages: AiChatInput['messages'],
     eventId?: string,
   ): Promise<{ reply: string; events: AiEventCard[]; moreEventsUrl?: string; total?: number }> {
+    const latestUserMessage = [...messages]
+      .reverse()
+      .find((message) => message.role === 'user');
+    // Social replies neither retrieve events nor consume the model provider's quota.
+    const socialReply = socialTurnReply(latestUserMessage?.content ?? '');
+    if (socialReply) return { reply: socialReply, events: [] };
+
     const deadline = Date.now() + 40_000;
     if (!this.isConfigured()) {
       throw new ServiceUnavailableException(
@@ -318,9 +325,6 @@ export class AiService {
       );
     }
 
-    const latestUserMessage = [...messages]
-      .reverse()
-      .find((message) => message.role === 'user');
     const complexity = classifyAiComplexity(latestUserMessage?.content ?? '');
     let model = this.profiles[complexity];
     this.logger.log(`AI route: ${complexity}; model: ${model}`);
@@ -478,7 +482,7 @@ export class AiService {
           'Interpret the whole conversation: retain city/date/budget during refinements, but explicit all events resets previous category/city constraints. Prices in search are paise. For a TOTAL group budget divide it by party size before setting priceMax; for a per-person budget do not divide. If unclear ask a short clarification. ' +
           'City, date and budget are OPTIONAL: search upcoming events across all cities when unspecified. Any city / anywhere means omit city, never search for a city literally called any. For an experiential request such as tired friends seeking a relaxed evening, return search immediately; do not demand city, dates or budget first. When the user answers a clarification, retain their earlier mood and group size and search. Do not invent a weekend/date limit or price ceiling the user did not give. ' +
           'For mood/vibe requests set semanticQuery to positive experiential preferences in English, e.g. a quiet intimate acoustic evening. Do not put mood synonyms into query: query is for exact artist/title/genre terms. Use excludedKeywords for unwanted activities and partySize for group size. Never assert group capacity unless stock and max-per-booking permit it, and never book or promise payment yourself. ' +
-          'A greeting should warmly ask about city, dates, interests and budget with search=null. Opinions should explain fit using event facts rather than promise quality or safety.',
+          'Decide what the LATEST user turn asks before using earlier context. A thank-you, acknowledgement or goodbye is not a new discovery request: respond briefly with search=null and slugs=[], without repeating cards or asking for city, dates or budget. If the same message also requests events or changes a preference, handle that request normally. A greeting should warmly invite the user to share an interest or mood with search=null; do not ask a checklist of questions. Do not infer a calm mood from an earlier search when the latest turn only greets or thanks you. Use conversation history to resolve genuine follow-up requests, not to restart a completed search. Opinions should explain fit using event facts rather than promise quality or safety.',
       },
       ...messages,
     ];
