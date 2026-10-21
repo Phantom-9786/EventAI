@@ -51,7 +51,7 @@ export function DashboardChart({
     },
     'aria-pressed': pinned === index,
     'aria-describedby': active === index ? tooltipId : undefined,
-    'aria-label': `${data[index].detailLabel ?? data[index].label}: ${number(data[index].value)} events`,
+    'aria-label': `${data[index].detailLabel ?? data[index].label}: ${number(data[index].value)} ${data[index].value === 1 ? 'event' : 'events'}`,
   });
 
   return (

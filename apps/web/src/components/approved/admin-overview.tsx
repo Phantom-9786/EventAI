@@ -70,15 +70,15 @@ export function AdminOverview({
             note="Current platform snapshot · each event is counted once by its current status."
           />
         </PreviewPanel>
-        <PreviewPanel title="Events by category">
+        <PreviewPanel title="Published events by category">
           <DashboardChart
             horizontal
             data={[...categories]
               .sort((a, b) => b.eventCount - a.eventCount)
               .map((c) => ({ label: c.name, value: c.eventCount }))}
-            label="Event counts across all available categories"
+            label="Published event counts across all available categories"
             xLabel="Category"
-            note="All available categories, ranked by event count. Percentages show each category’s share of these events."
+            note="Published events in active categories, ranked by count. Percentages show each category’s share of this total."
           />
         </PreviewPanel>
       </div>
