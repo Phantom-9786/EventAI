@@ -182,7 +182,7 @@ export class BookingsService {
           },
           include: BOOKING_DETAIL_INCLUDE,
         });
-      });
+      }, { maxWait: 5_000, timeout: 15_000 });
     } catch (error) {
       // Prisma unique-violation: a concurrent request won the idempotency race
       if (
