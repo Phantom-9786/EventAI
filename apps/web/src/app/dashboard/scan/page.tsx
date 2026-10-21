@@ -468,7 +468,7 @@ function ScannerInner() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="ep-scanner-roster-tools flex items-center gap-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                   <input

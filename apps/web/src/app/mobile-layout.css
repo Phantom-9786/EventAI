@@ -213,6 +213,7 @@
 .ep-app .ep-saved-heading-actions { display: flex; align-items: center; gap: 10px; }
 .ep-app .ep-notification-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
 .ep-app .ep-notification-actions { grid-column: 1 / -1; justify-content: flex-end; }
+.ep-app .ep-notification-actions:empty { display: none; }
 .ep-app .ep-clear-filters { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 7px 12px; border: 1px solid var(--ep-border); border-radius: 9px; background: var(--ep-card); white-space: nowrap; }
 
 @media (max-width: 900px) {
@@ -221,11 +222,11 @@
   .ep-app .ep-bookings-heading { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: start; gap: 12px; }
   .ep-app .ep-bookings-heading > div { min-width: 0; }
   .ep-app .ep-bookings-heading > .ep-refresh-button { margin-top: 24px; }
-  .ep-app .ep-saved-heading-actions { align-items: flex-end; flex-direction: column; }
+  .ep-app .ep-saved-heading-actions { align-items: flex-end; flex-direction: column; padding-top: 24px; }
   .ep-app .workspace-main .ep-page-head-action:has(> .ep-saved-heading-actions) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
   .ep-app .ep-saved-heading-actions > a { max-width: 112px; padding: 8px; font-size: 11px; }
   .ep-app .ep-attendee-page, .ep-app .ep-scanner-page { width: 100%; max-width: none; padding-left: 0; padding-right: 0; }
-  .ep-app .ep-category-row .ep-actions { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 6px; }
+  .ep-app .ep-category-row .ep-actions { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 6px; align-items: stretch; }
   .ep-app .ep-category-row .ep-actions button { min-width: 0; width: 100%; padding: 8px 4px; font-size: 11px; line-height: 1.4; }
 }
 @media (max-width: 600px) {
@@ -242,4 +243,8 @@
   .ep-app .ep-venue-events .card h3 { font-size: 16px; }
   .ep-app .ep-venue-events .meta { font-size: 12px; }
   .ep-app .ep-notification-actions { flex: initial; }
+  .ep-app .ep-scanner-roster-tools { flex-wrap: wrap; }
+  .ep-app .ep-scanner-roster-tools > .relative { flex: 1 1 140px; min-width: 0; }
+  .ep-app .ep-scanner-roster-tools input { width: 100%; }
+  .ep-app .ep-scanner-roster-tools > button { margin-left: auto; }
 }
