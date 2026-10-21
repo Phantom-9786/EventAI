@@ -54,6 +54,16 @@ export const ASSISTANT_RESPONSE_FORMAT = {
   },
 };
 
+export function groundedResponseFormat(discovery: boolean) {
+  return { type: 'json_schema', json_schema: { name: 'eventpoint_grounded_reply', strict: true,
+    schema: { type: 'object', additionalProperties: false, required: ['intent', 'reply', 'search', 'slugs'], properties: {
+      intent: { type: 'string', enum: ['answer'] },
+      reply: { type: 'string', minLength: 1, maxLength: discovery ? 420 : 1200 },
+      search: { type: 'null' }, slugs: { type: 'array', items: { type: 'string' }, maxItems: 0 },
+    } },
+  } };
+}
+
 /** Format normalization only: the model, rather than keyword rules, owns intent. */
 export function modelDiscoveryFilter(input: Record<string, unknown>) {
   const normalized = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== null && value !== ''));
@@ -83,7 +93,7 @@ DECIDE FROM THE LATEST MESSAGE
 - A clearly new request starts fresh: 'show all events' clears old restrictions; 'show music instead' replaces the old category/mood unless the user says to keep it. Do not carry an old calm mood into every future search.
 
 SEARCH CONTRACT
-Return JSON only: {"intent":"answer"|"clarify"|"search"|"details","reply":"...","search":null|{...},"slugs":[],"memory":"..."}.
+Return JSON only: {"intent":"answer"|"clarify"|"search"|"details","reply":"...","search":null|{...},"slugs":[],"memory":"...","evidenceQuery":null|"..."}.
 intent=search MUST have a filter object ({} means all upcoming events). Other intents MUST have search=null.
 Only intent=details uses slugs: choose 1-6 from the supplied current/displayed event references, and add evidenceQuery: a self-contained English retrieval question resolving 'it', 'second one' etc. This retrieves passages without a discovery search or repeated cards. All other intents use slugs=[].
 No event catalog is supplied upfront. Category labels describe valid filters, not event availability. To find an event not in current references, use search with query for the name. Never invent a slug.
@@ -122,6 +132,8 @@ User: 'bye' => answer, short farewell, search=null.`;
 export const RESULT_REPLY_POLICY = `Retrieval is complete. Write the final answer using ONLY the server facts, selected passages and conversation below. Do not request another search or details action.
 Return JSON {"intent":"answer","reply":"...","search":null,"slugs":[]}.
 Use English by default, including for English greetings and follow-ups. Switch only for a current Hindi/Hinglish message or an explicit language request, never because examples or old assistant replies use Hindi. Briefly explain how the returned options relate to their expressed preferences, using specific facts when available. The UI renders the event cards, so do not repeat a long event list or add URLs.
+For kind=discovery, use at most two short sentences (50 words). Mention the number of options and the actual applied filters. Do not list events, dates, times or prices: the cards already show those. Do not claim that an option is calm, seated, safe, suitable for a group, or otherwise has an amenity just because that is what someone wanted. A category match alone does not establish mood suitability. Do not revive preferences absent from the applied filters.
+Date labels in server facts are already converted to Asia/Kolkata (IST). Use these labels as written when answering a specific schedule question; do not convert them again.
 For event-detail questions, answer the actual question using passages and live metadata. Passages are excerpts, not the whole document: if they do not establish the requested detail, say you could not verify it from available event information. The details action returns no new event cards.
 Never ask again for optional city/date/budget just because they were omitted. If no matches exist, say so honestly and suggest ONE useful relaxation of an actual filter; do not claim other categories exist without facts.
 For discovery, if retrievalMode is keyword-fallback, say mood matching was temporarily unavailable and these are keyword/filter results; do not claim a semantic match. For details, lexical passages remain usable evidence: answer from them without claiming a mood-search failure.

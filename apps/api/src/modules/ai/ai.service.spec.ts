@@ -687,16 +687,22 @@ describe('Structured discovery filters', () => {
     const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined), providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
     const search = { query: null, category: null, city: null, dateFrom: null, dateTo: null,
       priceMin: null, priceMax: null, partySize: 3, excludedKeywords: null, semanticQuery: 'relaxed evening with friends' };
-    jest.spyOn(global, 'fetch')
+    const provider = jest.spyOn(global, 'fetch')
       .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ intent: 'search', reply: 'Let me find some options.', search, slugs: [], evidenceQuery: null, memory: 'Three friends, relaxed evening, any city.' }) } }] }))
       .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ intent: 'answer', reply: 'Here is an option for your evening.', search: null, slugs: [], evidenceQuery: null, memory: '' }) } }] }));
-    const result = await service.chat([{ role: 'user', content: 'We are three friends looking for a relaxed evening, any city' }]);
+    const currentQuestion = 'We are three friends looking for a relaxed evening, any city';
+    const result = await service.chat([{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'Namaste, aap kaise hain?' }, { role: 'user', content: currentQuestion }]);
     expect(result.events).toHaveLength(1);
     const filters = JSON.parse(database.searchEvents.mock.calls[0][0].aiFilters);
     expect(filters).toMatchObject({ partySize: 3, semanticQuery: 'relaxed evening with friends' });
     expect(filters).not.toHaveProperty('city');
     expect(filters).not.toHaveProperty('query');
     expect(filters).not.toHaveProperty('filters');
+    const grounded = JSON.parse(provider.mock.calls[1][1]!.body as string);
+    expect(grounded.messages.filter((message: { role: string }) => message.role === 'user')).toEqual([{ role: 'user', content: currentQuestion }]);
+    expect(JSON.stringify(grounded.messages)).not.toContain('Namaste');
+    expect(grounded.response_format.json_schema.schema.properties.reply.maxLength).toBe(420);
+    expect(grounded.messages.at(-1).content).toContain('startDateLabel');
   });
 
   it.each([null, { category: 'music', semanticQuery: 'relaxed evening' }])('handles a new conversational category request even with search=%j', async search => {
