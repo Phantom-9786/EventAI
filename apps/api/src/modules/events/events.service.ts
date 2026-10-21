@@ -20,7 +20,7 @@ const EVENT_SUMMARY_INCLUDE = {
   category: { select: { id: true, name: true, slug: true } },
   venue: { select: { id: true, name: true, city: true } },
   organizer: { select: { id: true, organizationName: true } },
-  ticketTypes: { select: { price: true } },
+  ticketTypes: { where: { isActive: true }, select: { price: true } },
 } satisfies Prisma.EventInclude;
 
 const EVENT_DETAIL_INCLUDE = {
@@ -194,7 +194,7 @@ export class EventsService {
    * filtering plus in-memory scoring — no external vector store needed.
    */
   async findSimilarEvents(idOrSlug: string, limit = 4) {
-    const cacheKey = `events:similar:${idOrSlug.toLowerCase()}:${limit}`;
+    const cacheKey = `events:similar:v2:${idOrSlug.toLowerCase()}:${limit}`;
     const cached = await this.cache.get<unknown>(cacheKey);
     if (cached) return cached;
 
@@ -207,11 +207,7 @@ export class EventsService {
       throw new NotFoundException('Event not found');
     }
 
-    const include = {
-      category: { select: { id: true, name: true, slug: true } },
-      venue: { select: { id: true, name: true, city: true } },
-      organizer: { select: { id: true, organizationName: true } },
-    } satisfies Prisma.EventInclude;
+    const include = EVENT_SUMMARY_INCLUDE;
 
     // Same-category candidates are the strongest signal; same-city others
     // fill the remainder. Both pools are upcoming published events.
@@ -241,7 +237,11 @@ export class EventsService {
       }),
     ]);
 
-    const similar = [...sameCategory, ...sameCity].slice(0, limit);
+    const similar = [...sameCategory, ...sameCity].slice(0, limit).map((candidate) => ({
+      ...candidate,
+      ...priceRange(candidate.ticketTypes.map((ticket) => ticket.price)),
+      ticketTypes: undefined,
+    }));
     await this.cache.set(cacheKey, similar, 120);
     return similar;
   }
@@ -515,7 +515,7 @@ export class EventsService {
       conditions.push(Prisma.sql`e.is_featured = ${input.isFeatured}`);
     }
     if (input?.priceMin !== undefined || input?.priceMax !== undefined) {
-      const minPrice = Prisma.sql`(SELECT MIN(tt.price) FROM public.ticket_types tt WHERE tt.event_id = e.id)`;
+      const minPrice = Prisma.sql`(SELECT MIN(tt.price) FROM public.ticket_types tt WHERE tt.event_id = e.id AND tt.is_active = true)`;
       if (input.priceMin !== undefined) {
         conditions.push(Prisma.sql`${minPrice} >= ${input.priceMin}`);
       }
@@ -538,7 +538,7 @@ export class EventsService {
     } else {
       switch (input?.sortBy) {
         case 'price':
-          orderBy = Prisma.sql`(SELECT MIN(tt.price) FROM public.ticket_types tt WHERE tt.event_id = e.id) ${dir} NULLS LAST`;
+          orderBy = Prisma.sql`(SELECT MIN(tt.price) FROM public.ticket_types tt WHERE tt.event_id = e.id AND tt.is_active = true) ${dir} NULLS LAST`;
           break;
         case 'popularity':
           orderBy = Prisma.sql`(SELECT COUNT(*) FROM public.tickets t JOIN public.bookings b ON b.id = t.booking_id JOIN public.payments p ON p.booking_id = b.id WHERE b.event_id = e.id AND b.status = 'CONFIRMED' AND p.status = 'CAPTURED' AND p.amount > 0 AND t.status IN ('VALID', 'USED')) ${dir}, e.start_date ASC, e.id ASC`;

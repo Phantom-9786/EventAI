@@ -256,9 +256,9 @@ export async function getVenue(id: string): Promise<VenueDetail> {
 /** Formats a paise integer as an INR display string (₹). */
 export function formatPrice(paise: number | null | undefined): string {
   if (typeof paise !== 'number' || !Number.isFinite(paise) || Number.isNaN(paise)) {
-    return '₹0';
+    return 'Price unavailable';
   }
-  return `₹${Math.round(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
+  return `₹${(paise / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }
 
 export function formatPriceRange(min: number | null | undefined, max: number | null | undefined): string {

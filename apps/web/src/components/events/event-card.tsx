@@ -44,7 +44,7 @@ export function EventCard({
           </p>
           <div className="card-bottom">
             <span>
-              {event.minPrice === null ? (
+              {event.minPrice == null || !Number.isFinite(event.minPrice) || event.minPrice < 0 ? (
                 'Tickets coming soon'
               ) : (
                 <>
