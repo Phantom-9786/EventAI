@@ -11,6 +11,7 @@
 | Dance event makes the phone page wider | Constrained grid children, images and thumbnails; long unbroken descriptions wrap. |
 | Different image aspect ratios | Cover crops within its frame; full-size dialog fits the image and provides zoom/fit controls. |
 | Slow/unresponsive event navigation | Route loading feedback, request-level event fetch deduplication, and recommendations streamed separately from event details. |
+| Oversized image downloads | Responsive Cloudinary sizes and automatic quality/format; full-resolution image retained for the enlarged gallery. The Dance cover measured 1,415,189 bytes originally versus 41,240 bytes at 640px in a direct check. |
 | Venue events too narrow/tall | One event card per row on phones, consistent with Discover. |
 | Bookings and saved events refresh alignment | Refresh actions placed beside their page headings. |
 | Notification refresh/action layout | Refresh beside Notifications/unread count; mark/clear actions in a separate right-aligned row. |

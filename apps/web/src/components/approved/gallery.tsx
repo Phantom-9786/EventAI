@@ -35,6 +35,7 @@ export function PreviewGallery({ images, title }: { images: string[]; title: str
           src={current}
           alt={title}
           loading="eager"
+          sizes="(max-width: 850px) 100vw, 70vw"
           onImageFailed={() => current && reject(current)}
           className="ep-details-photo"
         />
@@ -58,6 +59,7 @@ export function PreviewGallery({ images, title }: { images: string[]; title: str
               <EventImage
                 src={src}
                 alt={title + ' — photo ' + (i + 1)}
+                sizes="100px"
                 onImageFailed={() => reject(src)}
               />
             </button>
@@ -85,7 +87,7 @@ export function PreviewGallery({ images, title }: { images: string[]; title: str
           <X size={20} />
         </button>
         <div className={'ep-full-image-scroll' + (zoomed ? ' is-zoomed' : '')}>
-          <EventImage src={current} alt={title} />
+          <EventImage src={current} alt={title} fullResolution />
         </div>
         <button className="btn outline ep-image-zoom" type="button" onClick={() => setZoomed(value => !value)}
           aria-label={zoomed ? 'Fit entire image' : 'Zoom into image'} aria-pressed={zoomed}>
