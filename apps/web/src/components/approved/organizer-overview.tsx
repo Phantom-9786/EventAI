@@ -103,7 +103,7 @@ export function OrganizerOverview({
           View analytics <ArrowRight className="icon" />
         </Link>
       </div>
-      <div className="workspace-grid">
+      <div className="workspace-grid ep-dashboard-charts">
         <PreviewPanel title="Events scheduled by month">
           <DashboardChart
             data={months.map((month, i) => ({

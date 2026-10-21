@@ -59,7 +59,7 @@ export function AdminOverview({
           icon={<Briefcase className="icon" />}
         />
       </div>
-      <div className="workspace-grid">
+      <div className="workspace-grid ep-dashboard-charts">
         <PreviewPanel title="Events by status">
           <DashboardChart
             data={['Draft', 'Published', 'Cancelled', 'Completed', 'Sold out'].map(

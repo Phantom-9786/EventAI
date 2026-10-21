@@ -199,8 +199,18 @@
   }
   .ep-app .ep-chart-x-labels {
     font-size: 10px;
+    min-height: 34px;
+    margin-top: 18px;
+  }
+  .ep-app .ep-chart-x-labels > span {
+    white-space: nowrap;
+    overflow-wrap: normal;
+    transform: rotate(-30deg);
   }
   .ep-app .ep-chart-plot {
     height: 170px;
   }
+}
+@media (max-width: 1000px) {
+  .ep-app .ep-dashboard-charts { grid-template-columns: minmax(0, 1fr); }
 }
