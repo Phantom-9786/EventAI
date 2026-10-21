@@ -231,7 +231,7 @@
 }
 @media (max-width: 600px) {
   .ep-app .detail-grid { grid-template-columns: minmax(0, 1fr); }
-  .ep-app .section-heading > div > p:not(.small-label) { max-width: 34ch; line-height: 1.65; text-wrap: pretty; margin-top: 10px; }
+  .ep-app .section-heading > div > p:not(.small-label) { max-width: 34ch; line-height: 1.65; text-wrap: balance; margin-top: 10px; }
   .ep-app .result-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
   .ep-app .result-line > span { line-height: 1.6; }
   .ep-app .ep-discovery-view-actions > button { display: none; }

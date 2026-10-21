@@ -39,6 +39,9 @@
 
 - Web TypeScript and ESLint checks passed.
 - Portable QR decoder successfully decoded a generated QR image.
+- Live Dance page at a 390px viewport: page width 382px, cover width 350px; its long description wraps inside that width. Enlarged gallery and zoom remain contained.
+- Live Discover: mobile grid/list buttons hidden; Clear filters clears an unsent draft; both desktop controls remain visible and list view changes the layout.
+- Category actions fit one row at 320px and 390px. Bookings refresh sits alongside its heading. Notifications refresh shares the title row.
 - Previous AI/account regression run: 66 passing tests.
 - Real phone camera permission, preview and a physical QR ticket still require device testing. Do not mark an attendee checked in merely to test the UI.
 - Render's free service can sleep and delay its first request. Route feedback and removal of duplicate/blocking requests improve app behavior but cannot eliminate that hosting delay.
