@@ -7,7 +7,8 @@ import {
 import { aiEventFilterSchema } from '@eventai/validation';
 import { isMoodSearch, SemanticRetrievalService } from './semantic-retrieval.service';
 import { acceptsAnyCity, moodContext, normalizeDiscoveryFilter } from './discovery-intent';
-import { assistantTurnSchema, CONVERSATION_POLICY, modelDiscoveryFilter, RESULT_REPLY_POLICY } from './conversation-policy';
+import { assistantTurnSchema, ASSISTANT_RESPONSE_FORMAT, CONVERSATION_POLICY, modelDiscoveryFilter, RESULT_REPLY_POLICY } from './conversation-policy';
+import { ZodError } from 'zod';
 import { EventsService } from '../events/events.service';
 import type { AiChatInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -277,7 +278,7 @@ export class AiService {
         model,
         messages: payload,
         temperature: 0.2,
-        response_format: { type: 'json_object' },
+        response_format: /^openai\/gpt-oss-(20b|120b)$/.test(model) ? ASSISTANT_RESPONSE_FORMAT : { type: 'json_object' },
         tool_choice: 'none',
         ...(model.startsWith('openai/gpt-oss-') ? { reasoning_effort: 'low' } : {}),
         max_tokens: maxTokens,
@@ -596,8 +597,9 @@ export class AiService {
           const output = JSON.parse(rawReply.replace(/^\x60{3}(?:json)?\s*|\s*\x60{3}$/g, ''));
           if (output && typeof output === 'object' && 'intent' in output) {
             structuredTurn = assistantTurnSchema.parse(output);
-            if (structuredTurn.search && !modelDiscoveryFilter(structuredTurn.search).success) {
-              throw new Error('Invalid discovery filters');
+            if (structuredTurn.search) {
+              const validated = modelDiscoveryFilter(structuredTurn.search);
+              if (!validated.success) throw validated.error;
             }
             if (structuredTurn.intent === 'details' && structuredTurn.slugs.some(slug => !eventRefs.allowedSlugs.has(slug))) {
               throw new Error('Use only available current/displayed event slugs for details');
@@ -608,7 +610,10 @@ export class AiService {
               (output.search && typeof output.search === 'object' && !Array.isArray(output.search) ? '\nSEARCH: ' + JSON.stringify(output.search) : '') +
               (Array.isArray(output.slugs) && output.slugs.length ? '\nEVENTS: ' + output.slugs.filter((slug: unknown) => typeof slug === 'string').slice(0, 6).join(', ') : '');
           } else throw new Error('Missing reply field');
-        } catch {
+        } catch (error) {
+          this.logger.warn('AI output contract rejected: ' + (error instanceof ZodError
+            ? error.issues.map(issue => issue.code + ':' + issue.path.join('.').replace(/[^a-z0-9_.]/gi, '').slice(0, 80)).join(', ')
+            : 'invalid_json_or_reference'));
           // Plain text remains supported, but never show broken JSON as a reply.
           if (/^(?:\x60{3}(?:json)?\s*)?(?:\{|\[)/.test(rawReply)) {
             if (outputRetries < 1) {

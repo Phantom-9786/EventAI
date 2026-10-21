@@ -6,7 +6,7 @@ export const assistantTurnSchema = z.object({
   reply: z.string().trim().min(1).max(2000),
   search: z.record(z.unknown()).nullable(),
   slugs: z.array(z.string().min(1).max(250)).max(6),
-  evidenceQuery: z.string().trim().min(3).max(300).optional(),
+  evidenceQuery: z.string().trim().min(3).max(300).nullish().transform(value => value ?? undefined),
   // A verbose optional summary must not make an otherwise valid answer fail.
   memory: z.string().trim().transform(value => value.slice(0, 800)).optional(),
 }).superRefine((turn, context) => {
@@ -20,6 +20,39 @@ export const assistantTurnSchema = z.object({
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'Only details intent can request event slugs.' });
   }
 });
+
+// Constrained decoding prevents valid JSON with the wrong shape (for example,
+// search.filters instead of the flat search object accepted by retrieval).
+const filterProperties = {
+  query: { type: ['string', 'null'] },
+  category: { type: ['string', 'null'] },
+  city: { type: ['string', 'null'] },
+  dateFrom: { type: ['string', 'null'] },
+  dateTo: { type: ['string', 'null'] },
+  priceMin: { type: ['integer', 'null'], minimum: 0 },
+  priceMax: { type: ['integer', 'null'], minimum: 0 },
+  partySize: { type: ['integer', 'null'], minimum: 1, maximum: 100 },
+  excludedKeywords: { type: ['array', 'null'], items: { type: 'string' }, maxItems: 5 },
+  semanticQuery: { type: ['string', 'null'] },
+};
+export const ASSISTANT_RESPONSE_FORMAT = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'eventpoint_turn', strict: true,
+    schema: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        intent: { type: 'string', enum: ['answer', 'clarify', 'search', 'details'] },
+        reply: { type: 'string', minLength: 1, maxLength: 2000 },
+        search: { type: ['object', 'null'], properties: filterProperties, required: Object.keys(filterProperties), additionalProperties: false },
+        slugs: { type: 'array', items: { type: 'string' }, maxItems: 6 },
+        memory: { type: 'string', maxLength: 800 },
+        evidenceQuery: { type: ['string', 'null'] },
+      },
+      required: ['intent', 'reply', 'search', 'slugs', 'memory', 'evidenceQuery'],
+    },
+  },
+};
 
 /** Format normalization only: the model, rather than keyword rules, owns intent. */
 export function modelDiscoveryFilter(input: Record<string, unknown>) {
@@ -55,6 +88,7 @@ intent=search MUST have a filter object ({} means all upcoming events). Other in
 Only intent=details uses slugs: choose 1-6 from the supplied current/displayed event references, and add evidenceQuery: a self-contained English retrieval question resolving 'it', 'second one' etc. This retrieves passages without a discovery search or repeated cards. All other intents use slugs=[].
 No event catalog is supplied upfront. Category labels describe valid filters, not event availability. To find an event not in current references, use search with query for the name. Never invent a slug.
 Use only query, category, city, dateFrom, dateTo, priceMin, priceMax, partySize, excludedKeywords, semanticQuery in filters.
+Put these fields DIRECTLY inside search, never inside a nested filters object. For example search={"partySize":3,"semanticQuery":"relaxed evening with friends"}. Unspecified search fields are null when the response schema requires them. evidenceQuery is null unless retrieving details.
 Use the supplied category slug. query is an exact artist/title/genre term, not a sentence or mood synonyms.
 Translate mood/experience preferences to concise positive English semanticQuery, even for Hindi/Hinglish. This triggers semantic retrieval; it does not require an English mood keyword in the user message.
 Do not infer a category from a mood: a relaxed evening might suit acoustic music, art, food or wellness. Let semantic retrieval find the fit.

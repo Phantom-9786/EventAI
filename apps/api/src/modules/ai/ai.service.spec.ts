@@ -676,6 +676,27 @@ describe('Structured discovery filters', () => {
     expect(payload.tool_choice).toBe('none');
     expect(payload.messages.at(-1).content).toContain('Never call a function or tool');
     expect(payload.messages[0].content).toContain('Reply in English by default');
+    expect(payload.response_format.type).toBe('json_schema');
+    expect(payload.response_format.json_schema.strict).toBe(true);
+    expect(payload.response_format.json_schema.schema.properties.search.additionalProperties).toBe(false);
+  });
+
+  it('accepts nullable strict-schema fields and retrieves a relaxed group request', async () => {
+    process.env.GROQ_API_KEY = KEY_A;
+    const database = { searchEvents: jest.fn().mockResolvedValue({ events: [CATALOG_ROW], total: 1, retrievalMode: 'hybrid' }) };
+    const service = new AiService(makePrismaMock([CATALOG_ROW]) as never, { get: jest.fn().mockResolvedValue(null), set: jest.fn().mockResolvedValue(undefined), providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
+    const search = { query: null, category: null, city: null, dateFrom: null, dateTo: null,
+      priceMin: null, priceMax: null, partySize: 3, excludedKeywords: null, semanticQuery: 'relaxed evening with friends' };
+    jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ intent: 'search', reply: 'Let me find some options.', search, slugs: [], evidenceQuery: null, memory: 'Three friends, relaxed evening, any city.' }) } }] }))
+      .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ intent: 'answer', reply: 'Here is an option for your evening.', search: null, slugs: [], evidenceQuery: null, memory: '' }) } }] }));
+    const result = await service.chat([{ role: 'user', content: 'We are three friends looking for a relaxed evening, any city' }]);
+    expect(result.events).toHaveLength(1);
+    const filters = JSON.parse(database.searchEvents.mock.calls[0][0].aiFilters);
+    expect(filters).toMatchObject({ partySize: 3, semanticQuery: 'relaxed evening with friends' });
+    expect(filters).not.toHaveProperty('city');
+    expect(filters).not.toHaveProperty('query');
+    expect(filters).not.toHaveProperty('filters');
   });
 
   it.each([null, { category: 'music', semanticQuery: 'relaxed evening' }])('handles a new conversational category request even with search=%j', async search => {
