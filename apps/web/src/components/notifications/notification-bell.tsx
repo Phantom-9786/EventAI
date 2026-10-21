@@ -179,7 +179,6 @@ export function NotificationBell({ inline = false }: { inline?: boolean } = {}) 
                 </span>
               )}
             </div>
-            <div className="ep-notification-actions flex flex-wrap items-center gap-3">
               <RefreshButton
                 type="button"
                 aria-label="Refresh notifications"
@@ -189,6 +188,7 @@ export function NotificationBell({ inline = false }: { inline?: boolean } = {}) 
                 refreshing={Boolean(refreshing)}
                 iconOnly
               />
+            <div className="ep-notification-actions flex flex-wrap items-center gap-3">
               {notifications.some((n) => n.isRead) && (
                 <button
                   type="button"

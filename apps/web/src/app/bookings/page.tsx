@@ -126,7 +126,7 @@ export default function BookingsPage() {
 
   return (
     <div className="container max-w-5xl py-10">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="ep-bookings-heading flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">

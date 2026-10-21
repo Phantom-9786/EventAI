@@ -75,23 +75,19 @@ export function SavedEvents() {
       <PreviewHeading
         title="Your saved experiences."
         sub="The events you love, right here in your dashboard."
-        action={
+        action={<div className="ep-saved-heading-actions">
+          <RefreshButton className="btn outline" disabled={busy}
+            onClick={() => setRevision((n) => n + 1)} refreshing={Boolean(busy)} />
           <Link href="/overview" className="btn outline">
             <ArrowLeft className="icon" />
             My Dashboard
           </Link>
-        }
+        </div>}
       />
       <div className="ep-saved-toolbar">
         <p>
           {favorites.length} saved event{favorites.length === 1 ? '' : 's'}
         </p>
-        <RefreshButton
-          className="btn outline"
-          disabled={busy}
-          onClick={() => setRevision((n) => n + 1)}
-          refreshing={Boolean(busy)}
-        />
       </div>
       {busy || !mounted ? (
         <p role="status" className="notice">

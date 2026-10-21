@@ -54,6 +54,7 @@ function ScannerInner() {
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const scanningRef = useRef(false);
+  const cameraSession = useRef(0);
 
   const refreshEvent = useCallback(async (id: string) => {
     try {
@@ -105,41 +106,60 @@ function ScannerInner() {
   );
 
   const stopCamera = useCallback(() => {
+    cameraSession.current += 1;
     scanningRef.current = false;
     cancelAnimationFrame(rafRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     setCameraOn(false);
   }, []);
 
   const startCamera = useCallback(async () => {
+    stopCamera();
+    const session = cameraSession.current;
     setCameraError(null);
-    if (!('BarcodeDetector' in window)) {
-      setCameraError('Camera QR scanning is not supported in this browser. Please enter the ticket code manually.');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Camera access requires HTTPS and a supported browser. Open this page in Chrome or Safari, or enter the ticket code.');
       return;
     }
+    setCameraOn(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } } });
+      if (session !== cameraSession.current) { stream.getTracks().forEach(track => track.stop()); return; }
       streamRef.current = stream;
-      setCameraOn(true);
       const video = videoRef.current;
-      if (!video) return;
+      if (!video) { stopCamera(); return; }
       video.srcObject = stream;
       await video.play();
+      if (session !== cameraSession.current) return;
       const ctor = (window as unknown as { BarcodeDetector?: BarcodeDetectorCtor }).BarcodeDetector;
-      if (!ctor) {
-        setCameraError('QR detection is unavailable in this browser.');
-        stopCamera();
-        return;
-      }
-      const detector = new ctor({ formats: ['qr_code'] });
+      let detector: BarcodeDetectorLike | null = null;
+      try { if (ctor) detector = new ctor({ formats: ['qr_code'] }); } catch { /* Use the portable decoder. */ }
+      let decode: typeof import('jsqr').default | null = detector ? null : (await import('jsqr')).default;
+      if (session !== cameraSession.current) return;
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d', { willReadFrequently: true });
       scanningRef.current = true;
+      let lastFrame = 0;
       const tick = async () => {
-        if (!scanningRef.current || !video) return;
+        if (!scanningRef.current || session !== cameraSession.current) return;
+        if (video.readyState < 2 || performance.now() - lastFrame < 180) {
+          rafRef.current = requestAnimationFrame(() => void tick()); return;
+        }
+        lastFrame = performance.now();
         try {
-          const codes = await detector.detect(video);
-          if (codes.length > 0) {
-            const raw = codes[0].rawValue;
+          let raw: string | undefined;
+          if (detector) raw = (await detector.detect(video))[0]?.rawValue;
+          else if (context && decode && video.videoWidth > 0) {
+            canvas.width = Math.min(640, video.videoWidth);
+            canvas.height = Math.round(canvas.width * video.videoHeight / video.videoWidth);
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+            raw = decode(frame.data, frame.width, frame.height, { inversionAttempts: 'dontInvert' })?.data;
+          }
+          if (session !== cameraSession.current) return;
+          if (raw) {
             let code = raw;
             try {
               const parsed = JSON.parse(raw) as { code?: string };
@@ -153,20 +173,30 @@ function ScannerInner() {
             return;
           }
         } catch {
-          /* transient detection errors are ignored */
+          // Some browsers expose BarcodeDetector but cannot scan QR video frames.
+          if (detector) { detector = null; decode = (await import('jsqr')).default; }
         }
-        rafRef.current = requestAnimationFrame(() => void tick());
+        if (session === cameraSession.current) rafRef.current = requestAnimationFrame(() => void tick());
       };
       void tick();
-    } catch {
-      setCameraError('Camera access was denied or device has no camera.');
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-      setCameraOn(false);
+    } catch (error) {
+      if (session !== cameraSession.current) return;
+      const name = error instanceof Error ? error.name : '';
+      setCameraError(name === 'NotAllowedError'
+        ? 'Camera permission was denied. Allow camera access in your browser settings, then try again.'
+        : name === 'NotReadableError' ? 'The camera is busy. Close other camera apps and try again.'
+          : 'Unable to start the camera. Try another browser or enter the ticket code.');
+      stopCamera();
     }
   }, [handleValidate, stopCamera]);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
+  useEffect(() => { stopCamera(); }, [eventId, stopCamera]);
+  useEffect(() => {
+    const pause = () => { if (document.visibilityState === 'hidden') stopCamera(); };
+    document.addEventListener('visibilitychange', pause);
+    return () => document.removeEventListener('visibilitychange', pause);
+  }, [stopCamera]);
 
   // Filter attendees by search query
   const filteredAttendees = useMemo(() => {
@@ -237,7 +267,7 @@ function ScannerInner() {
   const selectedEvent = events?.find((e) => e.id === eventId);
 
   return (
-    <div className="container py-8 sm:py-10 max-w-5xl">
+    <div className="container ep-scanner-page py-8 sm:py-10 max-w-5xl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -380,8 +410,7 @@ function ScannerInner() {
             </form>
 
             {/* Camera Viewfinder with animated laser bracket */}
-            {cameraOn && (
-              <div className="relative mt-4 overflow-hidden rounded-2xl border border-primary/40 bg-black aspect-video max-h-[380px] w-full flex items-center justify-center">
+              <div style={{ display: cameraOn ? 'flex' : 'none' }} className="relative mt-4 overflow-hidden rounded-2xl border border-primary/40 bg-black aspect-video max-h-[380px] w-full items-center justify-center">
                 {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                 <video ref={videoRef} className="h-full w-full object-cover" muted playsInline />
 
@@ -399,7 +428,6 @@ function ScannerInner() {
                   Point camera at attendee QR pass
                 </div>
               </div>
-            )}
             {cameraError && (
               <p className="mt-3 text-xs text-destructive">{cameraError}</p>
             )}

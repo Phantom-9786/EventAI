@@ -327,7 +327,7 @@ export function EventsContainer({
           )}{' '}
           to make your next plan
         </span>
-        <div className="ep-actions">
+        <div className="ep-actions ep-discovery-view-actions">
           <button
             type="button"
             aria-label="Grid view"
@@ -342,7 +342,7 @@ export function EventsContainer({
           >
             <List className="icon" />
           </button>
-          <Link href="/events" onClick={() => {
+          <Link className="ep-clear-filters" href="/events" onClick={() => {
             setSearchDraft(''); setCityDraft(''); setSortDraft('date:asc');
           }}>Clear filters</Link>
         </div>

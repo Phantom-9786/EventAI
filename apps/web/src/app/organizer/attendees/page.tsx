@@ -90,7 +90,7 @@ function AttendeeRoster() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
   return (
-    <div className="container py-6">
+    <div className="container ep-attendee-page py-6">
       <p className="text-sm text-primary">Organizer workspace</p>
       <h1 className="mt-2 text-3xl font-bold">Attendee management</h1>
       <p className="mt-3 text-muted-foreground">

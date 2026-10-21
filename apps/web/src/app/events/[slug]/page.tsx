@@ -2,6 +2,7 @@ import {EventSectionNav} from '@/components/events/event-section-nav';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
+import { cache, Suspense } from 'react';
 import { ArrowRight, CalendarDays, MapPin, Users, Ticket, Sparkles } from 'lucide-react';
 import { getEvent, getSimilarEvents, formatEventDate } from '@/lib/api';
 import { getDirectionsUrl } from '@/lib/maps';
@@ -12,11 +13,13 @@ import { EventShareButton } from '@/components/events/event-share-button';
 import { EventAiWidget } from '@/components/events/event-ai-widget';
 import { PreviewGallery } from '@/components/approved/gallery';
 export const dynamic = 'force-dynamic';
+// Share the same live request between metadata and the page during one render.
+const loadEvent = cache(getEvent);
 interface Props {
   params: { slug: string };
 }
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const event = await getEvent(params.slug).catch(() => null);
+  const event = await loadEvent(params.slug).catch(() => null);
   return {
     title: event?.title ?? 'Event not found',
     description: event?.shortDescription ?? event?.description.slice(0, 160),
@@ -26,7 +29,7 @@ export default async function EventDetailPage({ params }: Props) {
   let event: Awaited<ReturnType<typeof getEvent>> | null = null;
   let maintenance = false;
   try {
-    event = await getEvent(params.slug);
+    event = await loadEvent(params.slug);
   } catch (err) {
     const text = err instanceof Error ? err.message : String(err);
     maintenance = text.includes('503') || text.toLowerCase().includes('maintenance');
@@ -48,7 +51,6 @@ export default async function EventDetailPage({ params }: Props) {
       </div>
     );
   if (!event) notFound();
-  const similar = await getSimilarEvents(event.slug, 4).catch(() => []);
   const d = new Date(event.startDate);
   const images = Array.from(
     new Set([event.coverImage, ...event.images].filter((v): v is string => Boolean(v))),
@@ -217,7 +219,14 @@ export default async function EventDetailPage({ params }: Props) {
           <EventAiWidget eventId={event.id} eventTitle={event.title} eventCity={event.venue.city} />
         </aside>
       </div>
-      {similar.length > 0 && (
+      <Suspense fallback={null}><SimilarEvents slug={event.slug} /></Suspense>
+    </div>
+  );
+}
+
+async function SimilarEvents({ slug }: { slug: string }) {
+  const similar = await getSimilarEvents(slug, 4).catch(() => []);
+  return similar.length > 0 ? (
         <section className="section">
           <div className="section-heading">
             <div>
@@ -235,7 +244,5 @@ export default async function EventDetailPage({ params }: Props) {
             ))}
           </div>
         </section>
-      )}
-    </div>
-  );
+      ) : null;
 }

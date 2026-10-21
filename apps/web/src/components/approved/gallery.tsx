@@ -1,9 +1,10 @@
 'use client';
 import { useRef, useState } from 'react';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react';
 import { EventImage } from './event-image';
 export function PreviewGallery({ images, title }: { images: string[]; title: string }) {
   const [selected, setSelected] = useState('');
+  const [zoomed, setZoomed] = useState(false);
   const [failed, setFailed] = useState<string[]>([]);
   const available = Array.from(new Set(images)).filter(
     (src) => src && !failed.includes(src),
@@ -14,8 +15,10 @@ export function PreviewGallery({ images, title }: { images: string[]; title: str
     trigger = useRef<HTMLButtonElement>(null);
   const reject = (src: string) =>
     setFailed((old) => (old.includes(src) ? old : [...old, src]));
-  const next = (offset: number) =>
+  const next = (offset: number) => {
+    setZoomed(false);
     setSelected(available[(index + offset + available.length) % available.length]);
+  };
   return (
     <div className="ep-event-gallery">
       <button
@@ -24,6 +27,7 @@ export function PreviewGallery({ images, title }: { images: string[]; title: str
         type="button"
         aria-label="View event image full size"
         onClick={() => {
+          setZoomed(false);
           if (current) modal.current?.showModal();
         }}
       >
@@ -69,7 +73,7 @@ export function PreviewGallery({ images, title }: { images: string[]; title: str
       <dialog
         className="image-dialog"
         ref={modal}
-        onClose={() => trigger.current?.focus()}
+        onClose={() => { setZoomed(false); trigger.current?.focus({ preventScroll: true }); }}
         aria-label={title + ' image gallery'}
       >
         <button
@@ -80,7 +84,14 @@ export function PreviewGallery({ images, title }: { images: string[]; title: str
         >
           <X size={20} />
         </button>
-        <EventImage src={current} alt={title} />
+        <div className={'ep-full-image-scroll' + (zoomed ? ' is-zoomed' : '')}>
+          <EventImage src={current} alt={title} />
+        </div>
+        <button className="btn outline ep-image-zoom" type="button" onClick={() => setZoomed(value => !value)}
+          aria-label={zoomed ? 'Fit entire image' : 'Zoom into image'} aria-pressed={zoomed}>
+          {zoomed ? <ZoomOut className="icon" /> : <ZoomIn className="icon" />}
+          {zoomed ? 'Fit image' : 'Zoom in'}
+        </button>
         {available.length > 1 && (
           <div className="ep-gallery-controls">
             <button

@@ -199,3 +199,47 @@
   .ep-app .ep-mobile-menu-trigger > span { display: none; }
   .ep-app .ep-mobile-menu-trigger { padding: 10px; }
 }
+
+/* Content must never make an event's grid column wider than the viewport. */
+.ep-app .detail-grid > *, .ep-app .ep-gallery-frame, .ep-app .ep-event-gallery { min-width: 0; max-width: 100%; }
+.ep-app .detail-title > div, .ep-app .info-box > div { min-width: 0; }
+.ep-app .ep-event-detail :is(.prose, .detail-title, .detail-section, .info-box, .breadcrumb) { overflow-wrap: anywhere; }
+.ep-app .ep-event-gallery .gallery-main { display: block; max-width: 100%; }
+.ep-app .ep-event-gallery .thumbnails { max-width: 100%; }
+.ep-app .image-dialog .ep-full-image-scroll { max-width: 100%; max-height: 65dvh; overflow: auto; overscroll-behavior: contain; }
+.ep-app .image-dialog .ep-full-image-scroll img { display: block; width: 100%; max-width: 100%; max-height: 65dvh; height: auto; object-fit: contain; }
+.ep-app .image-dialog .ep-full-image-scroll.is-zoomed img { width: 200%; max-width: none; max-height: none; }
+.ep-app .image-dialog .ep-image-zoom { margin: 12px auto 0; display: flex; }
+.ep-app .ep-saved-heading-actions { display: flex; align-items: center; gap: 10px; }
+.ep-app .ep-notification-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+.ep-app .ep-notification-actions { grid-column: 1 / -1; justify-content: flex-end; }
+.ep-app .ep-clear-filters { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 7px 12px; border: 1px solid var(--ep-border); border-radius: 9px; background: var(--ep-card); white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .ep-app .header .ep-brand-name { font-weight: 900; -webkit-text-stroke: .25px currentColor; }
+  .ep-app .header .ep-brand-name b { -webkit-text-stroke: .25px #5545ee; }
+  .ep-app .ep-bookings-heading { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: start; gap: 12px; }
+  .ep-app .ep-bookings-heading > div { min-width: 0; }
+  .ep-app .ep-bookings-heading > .ep-refresh-button { margin-top: 24px; }
+  .ep-app .ep-saved-heading-actions { align-items: flex-end; flex-direction: column; }
+  .ep-app .workspace-main .ep-page-head-action:has(> .ep-saved-heading-actions) { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+  .ep-app .ep-saved-heading-actions > a { max-width: 112px; padding: 8px; font-size: 11px; }
+  .ep-app .ep-attendee-page, .ep-app .ep-scanner-page { width: 100%; max-width: none; padding-left: 0; padding-right: 0; }
+  .ep-app .ep-category-row .ep-actions { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 6px; }
+  .ep-app .ep-category-row .ep-actions button { min-width: 0; width: 100%; padding: 8px 4px; font-size: 11px; line-height: 1.4; }
+}
+@media (max-width: 600px) {
+  .ep-app .detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .ep-app .section-heading > div > p:not(.small-label) { max-width: 34ch; line-height: 1.65; text-wrap: pretty; margin-top: 10px; }
+  .ep-app .result-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; }
+  .ep-app .result-line > span { line-height: 1.6; }
+  .ep-app .ep-discovery-view-actions > button { display: none; }
+  .ep-app .ep-discovery-view-actions { justify-content: flex-end; }
+  .ep-app .ep-clear-filters { padding: 8px 10px; font-size: 12px; }
+  .ep-app .ep-venue-layout .ep-venue-events .ep-grid { grid-template-columns: minmax(0, 1fr); }
+  .ep-app .ep-venue-events .card-media { height: 190px; }
+  .ep-app .ep-venue-events .card-body { padding: 16px; }
+  .ep-app .ep-venue-events .card h3 { font-size: 16px; }
+  .ep-app .ep-venue-events .meta { font-size: 12px; }
+  .ep-app .ep-notification-actions { flex: initial; }
+}
