@@ -541,7 +541,7 @@ export class EventsService {
           orderBy = Prisma.sql`(SELECT MIN(tt.price) FROM public.ticket_types tt WHERE tt.event_id = e.id) ${dir} NULLS LAST`;
           break;
         case 'popularity':
-          orderBy = Prisma.sql`(SELECT COUNT(*) FROM public.bookings b WHERE b.event_id = e.id) ${dir}`;
+          orderBy = Prisma.sql`(SELECT COUNT(*) FROM public.tickets t JOIN public.bookings b ON b.id = t.booking_id JOIN public.payments p ON p.booking_id = b.id WHERE b.event_id = e.id AND b.status = 'CONFIRMED' AND p.status = 'CAPTURED' AND p.amount > 0 AND t.status IN ('VALID', 'USED')) ${dir}, e.start_date ASC, e.id ASC`;
           break;
         case 'createdAt':
           orderBy = Prisma.sql`e.created_at ${dir}`;
