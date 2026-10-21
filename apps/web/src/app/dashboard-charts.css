@@ -1,0 +1,206 @@
+.ep-app .ep-data-chart {
+  margin: 0;
+  min-width: 0;
+}
+.ep-app .ep-chart-context {
+  color: var(--ep-muted);
+  font-size: 13px;
+  line-height: 1.65;
+  margin-bottom: 12px;
+}
+.ep-app .ep-chart-readout {
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.ep-app .ep-chart-hint {
+  color: var(--ep-muted);
+  font-size: 12px;
+}
+.ep-app .ep-chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--ep-border);
+  border-left: 3px solid var(--ep-primary);
+  border-radius: 8px;
+  background: var(--ep-soft);
+  max-width: 100%;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.ep-app .ep-chart-tooltip span {
+  color: var(--ep-muted);
+}
+.ep-app .ep-chart-axis-title,
+.ep-app .ep-chart-axis-bottom {
+  font-size: 12px;
+  color: var(--ep-muted);
+}
+.ep-app .ep-chart-axis-title {
+  margin-bottom: 28px;
+}
+.ep-app .ep-chart-columns {
+  padding-left: 40px;
+}
+.ep-app .ep-chart-plot {
+  height: 190px;
+  position: relative;
+}
+.ep-app .ep-chart-gridline {
+  position: absolute;
+  inset-inline: 0;
+  height: 1px;
+  background: var(--ep-border);
+  pointer-events: none;
+}
+.ep-app .ep-chart-gridline > span {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 0;
+  transform: translateY(-50%);
+  font-size: 11px;
+  color: var(--ep-muted);
+}
+.ep-app .ep-chart-bars {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  gap: 12px;
+}
+.ep-app .ep-chart-column {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0 8px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.ep-app .ep-chart-column:focus-visible,
+.ep-app .ep-chart-category:focus-visible {
+  outline: 2px solid var(--ep-primary);
+  outline-offset: 3px;
+}
+.ep-app .ep-chart-bar {
+  position: relative;
+  width: 100%;
+  max-width: 58px;
+  min-height: 2px;
+  background: var(--ep-primary);
+  border-radius: 5px 5px 0 0;
+  opacity: 0.8;
+}
+.ep-app .ep-chart-bar > span {
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ep-text);
+}
+.ep-app .ep-chart-column.is-active {
+  background: var(--ep-soft);
+}
+.ep-app .ep-chart-column.is-active .ep-chart-bar {
+  opacity: 1;
+}
+.ep-app .ep-chart-x-labels {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ep-muted);
+}
+.ep-app .ep-chart-x-labels > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ep-app .ep-chart-axis-bottom {
+  text-align: center;
+  margin-top: 14px;
+}
+.ep-app .ep-chart-distribution {
+  display: grid;
+  gap: 8px;
+}
+.ep-app .ep-chart-category {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ep-text);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ep-app .ep-chart-category.is-active {
+  background: var(--ep-soft);
+  border-color: var(--ep-border);
+}
+.ep-app .ep-chart-category-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  margin-bottom: 7px;
+}
+.ep-app .ep-chart-category-label > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ep-app .ep-chart-category-label strong {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.ep-app .ep-chart-category-label small {
+  color: var(--ep-muted);
+  font-weight: 400;
+}
+.ep-app .ep-chart-track {
+  display: block;
+  height: 9px;
+  background: var(--ep-soft);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.ep-app .ep-chart-track > span {
+  display: block;
+  height: 100%;
+  background: var(--ep-primary);
+  border-radius: inherit;
+}
+.ep-app .ep-chart-empty {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--ep-muted);
+}
+@media (max-width: 600px) {
+  .ep-app .ep-chart-bars,
+  .ep-app .ep-chart-x-labels {
+    gap: 4px;
+  }
+  .ep-app .ep-chart-column {
+    padding: 0 4px;
+  }
+  .ep-app .ep-chart-columns {
+    padding-left: 28px;
+  }
+  .ep-app .ep-chart-x-labels {
+    font-size: 10px;
+  }
+  .ep-app .ep-chart-plot {
+    height: 170px;
+  }
+}

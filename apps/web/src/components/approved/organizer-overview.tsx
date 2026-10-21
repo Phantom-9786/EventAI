@@ -11,41 +11,7 @@ import type {
 import { formatEventDate, formatPrice } from '@/lib/api';
 import { PreviewHeading, PreviewPanel, PreviewStat, PreviewBadge } from './ui';
 import type { ReactNode } from 'react';
-export function PreviewTrend({
-  values,
-  labels,
-  label,
-}: {
-  values: number[];
-  labels: string[];
-  label: string;
-}) {
-  const max = Math.max(1, ...values);
-  const points = values.map((v, i) => [
-    (i * 600) / Math.max(1, values.length - 1),
-    175 - (v / max) * 145,
-  ]);
-  const line = points.map((p, i) => (i ? 'L' : 'M') + p.join(' ')).join(' ');
-  return (
-    <>
-      <svg className="chart" viewBox="0 0 600 190" role="img" aria-label={label}>
-        <path
-          d="M0 150H600M0 100H600M0 50H600"
-          stroke="currentColor"
-          opacity=".08"
-          fill="none"
-        />
-        <path d={line + ' L600 190 L0 190 Z'} fill="#8b7af314" />
-        <path d={line} stroke="#8b7af3" strokeWidth="3" fill="none" />
-      </svg>
-      <div className="chart-labels">
-        {labels.map((l, i) => (
-          <span key={i}>{l}</span>
-        ))}
-      </div>
-    </>
-  );
-}
+import { DashboardChart } from './dashboard-chart';
 export function OrganizerOverview({
   stats,
   events,
@@ -138,39 +104,39 @@ export function OrganizerOverview({
         </Link>
       </div>
       <div className="workspace-grid">
-        <PreviewPanel title="Activity over time">
-          <PreviewTrend
-            values={values}
-            labels={months.map((m) => m.toLocaleDateString('en-IN', { month: 'short' }))}
-            label="Scheduled events per month"
+        <PreviewPanel title="Events scheduled by month">
+          <DashboardChart
+            data={months.map((month, i) => ({
+              label: month.toLocaleDateString('en-IN', { month: 'short' }),
+              detailLabel: month.toLocaleDateString('en-IN', {
+                month: 'long',
+                year: 'numeric',
+              }),
+              value: values[i],
+            }))}
+            label="Your scheduled event counts for the next six months"
+            xLabel="Event start month"
+            note={
+              'Current month and next five months · based on your latest ' +
+              events.length +
+              ' events, across all statuses.'
+            }
           />
         </PreviewPanel>
-        <PreviewPanel title="Your audience">
-          <div className="bar-list">
-            {Array.from(groups).map(([label, count]) => (
-              <div key={label}>
-                <div className="bar-label">
-                  <span>{label}</span>
-                  <span>
-                    {events.length ? Math.round((count / events.length) * 100) : 0}%
-                  </span>
-                </div>
-                <div className="bar-track">
-                  <span
-                    style={{
-                      width: events.length ? (count / events.length) * 100 + '%' : '0%',
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-          {!events.length && (
-            <p className="help">Your event categories will appear here.</p>
-          )}
-          <p className="ep-health-note">
-            Category distribution across your latest {events.length} events.
-          </p>
+        <PreviewPanel title="Your events by category">
+          <DashboardChart
+            horizontal
+            data={Array.from(groups)
+              .sort((a, b) => b[1] - a[1])
+              .map(([label, value]) => ({ label, value }))}
+            label="Category distribution of your events"
+            xLabel="Category"
+            note={
+              'Counts and share of your latest ' +
+              events.length +
+              ' events, across all statuses.'
+            }
+          />
         </PreviewPanel>
       </div>
       <section className="section">

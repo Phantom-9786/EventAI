@@ -9,6 +9,7 @@ import './approved-preview.css';
 import './ui-scale.css';
 import './light-surfaces.css';
 import './mobile-layout.css';
+import './dashboard-charts.css';
 
 export const viewport: Viewport = {
   width: 'device-width',

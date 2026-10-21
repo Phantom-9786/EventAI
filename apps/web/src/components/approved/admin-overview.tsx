@@ -3,7 +3,7 @@ import { ArrowRight, Users, CalendarDays, Ticket, Briefcase } from 'lucide-react
 import type { AdminStats, AdminCategory } from '@/lib/admin';
 import { formatPrice } from '@/lib/api';
 import { PreviewPanel, PreviewStat } from './ui';
-import { PreviewTrend } from './organizer-overview';
+import { DashboardChart } from './dashboard-chart';
 export function AdminOverview({
   stats,
   categories,
@@ -15,7 +15,6 @@ export function AdminOverview({
 }) {
   const states = ['DRAFT', 'PUBLISHED', 'CANCELLED', 'COMPLETED', 'SOLDOUT'] as const;
   const values = states.map((s) => stats.events[s] ?? 0);
-  const total = categories.reduce((n, c) => n + c.eventCount, 0);
   return (
     <>
       <div className="stats">
@@ -61,37 +60,30 @@ export function AdminOverview({
         />
       </div>
       <div className="workspace-grid">
-        <PreviewPanel title="Activity over time">
-          <PreviewTrend
-            values={values}
-            labels={['Draft', 'Published', 'Cancelled', 'Completed', 'Sold out']}
-            label="Actual event totals by status"
+        <PreviewPanel title="Events by status">
+          <DashboardChart
+            data={['Draft', 'Published', 'Cancelled', 'Completed', 'Sold out'].map(
+              (label, i) => ({ label, value: values[i] }),
+            )}
+            label="Platform event counts by current status"
+            xLabel="Current event status"
+            note="Current platform snapshot · each event is counted once by its current status."
           />
-          <p className="ep-health-note">Current event status distribution.</p>
         </PreviewPanel>
-        <PreviewPanel title="Event categories">
-          <div className="bar-list">
-            {categories.slice(0, 5).map((c) => (
-              <div key={c.id}>
-                <div className="bar-label">
-                  <span>{c.name}</span>
-                  <span>{total ? Math.round((c.eventCount / total) * 100) : 0}%</span>
-                </div>
-                <div className="bar-track">
-                  <span
-                    style={{ width: total ? (c.eventCount / total) * 100 + '%' : '0%' }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-          {!categories.length && (
-            <p className="help">Event categories will appear here as they are created.</p>
-          )}
+        <PreviewPanel title="Events by category">
+          <DashboardChart
+            horizontal
+            data={[...categories]
+              .sort((a, b) => b.eventCount - a.eventCount)
+              .map((c) => ({ label: c.name, value: c.eventCount }))}
+            label="Event counts across all available categories"
+            xLabel="Category"
+            note="All available categories, ranked by event count. Percentages show each category’s share of these events."
+          />
         </PreviewPanel>
       </div>
       <section className="section">
-        <PreviewPanel title="Recent platform activity">
+        <PreviewPanel title="Platform totals">
           <div className="table-wrap">
             <table>
               <thead>
