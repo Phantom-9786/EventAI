@@ -1,0 +1,651 @@
+{
+  "flows": [
+    {
+      "id": "overview",
+      "title": "The whole project, in four parts",
+      "short": "Big picture",
+      "intro": "The website asks. The server decides. The database remembers.",
+      "file": "architecture-and-flows.md",
+      "steps": [
+        [
+          "A person takes an action",
+          "Attendee, organizer or admin",
+          "Someone searches, books, publishes or reviews an event. Each role has different permissions.",
+          "apps/web/src/components/layout/workspace-navigation.ts"
+        ],
+        [
+          "The website sends a request",
+          "Next.js + React",
+          "The screen collects input and shows results. It does not decide whether a payment is genuine or whether stock can be reserved.",
+          "apps/web/src/lib/api.ts"
+        ],
+        [
+          "The API checks and decides",
+          "Express business services",
+          "The server validates input, checks the user and applies the feature rules. It calls other services only when needed.",
+          "apps/api/src/express/app.ts"
+        ],
+        [
+          "The database keeps the truth",
+          "PostgreSQL + Prisma",
+          "Users, events, bookings, payments and tickets live here. Transactions and constraints protect important relationships.",
+          "packages/database/prisma/schema.prisma"
+        ]
+      ],
+      "rules": [
+        "Redis helps with speed and AI limits; it is not the inventory authority.",
+        "Cloudinary stores images; Brevo sends email; Razorpay handles payments; Groq generates AI text."
+      ],
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1216\" height=\"620\" viewBox=\"0 0 1216 620\" role=\"img\" aria-labelledby=\"title desc\"><title id=\"title\">The whole project, in four parts</title><desc id=\"desc\">1. A person takes an action: Attendee, organizer or admin. 2. The website sends a request: Next.js + React. 3. The API checks and decides: Express business services. 4. The database keeps the truth: PostgreSQL + Prisma</desc><defs><marker id=\"arrow\" markerWidth=\"7\" markerHeight=\"7\" refX=\"5\" refY=\"3.5\" orient=\"auto\"><path d=\"M0,0 L6,3.5 L0,7\" fill=\"none\" stroke=\"#8797b3\" stroke-width=\"1.5\"/></marker></defs><rect width=\"1216\" height=\"620\" rx=\"22\" fill=\"#f3f6fc\"/><g font-family=\"Segoe UI,Arial,sans-serif\"><text x=\"42\" y=\"51\" fill=\"#315adc\" font-size=\"13\" font-weight=\"700\" letter-spacing=\"2\">EVENTPOINT / LEARN THE FLOW</text><text x=\"42\" y=\"104\" fill=\"#14233e\" font-size=\"34\" font-weight=\"700\">The whole project, in four parts</text><text x=\"42\" y=\"143\" fill=\"#53637b\" font-size=\"18\">The website asks. The server decides. The database remembers.</text><g><rect x=\"42\" y=\"198\" width=\"266.5\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"72\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"72\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">1</text><text x=\"62\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">A person takes an action</text><text x=\"62\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Attendee, organizer or admin</text><path d=\"M 312.5 300 H 325.5\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"330.5\" y=\"198\" width=\"266.5\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"360.5\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"360.5\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">2</text><text x=\"350.5\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">The website sends a</text><text x=\"350.5\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">request</text><text x=\"350.5\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Next.js + React</text><path d=\"M 601 300 H 614\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"619\" y=\"198\" width=\"266.5\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"649\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"649\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">3</text><text x=\"639\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">The API checks and decides</text><text x=\"639\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Express business services</text><path d=\"M 889.5 300 H 902.5\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"907.5\" y=\"198\" width=\"266.5\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"937.5\" cy=\"230\" r=\"17\" fill=\"#137b6e\"/><text x=\"937.5\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">4</text><text x=\"927.5\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">The database keeps the</text><text x=\"927.5\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">truth</text><text x=\"927.5\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">PostgreSQL + Prisma</text></g><rect x=\"42\" y=\"445\" width=\"1132\" height=\"64\" rx=\"13\" fill=\"#e7eefc\"/><text x=\"62\" y=\"471\" fill=\"#2448ae\" font-size=\"12\" font-weight=\"700\" letter-spacing=\"1\">REMEMBER</text><text x=\"62\" y=\"495\" fill=\"#273d65\" font-size=\"15\" font-weight=\"400\">Redis helps with speed and AI limits; it is not the inventory authority.</text><text x=\"42\" y=\"556\" fill=\"#53637b\" font-size=\"15\">Cloudinary stores images; Brevo sends email; Razorpay handles payments; Groq generates AI text.</text><text x=\"42\" y=\"592\" fill=\"#64748b\" font-size=\"12\">Source-linked learning diagram • Each step is explained in the interactive atlas • 22 October 2026</text></g></svg>",
+      "mermaid": "flowchart TD\n  S0[\"1. A person takes an action<br/>Attendee, organizer or admin\"]\n  S1[\"2. The website sends a request<br/>Next.js + React\"]\n  S2[\"3. The API checks and decides<br/>Express business services\"]\n  S3[\"4. The database keeps the truth<br/>PostgreSQL + Prisma\"]\n  S0 --> S1\n  S1 --> S2\n  S2 --> S3"
+    },
+    {
+      "id": "browse",
+      "title": "What happens when I search?",
+      "short": "Browse events",
+      "intro": "Follow one search from the screen to the event cards.",
+      "file": "architecture-and-flows.md",
+      "steps": [
+        [
+          "Enter your preferences",
+          "Search, city and category",
+          "For example: music events in Delhi. The frontend puts these choices into the API request.",
+          "apps/web/src/lib/api.ts"
+        ],
+        [
+          "Check the request",
+          "Validation + HTTP route",
+          "The API accepts supported input and passes it to the event service. Public browsing does not require a booking account.",
+          "apps/api/src/express/modules/events/events.routes.ts"
+        ],
+        [
+          "Find matching events",
+          "SQL filters + ranking",
+          "The service applies filters, a stable ordering and a page size. SQL selects records; Prisma loads their related information.",
+          "apps/api/src/modules/events/events.service.ts"
+        ],
+        [
+          "Return one page",
+          "Event summary contract",
+          "Each summary includes the event name, image, venue and lowest active ticket price. Missing price is not a free ticket.",
+          "apps/api/src/modules/events/events.service.ts"
+        ],
+        [
+          "Show clear event cards",
+          "Reusable React card",
+          "The same card design can appear on different pages. Price is stored in paise and formatted into rupees for display.",
+          "apps/web/src/components/events/event-card.tsx"
+        ]
+      ],
+      "rules": [
+        "Server pagination avoids downloading the entire catalog at once.",
+        "Related-event cards need the same price fields as ordinary search cards."
+      ],
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1216\" height=\"620\" viewBox=\"0 0 1216 620\" role=\"img\" aria-labelledby=\"title desc\"><title id=\"title\">What happens when I search?</title><desc id=\"desc\">1. Enter your preferences: Search, city and category. 2. Check the request: Validation + HTTP route. 3. Find matching events: SQL filters + ranking. 4. Return one page: Event summary contract. 5. Show clear event cards: Reusable React card</desc><defs><marker id=\"arrow\" markerWidth=\"7\" markerHeight=\"7\" refX=\"5\" refY=\"3.5\" orient=\"auto\"><path d=\"M0,0 L6,3.5 L0,7\" fill=\"none\" stroke=\"#8797b3\" stroke-width=\"1.5\"/></marker></defs><rect width=\"1216\" height=\"620\" rx=\"22\" fill=\"#f3f6fc\"/><g font-family=\"Segoe UI,Arial,sans-serif\"><text x=\"42\" y=\"51\" fill=\"#315adc\" font-size=\"13\" font-weight=\"700\" letter-spacing=\"2\">EVENTPOINT / LEARN THE FLOW</text><text x=\"42\" y=\"104\" fill=\"#14233e\" font-size=\"34\" font-weight=\"700\">What happens when I search?</text><text x=\"42\" y=\"143\" fill=\"#53637b\" font-size=\"18\">Follow one search from the screen to the event cards.</text><g><rect x=\"42\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"72\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"72\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">1</text><text x=\"62\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Enter your</text><text x=\"62\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">preferences</text><text x=\"62\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Search, city and category</text><path d=\"M 254.8 300 H 267.8\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"272.8\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"302.8\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"302.8\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">2</text><text x=\"292.8\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Check the request</text><text x=\"292.8\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Validation + HTTP route</text><path d=\"M 485.6 300 H 498.6\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"503.6\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"533.6\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"533.6\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">3</text><text x=\"523.6\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Find matching events</text><text x=\"523.6\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">SQL filters + ranking</text><path d=\"M 716.4000000000001 300 H 729.4000000000001\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"734.4000000000001\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"764.4000000000001\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"764.4000000000001\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">4</text><text x=\"754.4000000000001\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Return one page</text><text x=\"754.4000000000001\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Event summary contract</text><path d=\"M 947.2 300 H 960.2\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"965.2\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"995.2\" cy=\"230\" r=\"17\" fill=\"#137b6e\"/><text x=\"995.2\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">5</text><text x=\"985.2\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Show clear event</text><text x=\"985.2\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">cards</text><text x=\"985.2\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Reusable React card</text></g><rect x=\"42\" y=\"445\" width=\"1132\" height=\"64\" rx=\"13\" fill=\"#e7eefc\"/><text x=\"62\" y=\"471\" fill=\"#2448ae\" font-size=\"12\" font-weight=\"700\" letter-spacing=\"1\">REMEMBER</text><text x=\"62\" y=\"495\" fill=\"#273d65\" font-size=\"15\" font-weight=\"400\">Server pagination avoids downloading the entire catalog at once.</text><text x=\"42\" y=\"556\" fill=\"#53637b\" font-size=\"15\">Related-event cards need the same price fields as ordinary search cards.</text><text x=\"42\" y=\"592\" fill=\"#64748b\" font-size=\"12\">Source-linked learning diagram • Each step is explained in the interactive atlas • 22 October 2026</text></g></svg>",
+      "mermaid": "flowchart TD\n  S0[\"1. Enter your preferences<br/>Search, city and category\"]\n  S1[\"2. Check the request<br/>Validation + HTTP route\"]\n  S2[\"3. Find matching events<br/>SQL filters + ranking\"]\n  S3[\"4. Return one page<br/>Event summary contract\"]\n  S4[\"5. Show clear event cards<br/>Reusable React card\"]\n  S0 --> S1\n  S1 --> S2\n  S2 --> S3\n  S3 --> S4"
+    },
+    {
+      "id": "auth",
+      "title": "How does the website know who I am?",
+      "short": "Login and roles",
+      "intro": "Identity and permission are separate checks.",
+      "file": "architecture-and-flows.md",
+      "steps": [
+        [
+          "Sign in",
+          "Password or Google",
+          "The server verifies the sign-in method. A stored password is hashed, not kept as readable text.",
+          "apps/api/src/modules/auth/auth.service.ts"
+        ],
+        [
+          "Create a session",
+          "Access token + refresh session",
+          "A signed access token identifies the request. A separate refresh cookie supports renewal; its token hash is stored server-side.",
+          "apps/api/src/modules/auth/auth.service.ts"
+        ],
+        [
+          "Send a protected request",
+          "Bearer access token",
+          "The frontend attaches the access token. On an expired-token response it can attempt a refresh and retry.",
+          "apps/web/src/lib/auth.ts"
+        ],
+        [
+          "Check role and ownership",
+          "Server authorization",
+          "A valid user still cannot edit another organizer’s event. Hiding a button is not a security check.",
+          "apps/api/src/express/middleware/auth.ts"
+        ],
+        [
+          "Allow or reject the action",
+          "Authorized feature service",
+          "The backend performs the permitted action or returns an error. Account status can be checked again on a later request.",
+          "apps/api/src/express/app.ts"
+        ]
+      ],
+      "rules": [
+        "Authentication: who are you? Authorization: may you do this?",
+        "JWT contents are signed, not encrypted. The system also uses database session state."
+      ],
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1216\" height=\"620\" viewBox=\"0 0 1216 620\" role=\"img\" aria-labelledby=\"title desc\"><title id=\"title\">How does the website know who I am?</title><desc id=\"desc\">1. Sign in: Password or Google. 2. Create a session: Access token + refresh session. 3. Send a protected request: Bearer access token. 4. Check role and ownership: Server authorization. 5. Allow or reject the action: Authorized feature service</desc><defs><marker id=\"arrow\" markerWidth=\"7\" markerHeight=\"7\" refX=\"5\" refY=\"3.5\" orient=\"auto\"><path d=\"M0,0 L6,3.5 L0,7\" fill=\"none\" stroke=\"#8797b3\" stroke-width=\"1.5\"/></marker></defs><rect width=\"1216\" height=\"620\" rx=\"22\" fill=\"#f3f6fc\"/><g font-family=\"Segoe UI,Arial,sans-serif\"><text x=\"42\" y=\"51\" fill=\"#315adc\" font-size=\"13\" font-weight=\"700\" letter-spacing=\"2\">EVENTPOINT / LEARN THE FLOW</text><text x=\"42\" y=\"104\" fill=\"#14233e\" font-size=\"34\" font-weight=\"700\">How does the website know who I am?</text><text x=\"42\" y=\"143\" fill=\"#53637b\" font-size=\"18\">Identity and permission are separate checks.</text><g><rect x=\"42\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"72\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"72\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">1</text><text x=\"62\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Sign in</text><text x=\"62\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Password or Google</text><path d=\"M 254.8 300 H 267.8\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"272.8\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"302.8\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"302.8\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">2</text><text x=\"292.8\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Create a session</text><text x=\"292.8\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Access token + refresh</text><text x=\"292.8\" y=\"371\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">session</text><path d=\"M 485.6 300 H 498.6\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"503.6\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"533.6\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"533.6\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">3</text><text x=\"523.6\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Send a protected</text><text x=\"523.6\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">request</text><text x=\"523.6\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Bearer access token</text><path d=\"M 716.4000000000001 300 H 729.4000000000001\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"734.4000000000001\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"764.4000000000001\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"764.4000000000001\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">4</text><text x=\"754.4000000000001\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Check role and</text><text x=\"754.4000000000001\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">ownership</text><text x=\"754.4000000000001\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Server authorization</text><path d=\"M 947.2 300 H 960.2\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"965.2\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"995.2\" cy=\"230\" r=\"17\" fill=\"#137b6e\"/><text x=\"995.2\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">5</text><text x=\"985.2\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Allow or reject the</text><text x=\"985.2\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">action</text><text x=\"985.2\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Authorized feature service</text></g><rect x=\"42\" y=\"445\" width=\"1132\" height=\"64\" rx=\"13\" fill=\"#e7eefc\"/><text x=\"62\" y=\"471\" fill=\"#2448ae\" font-size=\"12\" font-weight=\"700\" letter-spacing=\"1\">REMEMBER</text><text x=\"62\" y=\"495\" fill=\"#273d65\" font-size=\"15\" font-weight=\"400\">Authentication: who are you? Authorization: may you do this?</text><text x=\"42\" y=\"556\" fill=\"#53637b\" font-size=\"15\">JWT contents are signed, not encrypted. The system also uses database session state.</text><text x=\"42\" y=\"592\" fill=\"#64748b\" font-size=\"12\">Source-linked learning diagram • Each step is explained in the interactive atlas • 22 October 2026</text></g></svg>",
+      "mermaid": "flowchart TD\n  S0[\"1. Sign in<br/>Password or Google\"]\n  S1[\"2. Create a session<br/>Access token + refresh session\"]\n  S2[\"3. Send a protected request<br/>Bearer access token\"]\n  S3[\"4. Check role and ownership<br/>Server authorization\"]\n  S4[\"5. Allow or reject the action<br/>Authorized feature service\"]\n  S0 --> S1\n  S1 --> S2\n  S2 --> S3\n  S3 --> S4"
+    },
+    {
+      "id": "booking",
+      "title": "How a ticket becomes yours",
+      "short": "Booking and payment",
+      "intro": "A reservation and a successful payment are different things.",
+      "file": "architecture-and-flows.md",
+      "steps": [
+        [
+          "Choose ticket quantities",
+          "Booking widget",
+          "The browser sends ticket IDs, quantities and an idempotency key. Its displayed total is not trusted as the final charge.",
+          "apps/web/src/components/booking/booking-widget.tsx"
+        ],
+        [
+          "Calculate the real price",
+          "Booking service",
+          "The server loads active ticket prices and validates the event, sale window and requested quantities.",
+          "apps/api/src/modules/bookings/bookings.service.ts"
+        ],
+        [
+          "Reserve the inventory",
+          "Database transaction",
+          "Stock is decreased only when enough remains. The booking and stock changes commit together, or roll back together.",
+          "apps/api/src/modules/bookings/bookings.service.ts"
+        ],
+        [
+          "Verify the payment",
+          "Razorpay + server checks",
+          "The server verifies provider information from checkout verification or a signed webhook. A browser success screen alone is not proof.",
+          "apps/api/src/modules/payments/payments.service.ts"
+        ],
+        [
+          "Confirm and issue tickets",
+          "Guarded state transition",
+          "A valid confirmation changes the booking and issues tickets once. Repeated messages must not create another set of tickets.",
+          "apps/api/src/modules/payments/payments.service.ts"
+        ]
+      ],
+      "rules": [
+        "If the reservation expires, a guarded transition returns stock.",
+        "A repeated request or webhook must not repeat the business outcome."
+      ],
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1216\" height=\"620\" viewBox=\"0 0 1216 620\" role=\"img\" aria-labelledby=\"title desc\"><title id=\"title\">How a ticket becomes yours</title><desc id=\"desc\">1. Choose ticket quantities: Booking widget. 2. Calculate the real price: Booking service. 3. Reserve the inventory: Database transaction. 4. Verify the payment: Razorpay + server checks. 5. Confirm and issue tickets: Guarded state transition</desc><defs><marker id=\"arrow\" markerWidth=\"7\" markerHeight=\"7\" refX=\"5\" refY=\"3.5\" orient=\"auto\"><path d=\"M0,0 L6,3.5 L0,7\" fill=\"none\" stroke=\"#8797b3\" stroke-width=\"1.5\"/></marker></defs><rect width=\"1216\" height=\"620\" rx=\"22\" fill=\"#f3f6fc\"/><g font-family=\"Segoe UI,Arial,sans-serif\"><text x=\"42\" y=\"51\" fill=\"#315adc\" font-size=\"13\" font-weight=\"700\" letter-spacing=\"2\">EVENTPOINT / LEARN THE FLOW</text><text x=\"42\" y=\"104\" fill=\"#14233e\" font-size=\"34\" font-weight=\"700\">How a ticket becomes yours</text><text x=\"42\" y=\"143\" fill=\"#53637b\" font-size=\"18\">A reservation and a successful payment are different things.</text><g><rect x=\"42\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"72\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"72\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">1</text><text x=\"62\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Choose ticket</text><text x=\"62\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">quantities</text><text x=\"62\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Booking widget</text><path d=\"M 254.8 300 H 267.8\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"272.8\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"302.8\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"302.8\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">2</text><text x=\"292.8\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Calculate the real</text><text x=\"292.8\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">price</text><text x=\"292.8\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Booking service</text><path d=\"M 485.6 300 H 498.6\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"503.6\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"533.6\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"533.6\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">3</text><text x=\"523.6\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Reserve the</text><text x=\"523.6\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">inventory</text><text x=\"523.6\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Database transaction</text><path d=\"M 716.4000000000001 300 H 729.4000000000001\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"734.4000000000001\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"764.4000000000001\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"764.4000000000001\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">4</text><text x=\"754.4000000000001\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Verify the payment</text><text x=\"754.4000000000001\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Razorpay + server checks</text><path d=\"M 947.2 300 H 960.2\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"965.2\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"995.2\" cy=\"230\" r=\"17\" fill=\"#137b6e\"/><text x=\"995.2\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">5</text><text x=\"985.2\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Confirm and issue</text><text x=\"985.2\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">tickets</text><text x=\"985.2\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Guarded state transition</text></g><rect x=\"42\" y=\"445\" width=\"1132\" height=\"64\" rx=\"13\" fill=\"#e7eefc\"/><text x=\"62\" y=\"471\" fill=\"#2448ae\" font-size=\"12\" font-weight=\"700\" letter-spacing=\"1\">REMEMBER</text><text x=\"62\" y=\"495\" fill=\"#273d65\" font-size=\"15\" font-weight=\"400\">If the reservation expires, a guarded transition returns stock.</text><text x=\"42\" y=\"556\" fill=\"#53637b\" font-size=\"15\">A repeated request or webhook must not repeat the business outcome.</text><text x=\"42\" y=\"592\" fill=\"#64748b\" font-size=\"12\">Source-linked learning diagram • Each step is explained in the interactive atlas • 22 October 2026</text></g></svg>",
+      "mermaid": "flowchart TD\n  S0[\"1. Choose ticket quantities<br/>Booking widget\"]\n  S1[\"2. Calculate the real price<br/>Booking service\"]\n  S2[\"3. Reserve the inventory<br/>Database transaction\"]\n  S3[\"4. Verify the payment<br/>Razorpay + server checks\"]\n  S4[\"5. Confirm and issue tickets<br/>Guarded state transition\"]\n  S0 --> S1\n  S1 --> S2\n  S2 --> S3\n  S3 --> S4"
+    },
+    {
+      "id": "ai",
+      "title": "How the assistant finds a useful answer",
+      "short": "AI and RAG",
+      "intro": "First understand the request. Then find facts. Then answer.",
+      "file": "architecture-and-flows.md",
+      "steps": [
+        [
+          "Understand the message",
+          "Intent + recent context",
+          "A greeting, a mood request and a question about one event are different requests. Recent conversation is kept within a budget.",
+          "apps/api/src/modules/ai/ai.service.ts"
+        ],
+        [
+          "Apply the hard rules",
+          "City, date, budget and group size",
+          "The assistant turns preferences into validated filters. Similar meaning does not justify ignoring price or availability.",
+          "apps/api/src/modules/events/events.service.ts"
+        ],
+        [
+          "Retrieve relevant facts",
+          "SQL + local embeddings",
+          "MiniLM produces vectors that help match meaning. Event-specific passages can also be selected using lexical and semantic scores.",
+          "apps/api/src/modules/ai/semantic-retrieval.service.ts"
+        ],
+        [
+          "Generate a grounded reply",
+          "Groq receives useful text",
+          "Selected text passages and structured facts give the model context. Numeric vectors are used for matching, not as a replacement for those facts.",
+          "apps/api/src/modules/ai/retrieval-context.ts"
+        ],
+        [
+          "Check and display the result",
+          "Reply + valid event references",
+          "Application checks and live catalog information constrain the result. Clarification or a fallback may be needed instead of a confident guess.",
+          "apps/web/src/components/ai/conversation.tsx"
+        ]
+      ],
+      "rules": [
+        "This is a learning map: an interpretation call may happen before retrieval.",
+        "RAG does not fine-tune the model, remove token limits or guarantee a correct answer."
+      ],
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1216\" height=\"620\" viewBox=\"0 0 1216 620\" role=\"img\" aria-labelledby=\"title desc\"><title id=\"title\">How the assistant finds a useful answer</title><desc id=\"desc\">1. Understand the message: Intent + recent context. 2. Apply the hard rules: City, date, budget and group size. 3. Retrieve relevant facts: SQL + local embeddings. 4. Generate a grounded reply: Groq receives useful text. 5. Check and display the result: Reply + valid event references</desc><defs><marker id=\"arrow\" markerWidth=\"7\" markerHeight=\"7\" refX=\"5\" refY=\"3.5\" orient=\"auto\"><path d=\"M0,0 L6,3.5 L0,7\" fill=\"none\" stroke=\"#8797b3\" stroke-width=\"1.5\"/></marker></defs><rect width=\"1216\" height=\"620\" rx=\"22\" fill=\"#f3f6fc\"/><g font-family=\"Segoe UI,Arial,sans-serif\"><text x=\"42\" y=\"51\" fill=\"#315adc\" font-size=\"13\" font-weight=\"700\" letter-spacing=\"2\">EVENTPOINT / LEARN THE FLOW</text><text x=\"42\" y=\"104\" fill=\"#14233e\" font-size=\"34\" font-weight=\"700\">How the assistant finds a useful answer</text><text x=\"42\" y=\"143\" fill=\"#53637b\" font-size=\"18\">First understand the request. Then find facts. Then answer.</text><g><rect x=\"42\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"72\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"72\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">1</text><text x=\"62\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Understand the</text><text x=\"62\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">message</text><text x=\"62\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Intent + recent context</text><path d=\"M 254.8 300 H 267.8\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"272.8\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"302.8\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"302.8\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">2</text><text x=\"292.8\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Apply the hard rules</text><text x=\"292.8\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">City, date, budget and</text><text x=\"292.8\" y=\"371\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">group size</text><path d=\"M 485.6 300 H 498.6\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"503.6\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"533.6\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"533.6\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">3</text><text x=\"523.6\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Retrieve relevant</text><text x=\"523.6\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">facts</text><text x=\"523.6\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">SQL + local embeddings</text><path d=\"M 716.4000000000001 300 H 729.4000000000001\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"734.4000000000001\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"764.4000000000001\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"764.4000000000001\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">4</text><text x=\"754.4000000000001\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Generate a grounded</text><text x=\"754.4000000000001\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">reply</text><text x=\"754.4000000000001\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Groq receives useful text</text><path d=\"M 947.2 300 H 960.2\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"965.2\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"995.2\" cy=\"230\" r=\"17\" fill=\"#137b6e\"/><text x=\"995.2\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">5</text><text x=\"985.2\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Check and display</text><text x=\"985.2\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">the result</text><text x=\"985.2\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Reply + valid event</text><text x=\"985.2\" y=\"371\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">references</text></g><rect x=\"42\" y=\"445\" width=\"1132\" height=\"64\" rx=\"13\" fill=\"#e7eefc\"/><text x=\"62\" y=\"471\" fill=\"#2448ae\" font-size=\"12\" font-weight=\"700\" letter-spacing=\"1\">REMEMBER</text><text x=\"62\" y=\"495\" fill=\"#273d65\" font-size=\"15\" font-weight=\"400\">This is a learning map: an interpretation call may happen before retrieval.</text><text x=\"42\" y=\"556\" fill=\"#53637b\" font-size=\"15\">RAG does not fine-tune the model, remove token limits or guarantee a correct answer.</text><text x=\"42\" y=\"592\" fill=\"#64748b\" font-size=\"12\">Source-linked learning diagram • Each step is explained in the interactive atlas • 22 October 2026</text></g></svg>",
+      "mermaid": "flowchart TD\n  S0[\"1. Understand the message<br/>Intent + recent context\"]\n  S1[\"2. Apply the hard rules<br/>City, date, budget and group size\"]\n  S2[\"3. Retrieve relevant facts<br/>SQL + local embeddings\"]\n  S3[\"4. Generate a grounded reply<br/>Groq receives useful text\"]\n  S4[\"5. Check and display the result<br/>Reply + valid event references\"]\n  S0 --> S1\n  S1 --> S2\n  S2 --> S3\n  S3 --> S4"
+    },
+    {
+      "id": "delivery",
+      "title": "How code reaches the website",
+      "short": "GitHub and hosting",
+      "intro": "GitHub checks and hosting deployments are related, but separate.",
+      "file": "architecture-and-flows.md",
+      "steps": [
+        [
+          "Save and commit code",
+          "Your working copy",
+          "A commit records a revision. Pushing it publishes that revision to the remote repository.",
+          "package.json"
+        ],
+        [
+          "Push to GitHub",
+          "Repository history",
+          "GitHub stores the code and study files. Other people or AI tools can read the learning guide from this revision.",
+          ".github/workflows/ci.yml"
+        ],
+        [
+          "Run automated checks",
+          "GitHub Actions CI",
+          "Lint, types, tests and build checks examine a revision. One failed step can fail the job and stop later steps.",
+          ".github/workflows/ci.yml"
+        ],
+        [
+          "Deploy through hosting",
+          "Vercel + Render",
+          "Hosting services build and run the frontend and API using their configuration. Do not assume the diagram means CI always gates deployment.",
+          "docs/deployment.md"
+        ],
+        [
+          "Use the live application",
+          "Browser + hosted API",
+          "Runtime health also depends on environment settings, database access and external providers. A green check is not a runtime trace.",
+          "apps/api/src/main.ts"
+        ]
+      ],
+      "rules": [
+        "A CI failure does not mean all individual tests failed.",
+        "A passing CI run does not by itself prove that the latest deployment is healthy."
+      ],
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1216\" height=\"620\" viewBox=\"0 0 1216 620\" role=\"img\" aria-labelledby=\"title desc\"><title id=\"title\">How code reaches the website</title><desc id=\"desc\">1. Save and commit code: Your working copy. 2. Push to GitHub: Repository history. 3. Run automated checks: GitHub Actions CI. 4. Deploy through hosting: Vercel + Render. 5. Use the live application: Browser + hosted API</desc><defs><marker id=\"arrow\" markerWidth=\"7\" markerHeight=\"7\" refX=\"5\" refY=\"3.5\" orient=\"auto\"><path d=\"M0,0 L6,3.5 L0,7\" fill=\"none\" stroke=\"#8797b3\" stroke-width=\"1.5\"/></marker></defs><rect width=\"1216\" height=\"620\" rx=\"22\" fill=\"#f3f6fc\"/><g font-family=\"Segoe UI,Arial,sans-serif\"><text x=\"42\" y=\"51\" fill=\"#315adc\" font-size=\"13\" font-weight=\"700\" letter-spacing=\"2\">EVENTPOINT / LEARN THE FLOW</text><text x=\"42\" y=\"104\" fill=\"#14233e\" font-size=\"34\" font-weight=\"700\">How code reaches the website</text><text x=\"42\" y=\"143\" fill=\"#53637b\" font-size=\"18\">GitHub checks and hosting deployments are related, but separate.</text><g><rect x=\"42\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"72\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"72\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">1</text><text x=\"62\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Save and commit code</text><text x=\"62\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Your working copy</text><path d=\"M 254.8 300 H 267.8\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"272.8\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"302.8\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"302.8\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">2</text><text x=\"292.8\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Push to GitHub</text><text x=\"292.8\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Repository history</text><path d=\"M 485.6 300 H 498.6\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"503.6\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"533.6\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"533.6\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">3</text><text x=\"523.6\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Run automated checks</text><text x=\"523.6\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">GitHub Actions CI</text><path d=\"M 716.4000000000001 300 H 729.4000000000001\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"734.4000000000001\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"764.4000000000001\" cy=\"230\" r=\"17\" fill=\"#315adc\"/><text x=\"764.4000000000001\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">4</text><text x=\"754.4000000000001\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Deploy through</text><text x=\"754.4000000000001\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">hosting</text><text x=\"754.4000000000001\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Vercel + Render</text><path d=\"M 947.2 300 H 960.2\" stroke=\"#8797b3\" stroke-width=\"2\" marker-end=\"url(#arrow)\"/></g><g><rect x=\"965.2\" y=\"198\" width=\"208.8\" height=\"208\" rx=\"18\" fill=\"white\" stroke=\"#dce3ee\"/><circle cx=\"995.2\" cy=\"230\" r=\"17\" fill=\"#137b6e\"/><text x=\"995.2\" y=\"236\" text-anchor=\"middle\" fill=\"white\" font-size=\"15\" font-weight=\"700\">5</text><text x=\"985.2\" y=\"276\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">Use the live</text><text x=\"985.2\" y=\"306\" fill=\"#14233e\" font-size=\"20\" font-weight=\"650\">application</text><text x=\"985.2\" y=\"350\" fill=\"#53637b\" font-size=\"14\" font-weight=\"400\">Browser + hosted API</text></g><rect x=\"42\" y=\"445\" width=\"1132\" height=\"64\" rx=\"13\" fill=\"#e7eefc\"/><text x=\"62\" y=\"471\" fill=\"#2448ae\" font-size=\"12\" font-weight=\"700\" letter-spacing=\"1\">REMEMBER</text><text x=\"62\" y=\"495\" fill=\"#273d65\" font-size=\"15\" font-weight=\"400\">A CI failure does not mean all individual tests failed.</text><text x=\"42\" y=\"556\" fill=\"#53637b\" font-size=\"15\">A passing CI run does not by itself prove that the latest deployment is healthy.</text><text x=\"42\" y=\"592\" fill=\"#64748b\" font-size=\"12\">Source-linked learning diagram • Each step is explained in the interactive atlas • 22 October 2026</text></g></svg>",
+      "mermaid": "flowchart TD\n  S0[\"1. Save and commit code<br/>Your working copy\"]\n  S1[\"2. Push to GitHub<br/>Repository history\"]\n  S2[\"3. Run automated checks<br/>GitHub Actions CI\"]\n  S3[\"4. Deploy through hosting<br/>Vercel + Render\"]\n  S4[\"5. Use the live application<br/>Browser + hosted API\"]\n  S0 --> S1\n  S1 --> S2\n  S2 --> S3\n  S3 --> S4"
+    }
+  ],
+  "technologyRows": [
+    [
+      "TypeScript",
+      "Shared types across UI, API and packages",
+      "apps/web/src/lib/api.ts, package manifests",
+      "JavaScript; a different backend language",
+      "Typed contracts help refactoring. Types disappear at runtime, so incoming data still needs validation. Plain JS reduces type setup but loses compile-time checking."
+    ],
+    [
+      "Next.js 14 App Router + React 18",
+      "Routing, layouts, server page loading and interactive client components",
+      "apps/web/src/app/layout.tsx, app/page.tsx",
+      "React + Vite; Remix; Angular",
+      "Integrated page rendering and routing fit a browsable event catalog. Vite is attractive for a browser-only SPA; it is not an inferior choice for every app."
+    ],
+    [
+      "React hooks and context",
+      "Local UI state, auth state and shared pending counters",
+      "components/auth/auth-provider.tsx, components/admin/pending-counts.tsx",
+      "Redux Toolkit; Zustand; TanStack Query",
+      "Current state is mostly local or small shared contexts. Redux/Zustand can organise more complex shared state; a query library can formalise server-state caching and invalidation. Context is not a full query cache."
+    ],
+    [
+      "Tailwind + shared CSS variables",
+      "Responsive layout, colour tokens, surface layers and reusable controls",
+      "app/globals.css, app/light-surfaces.css, tailwind.config.ts",
+      "CSS Modules; styled-components; Material UI",
+      "Utility styles coexist with custom product CSS. A component framework supplies more ready-made patterns but also brings its own conventions."
+    ],
+    [
+      "Node.js + Express",
+      "HTTP server, middleware, REST routes and feature controllers",
+      "apps/api/src/main.ts, src/express/app.ts",
+      "NestJS; Fastify; Django; Spring Boot",
+      "Express keeps the HTTP layer explicit and small. Nest offers more enforced conventions; Fastify offers a different plugin/schema approach. Current source uses Express even where classes retain decorator-like helper syntax."
+    ],
+    [
+      "Modular monolith",
+      "Feature separation inside one API deployment",
+      "apps/api/src/modules",
+      "Microservices",
+      "Keeps transactions and deployment understandable at this scale. Microservices enable independent ownership/deployment, but introduce network failures, service coordination and distributed data concerns."
+    ],
+    [
+      "REST + JSON",
+      "Frontend/backend request contract",
+      "apps/api/src/express/modules, apps/web/src/lib",
+      "GraphQL; tRPC; gRPC",
+      "Explicit feature endpoints fit the clients here. GraphQL supports flexible client selection; tRPC offers tightly coupled TS inference; gRPC fits other internal service contexts."
+    ],
+    [
+      "Zod",
+      "Runtime input validation and shared schemas",
+      "packages/validation/src",
+      "Joi; Yup; JSON Schema/Ajv",
+      "One TypeScript-friendly schema layer can validate unknown input. Runtime validation complements types rather than replacing authorization or database constraints."
+    ],
+    [
+      "PostgreSQL",
+      "Authoritative relational data, transactions, constraints, full-text search and embedding arrays",
+      "packages/database/prisma/schema.prisma, migrations",
+      "MySQL; MongoDB",
+      "Events, bookings, ticket types and payments form a relational model. MySQL is a credible relational alternative. MongoDB also supports multi-document transactions; the reason here is relational fit and query requirements, not an inability to transact."
+    ],
+    [
+      "Prisma",
+      "Typed database access, schema/migrations and transactions",
+      "packages/database, API services",
+      "Drizzle; TypeORM; raw SQL",
+      "Helps navigate related records while retaining parameterized SQL for FTS and ranking. Raw SQL offers direct control but more manual mapping; ORM use does not remove the need to understand SQL."
+    ],
+    [
+      "PostgreSQL FTS + server pagination",
+      "Keyword discovery, filtering and ordered result pages",
+      "modules/events/events.service.ts",
+      "Elasticsearch; OpenSearch; Algolia; Meilisearch",
+      "Reuses the database for current catalog needs. A dedicated search service can add richer relevance operations but needs indexing, freshness handling and another system to operate."
+    ],
+    [
+      "Redis + ioredis",
+      "Public-read TTL caches and shared AI rate/concurrency protection",
+      "common/cache/cache.service.ts, express/middleware/ai-guard.ts",
+      "In-process Map; Memcached; database-backed controls",
+      "Shared state can span API instances. An in-memory Map is simpler but instance-local. Redis is not the authority for booking prices or inventory. Public caches can degrade gracefully; AI protection deliberately has different failure behaviour."
+    ],
+    [
+      "Conditional database updates + transactions",
+      "Inventory reservation and guarded booking transitions",
+      "modules/bookings/bookings.service.ts",
+      "Explicit row locks; optimistic versioning; queue-based serialisation",
+      "The stock condition is part of the write, so concurrent buyers cannot both consume the final unit. Other approaches can also be correct; compare contention, retries and operational complexity."
+    ],
+    [
+      "Razorpay integration",
+      "Provider orders, checkout verification, webhook handling and refund lifecycle",
+      "modules/payments/payments.service.ts, booking widget",
+      "Stripe; Cashfree; PayU",
+      "INR-oriented event checkout fits the integration. Provider choice depends on supported markets, onboarding and product requirements. Do not claim test/demo payments are real captured customer revenue."
+    ],
+    [
+      "JWT + rotating refresh sessions + Argon2id + Google OAuth",
+      "Account authentication, refresh and password protection",
+      "modules/auth, browser auth client",
+      "Server-session cookies; managed auth such as Auth0/Clerk",
+      "Explicit auth demonstrates session and ownership rules. Managed auth reduces custom lifecycle work; opaque sessions are a valid alternative. The current system already uses database session state, so it is not fully stateless."
+    ],
+    [
+      "Cloudinary",
+      "Organizer uploads, category covers and hosted image delivery",
+      "modules/events/event-media.service.ts",
+      "S3 + CloudFront; ImageKit; Supabase Storage",
+      "Media is kept outside the API filesystem. Object storage offers greater infrastructure control but needs a delivery/processing design. Multiple configured providers still require consistent ownership and asset tracking."
+    ],
+    [
+      "Brevo HTTP API",
+      "Verification codes, password reset and transactional notifications",
+      "modules/notifications/notifications.service.ts",
+      "Amazon SES; SendGrid; Resend",
+      "A hosted mail service avoids operating an SMTP server. Delivery still needs sender/domain configuration, retry handling and user-visible failure states."
+    ],
+    [
+      "Groq + application orchestration",
+      "Intent interpretation, response generation and model-profile routing",
+      "modules/ai/ai.service.ts, model-router.ts, groq-key-pool.ts",
+      "Other hosted LLM providers; self-hosted models",
+      "Existing integration centralises budgets, retry policy and grounded output handling. Switching providers would require evaluating quality, latency, cost, tool support and failure behaviour; the repository alone cannot prove one provider is universally best."
+    ],
+    [
+      "Transformers.js + pretrained MiniLM",
+      "Local semantic embeddings for event and passage retrieval",
+      "modules/ai/semantic-retrieval.service.ts",
+      "Hosted embedding APIs; larger local encoders",
+      "Local CPU inference avoids per-embedding external API calls but brings model download, cold-start, CPU and memory costs. Local does not mean computationally free."
+    ],
+    [
+      "PostgreSQL arrays + similarity SQL",
+      "Store and compare current catalog vectors",
+      "EventSemanticEmbedding model; event search",
+      "pgvector with an index; Qdrant; Pinecone; Weaviate",
+      "Keeps the current small catalog in one database. Exact scanning is simpler but does not have the scaling behaviour of approximate indexed vector search. pgvector is an extension, not something already used just because PostgreSQL holds vectors."
+    ],
+    [
+      "Custom hybrid RAG",
+      "Combine business filters, semantic retrieval, lexical passage selection and bounded prompt context",
+      "retrieval-context.ts, semantic-retrieval.service.ts, ai.service.ts",
+      "Keyword-only search; full-catalog prompts; LangChain/LlamaIndex orchestration",
+      "Custom code makes this small workflow explicit. Orchestration libraries can supply connectors and common patterns, but are not prerequisites for RAG. RAG retrieves evidence; it does not fine-tune the model or remove token limits."
+    ],
+    [
+      "QR data + browser scanning",
+      "Present tickets and read them at admission",
+      "app/dashboard/scan/page.tsx, booking/payment ticket generation",
+      "Barcode; manual booking lookup; native scanner",
+      "A QR is convenient to transport an identifier. Backend authorization and ticket status checks determine admission; possessing a readable QR alone does not establish permission."
+    ],
+    [
+      "Custom React/CSS dashboard charts",
+      "Axes, counts and hover/tap/focus details",
+      "components/approved/dashboard-chart.tsx",
+      "Recharts; Chart.js; ECharts",
+      "Current charts need a small set of interactions. A library becomes useful for richer plots, zooming or larger datasets. Do not claim the project uses a chart library it does not import."
+    ],
+    [
+      "Jest + integration tests + GitHub Actions",
+      "Automated regressions, database checks and build checks",
+      "apps/api/**/spec.ts, .github/workflows/ci.yml",
+      "Vitest; other CI providers; browser E2E tooling",
+      "Existing tests cover backend logic and PostgreSQL-backed scenarios. Test-tool installation does not establish complete browser coverage. CI success is distinct from service deployment and production correctness."
+    ],
+    [
+      "npm workspaces + Turborepo",
+      "Shared packages and dependency-aware task orchestration",
+      "root package.json, turbo.json",
+      "pnpm workspaces; Nx; separate repositories",
+      "A monorepo keeps shared contracts and app changes together. It adds task/build coordination; it does not automatically mean microservices or one deployed process."
+    ],
+    [
+      "Vercel + Render + Neon + custom DNS",
+      "Frontend/API/database hosting and the public domain",
+      "deployment setup, docs/deployment.md",
+      "AWS/GCP/Azure; Fly.io; Railway; VPS",
+      "Managed hosting suits the portfolio deployment. More infrastructure control brings operational responsibility. Build-time public variables, CORS, TLS, cold starts and database connection limits remain relevant."
+    ],
+    [
+      "Optional Sentry + structured logging",
+      "Error capture with sensitive-data scrubbing and request correlation",
+      "apps/api/src/config/sentry.ts, web Sentry config",
+      "OpenTelemetry + backend; other error trackers",
+      "The integration exists; enabled collection depends on configuration. Logs and traces answer different questions, and sensitive data should not become a debugging shortcut."
+    ]
+  ],
+  "roadmap": [
+    [
+      "1",
+      "Product and architecture",
+      "Foundation",
+      "P0",
+      "Who are the three user roles? Trace one click from browser to database and back."
+    ],
+    [
+      "2",
+      "JavaScript/TypeScript",
+      "Foundation",
+      "P0",
+      "Promises, async/await, closures, objects and arrays; why doesn't a TS interface validate JSON?"
+    ],
+    [
+      "3",
+      "HTTP and REST",
+      "Foundation",
+      "P0",
+      "Methods, status codes, request/response bodies, middleware, validation and error handling?"
+    ],
+    [
+      "4",
+      "React state and effects",
+      "Foundation–intermediate",
+      "P0",
+      "State vs props; controlled inputs; effect dependencies; cleanup; why can navigation replay an initial prompt?"
+    ],
+    [
+      "5",
+      "Next.js server/client boundaries",
+      "Intermediate",
+      "P0",
+      "Why is the homepage a server component while the chat composer needs client state? What can run in each?"
+    ],
+    [
+      "6",
+      "Node.js concurrency",
+      "Intermediate",
+      "P0",
+      "How does async I/O differ from parallel CPU work? Why can local embedding inference affect latency?"
+    ],
+    [
+      "7",
+      "Relational schema and SQL",
+      "Intermediate",
+      "P0",
+      "Why BookingItem? Which relationships are one-to-many? What do unique constraints and indexes protect?"
+    ],
+    [
+      "8",
+      "Authentication and authorization",
+      "Intermediate",
+      "P0",
+      "JWT vs session; password hashing vs encryption; refresh rotation; ownership checks; cookie and local-storage tradeoffs?"
+    ],
+    [
+      "9",
+      "Search and pagination",
+      "Intermediate",
+      "P1",
+      "Why server pagination? Stable sorting? FTS vs substring search? Offset vs cursor pagination?"
+    ],
+    [
+      "10",
+      "Cache and freshness",
+      "Intermediate",
+      "P1",
+      "Cache-aside, TTL and invalidation? What remains correct if Redis fails? What is intentionally rejected?"
+    ],
+    [
+      "11",
+      "Booking race conditions",
+      "Advanced",
+      "P0",
+      "Two people buy the final ticket: why does a conditional update matter? What rolls back on partial failure?"
+    ],
+    [
+      "12",
+      "Idempotency and expiry",
+      "Advanced",
+      "P0",
+      "Duplicate booking clicks? Reused keys across users? Expiry and confirmation arriving together?"
+    ],
+    [
+      "13",
+      "Payments and webhooks",
+      "Advanced",
+      "P0",
+      "Why not trust browser success? What do signatures protect? How do duplicate, delayed or out-of-order events behave?"
+    ],
+    [
+      "14",
+      "RAG and embeddings",
+      "Intermediate–advanced",
+      "P0",
+      "What is retrieved? Why send text rather than vectors to generation? Keyword vs semantic search? Why not send all events?"
+    ],
+    [
+      "15",
+      "AI reliability and evaluation",
+      "Advanced",
+      "P0",
+      "Hard filters, unsupported claims, clarification, language, retries, prompt injection, budgets and stale evidence?"
+    ],
+    [
+      "16",
+      "CI and deployment",
+      "Intermediate",
+      "P1",
+      "Why can one failed test fail the run? CI vs deployment? Where are environment variables read? How would you roll back?"
+    ],
+    [
+      "17",
+      "Security and observability",
+      "Advanced",
+      "P1",
+      "CORS vs authorization, XSS/CSRF, rate limits, logging sensitive data, request IDs and diagnosing latency?"
+    ],
+    [
+      "18",
+      "Scaling and architecture alternatives",
+      "Advanced",
+      "P1",
+      "When split services? When use pgvector/indexing? Why would a durable queue help? What breaks with several API instances?"
+    ],
+    [
+      "19",
+      "Styling, accessibility and media",
+      "Foundation–intermediate",
+      "P2",
+      "Responsive layouts, keyboard focus, chart interactions, image aspect ratios, upload ownership and loading states?"
+    ],
+    [
+      "20",
+      "Provider operations and domain setup",
+      "Intermediate",
+      "P2",
+      "DNS vs application hosting, TLS, API origin, email sender authentication and third-party outages?"
+    ]
+  ],
+  "glossary": [
+    [
+      "API",
+      "The HTTP interface the frontend uses to ask the backend to do work"
+    ],
+    [
+      "ORM",
+      "Prisma's typed interface to database queries and relationships"
+    ],
+    [
+      "Transaction",
+      "A group of database changes that commits or rolls back together"
+    ],
+    [
+      "Invariant",
+      "A condition that must stay true, such as inventory never becoming negative"
+    ],
+    [
+      "Idempotency",
+      "Repeating the same intended operation does not create another outcome"
+    ],
+    [
+      "JWT",
+      "A signed access token; signing does not encrypt its contents"
+    ],
+    [
+      "TTL",
+      "How long a cached value or reservation remains valid"
+    ],
+    [
+      "Webhook",
+      "A provider-to-server event notification, independent of the browser"
+    ],
+    [
+      "Embedding",
+      "A numeric representation used to compare semantic similarity"
+    ],
+    [
+      "RAG",
+      "Retrieve relevant facts, then use those facts to ground a generated answer"
+    ],
+    [
+      "Modular monolith",
+      "One backend deployment with separate feature modules"
+    ],
+    [
+      "CI",
+      "Automated checks of a proposed revision; distinct from deployment"
+    ]
+  ]
+}

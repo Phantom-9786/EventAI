@@ -1,0 +1,56 @@
+{
+  "title": "02 — Booking and payment correctness",
+  "description": "Source-linked interview study tour. Read the highlighted code, then explain it in your own words.",
+  "steps": [
+    {
+      "file": "apps/web/src/components/booking/booking-widget.tsx",
+      "line": 64,
+      "description": "Start with selected ticket quantities and checkout UI states. The browser displays totals, but its arithmetic is not the authority for the price charged."
+    },
+    {
+      "file": "packages/validation/src/booking.ts",
+      "line": 3,
+      "description": "Examine the accepted booking input. Ticket IDs, quantities and an idempotency key have different purposes. Validation cannot by itself decide resource ownership or available stock."
+    },
+    {
+      "file": "apps/api/src/modules/bookings/bookings.service.ts",
+      "line": 77,
+      "description": "Trace the existing-key lookup, ownership check, merged duplicate ticket lines and event/ticket eligibility checks. Ask what happens when a caller repeats a request."
+    },
+    {
+      "file": "apps/api/src/modules/bookings/bookings.service.ts",
+      "line": 147,
+      "description": "This conditional decrement is the final-ticket concurrency checkpoint. Explain the database condition, affected-row count and rollback. A preceding availability read alone would not prevent overselling."
+    },
+    {
+      "file": "packages/database/prisma/schema.prisma",
+      "line": 404,
+      "description": "Read the booking status, idempotency uniqueness, expiry and BookingItem relation. Follow the money snapshot and related payment/ticket records."
+    },
+    {
+      "file": "apps/api/src/modules/payments/payments.service.ts",
+      "line": 74,
+      "description": "The provider order belongs to a server-validated booking. Explain the difference between reserving inventory and confirming that money was captured."
+    },
+    {
+      "file": "apps/api/src/modules/payments/payments.service.ts",
+      "line": 162,
+      "description": "A browser callback is untrusted input until the server verifies it. Follow the signature/payment checks and the path to guarded confirmation."
+    },
+    {
+      "file": "apps/api/src/modules/payments/payments.service.ts",
+      "line": 218,
+      "description": "Webhooks can be duplicated, delayed or arrive before the browser callback. Trace signature validation and the idempotent state transition. Then inspect late capture/refund branches."
+    },
+    {
+      "file": "apps/api/src/modules/bookings/bookings.service.ts",
+      "line": 339,
+      "description": "Expired reservations release stock through guarded database transitions. Think about confirmation racing with expiry and why releasing twice must be prevented."
+    },
+    {
+      "file": "apps/api/src/main.ts",
+      "line": 109,
+      "description": "The running expiry job is scheduled in the API process. Contrast this with the separate BullMQ worker skeleton; do not claim processors are registered there."
+    }
+  ]
+}

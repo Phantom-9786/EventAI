@@ -1,0 +1,10 @@
+flowchart TD
+  S0["1. Sign in<br/>Password or Google"]
+  S1["2. Create a session<br/>Access token + refresh session"]
+  S2["3. Send a protected request<br/>Bearer access token"]
+  S3["4. Check role and ownership<br/>Server authorization"]
+  S4["5. Allow or reject the action<br/>Authorized feature service"]
+  S0 --> S1
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4

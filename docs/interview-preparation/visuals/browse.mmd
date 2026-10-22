@@ -1,0 +1,10 @@
+flowchart TD
+  S0["1. Enter your preferences<br/>Search, city and category"]
+  S1["2. Check the request<br/>Validation + HTTP route"]
+  S2["3. Find matching events<br/>SQL filters + ranking"]
+  S3["4. Return one page<br/>Event summary contract"]
+  S4["5. Show clear event cards<br/>Reusable React card"]
+  S0 --> S1
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4

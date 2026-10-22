@@ -1,0 +1,10 @@
+flowchart TD
+  S0["1. Choose ticket quantities<br/>Booking widget"]
+  S1["2. Calculate the real price<br/>Booking service"]
+  S2["3. Reserve the inventory<br/>Database transaction"]
+  S3["4. Verify the payment<br/>Razorpay + server checks"]
+  S4["5. Confirm and issue tickets<br/>Guarded state transition"]
+  S0 --> S1
+  S1 --> S2
+  S2 --> S3
+  S3 --> S4
