@@ -101,10 +101,6 @@ npm run dev
 | [docs/deployment.md](docs/deployment.md) | Environments, CI, production checklist |
 | [docs/architecture-decisions.md](docs/architecture-decisions.md) | ADR log |
 
-## Learn this project
-
-Start with the [interview learning guide](docs/interview-preparation/README.md), [visual gallery](docs/interview-preparation/visual-gallery.md) or the downloadable [interactive atlas](docs/interview-preparation/index.html). The pack includes technology alternatives, a beginner-to-advanced roadmap, 38 CodeTour source stops and an [AI teaching handoff](docs/interview-preparation/AI-HANDOFF.md).
-
 ## License
 
 Private project — all rights reserved.
