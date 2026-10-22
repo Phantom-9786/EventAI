@@ -292,13 +292,14 @@ export interface AdminEventDetail extends AdminEventRow {
 }
 
 export async function listAdminEvents(
-  params: { search?: string; status?: string; page?: number; limit?: number } = {},
+  params: { search?: string; status?: string; reviewStatus?: 'PENDING_APPROVAL'; page?: number; limit?: number } = {},
 ): Promise<{ events: AdminEventRow[]; total: number; page: number; pages: number }> {
   const qs = new URLSearchParams();
   qs.set('page', String(params.page ?? 1));
   qs.set('limit', String(params.limit ?? 20));
   if (params.search) qs.set('search', params.search);
   if (params.status) qs.set('status', params.status);
+  if (params.reviewStatus) qs.set('reviewStatus', params.reviewStatus);
   const res = await authFetch(`/admin/events?${qs.toString()}`);
   if (!res.ok) throw new Error(`Failed to load events (${res.status})`);
   return res.json();

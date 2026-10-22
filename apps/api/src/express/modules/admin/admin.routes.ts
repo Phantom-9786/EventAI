@@ -38,6 +38,8 @@ export function createAdminRouter({
   // All administrative operations require ADMIN role
   router.use(requireRoles(UserRole.ADMIN));
 
+  router.get('/pending-counts', controller.pendingCounts);
+
   // Team & Access management
   router.get('/team', controller.listTeam);
   router.post(

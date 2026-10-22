@@ -142,6 +142,27 @@ export class AdminService {
   }
 
   /** Platform-wide aggregates for the admin dashboard. */
+  async pendingCounts() {
+    const [counts] = await this.prisma.$queryRaw<{
+      organizers: number; events: number; emails: number; invitations: number;
+    }[]>`
+      SELECT
+        (SELECT COUNT(*)::int FROM organizers o WHERE o.is_verified = false
+          AND COALESCE((SELECT a.action FROM audit_logs a
+            WHERE a.entity = 'Organizer' AND a.entity_id = o.id
+              AND a.action IN ('ORGANIZER_APPLICATION_REJECTED', 'ORGANIZER_APPLICATION_SUBMITTED', 'ORGANIZER_APPLICATION_APPROVED')
+            ORDER BY a.created_at DESC LIMIT 1), '') <> 'ORGANIZER_APPLICATION_REJECTED') AS organizers,
+        (SELECT COUNT(*)::int FROM events e WHERE e.status = 'DRAFT'
+          AND (SELECT a.action FROM audit_logs a WHERE a.entity = 'Event' AND a.entity_id = e.id
+            AND a.action IN ('EVENT_SUBMITTED', 'EVENT_APPROVED', 'EVENT_REJECTED', 'EVENT_MATERIAL_CHANGE')
+            ORDER BY a.created_at DESC LIMIT 1) IN ('EVENT_SUBMITTED', 'EVENT_MATERIAL_CHANGE')) AS events,
+        (SELECT COUNT(*)::int FROM users u WHERE u.is_active = true AND u.is_email_verified = false
+          AND u.email NOT LIKE '%@anonymized.eventai.local') AS emails,
+        (SELECT COUNT(*)::int FROM admin_invitations i WHERE i.status = 'PENDING' AND i.expires_at > NOW()) AS invitations
+    `;
+    return counts;
+  }
+
   async platformStats() {
     const [
       users,
@@ -396,7 +417,7 @@ export class AdminService {
 
   // ── Event moderation ─────────────────────────────
 
-  async listEvents(query: Partial<AdminEventListInput> = {}) {
+  async listEvents(query: Partial<AdminEventListInput> & { reviewStatus?: string } = {}) {
     const page = Math.max(1, Number.parseInt(String(query.page ?? '1'), 10) || 1);
     const limit = Math.min(
       100,
@@ -404,10 +425,19 @@ export class AdminService {
     );
     const search = query.search?.trim();
     const status = query.status;
+    const pending = query.reviewStatus === 'PENDING_APPROVAL'
+      ? await this.prisma.$queryRaw<{ id: string }[]>`
+          SELECT e.id FROM events e WHERE e.status = 'DRAFT'
+            AND (SELECT a.action FROM audit_logs a WHERE a.entity = 'Event' AND a.entity_id = e.id
+              AND a.action IN ('EVENT_SUBMITTED', 'EVENT_APPROVED', 'EVENT_REJECTED', 'EVENT_MATERIAL_CHANGE')
+              ORDER BY a.created_at DESC LIMIT 1) IN ('EVENT_SUBMITTED', 'EVENT_MATERIAL_CHANGE')
+        `
+      : null;
     const where = {
       AND: [
         search ? { title: { contains: search, mode: 'insensitive' as const } } : {},
         status ? { status } : {},
+        pending ? { id: { in: pending.map((event) => event.id) } } : {},
       ],
     };
 

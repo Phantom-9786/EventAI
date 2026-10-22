@@ -127,6 +127,9 @@ export async function authFetch(path: string, init: RequestInit = {}): Promise<R
       res = await fetchWithTimeout(`${API_URL}${path}`, { ...init, headers, credentials: 'include' });
     }
   }
+  if (res.ok && path.startsWith('/admin/') && !['GET', 'HEAD'].includes((init.method ?? 'GET').toUpperCase()) && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('eventpoint:admin-queues-changed'));
+  }
   return res;
 }
 

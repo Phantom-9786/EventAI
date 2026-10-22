@@ -63,6 +63,7 @@ import { PreviewHeading } from '@/components/approved/ui';
 import { AdminOverview } from '@/components/approved/admin-overview';
 import { TeamAccessSection } from '@/components/admin/team-access-section';
 import { CategoryManager } from '@/components/admin/category-manager';
+import { AdminQueueBadge, PendingBadge, useAdminPending } from '@/components/admin/pending-counts';
 
 type Tab =
   | 'overview'
@@ -109,6 +110,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function AdminPage() {
   const { user, loading: authLoading } = useAuth();
+  const { reload: reloadPending } = useAdminPending();
   const { stats, categories, error, loading, reload } = useAdminData(
     user?.role === 'ADMIN',
   );
@@ -276,7 +278,7 @@ export default function AdminPage() {
           <RefreshButton
             className="btn outline"
             variant="outline"
-            onClick={() => reload()}
+            onClick={() => { void reload(); reloadPending(); }}
             disabled={busy || loading}
             refreshing={Boolean(busy || loading)}
           />
@@ -336,6 +338,7 @@ function UsersTab({
   onAction: (fn: () => Promise<void>) => Promise<void>;
 }) {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
+  const { counts } = useAdminPending();
   const [pages, setPages] = useState(1);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -392,6 +395,14 @@ function UsersTab({
 
   return (
     <div className="mt-8 space-y-4">
+      <div className="ep-admin-queue-tabs">
+        <button type="button" className={'btn ' + (statusFilter === 'UNVERIFIED' ? 'outline' : '')}
+          aria-pressed={statusFilter !== 'UNVERIFIED'} onClick={() => { setStatusFilter(''); setPage(1); }}>All users</button>
+        <button type="button" className={'btn ' + (statusFilter === 'UNVERIFIED' ? '' : 'outline')}
+          aria-pressed={statusFilter === 'UNVERIFIED'} onClick={() => { setStatusFilter('UNVERIFIED'); setPage(1); }}>
+          Awaiting email verification <PendingBadge count={counts?.emails} label="accounts awaiting email verification" />
+        </button>
+      </div>
       <div className="flex flex-wrap items-center gap-2.5">
         <div className="relative flex-1 sm:max-w-xs">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -1011,6 +1022,7 @@ function EventsTab({
   onAction: (fn: () => Promise<void>) => Promise<void>;
 }) {
   const [events, setEvents] = useState<AdminEventRow[] | null>(null);
+  const [pendingOnly, setPendingOnly] = useState(false);
   const [pages, setPages] = useState(1);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -1047,6 +1059,7 @@ function EventsTab({
       const body = await listAdminEvents({
         search: search || undefined,
         status: status || undefined,
+        reviewStatus: pendingOnly ? 'PENDING_APPROVAL' : undefined,
         page,
       });
       setEvents(body.events);
@@ -1057,7 +1070,7 @@ function EventsTab({
     } finally {
       setLoading(false);
     }
-  }, [search, status, page]);
+  }, [search, status, page, pendingOnly]);
 
   useEffect(() => {
     void load();
@@ -1084,6 +1097,14 @@ function EventsTab({
 
   return (
     <div className="mt-8 space-y-4">
+      <div className="ep-admin-queue-tabs">
+        <button type="button" className={'btn ' + (pendingOnly ? 'outline' : '')}
+          aria-pressed={!pendingOnly} onClick={() => { setPendingOnly(false); setPage(1); }}>All events</button>
+        <button type="button" className={'btn ' + (pendingOnly ? '' : 'outline')}
+          aria-pressed={pendingOnly} onClick={() => { setPendingOnly(true); setStatus(''); setPage(1); }}>
+          Pending review <AdminQueueBadge section="events" />
+        </button>
+      </div>
       <div className="flex flex-wrap items-center gap-2.5">
         <div className="relative flex-1 sm:max-w-xs">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -1420,7 +1441,8 @@ function OrganizersTab({
   busy: boolean;
   onAction: (fn: () => Promise<void>) => Promise<void>;
 }) {
-  const [subTab, setSubTab] = useState<'pending' | 'all'>('pending');
+  const [subTab, setSubTab] = useState<'pending' | 'all'>('all');
+  const { counts: queueCounts } = useAdminPending();
   const [applications, setApplications] = useState<OrganizerApplication[] | null>(null);
   const [pendingLoading, setPendingLoading] = useState(true);
 
@@ -1475,9 +1497,13 @@ function OrganizersTab({
   }, [search, page]);
 
   useEffect(() => {
-    void loadPending();
     void loadOrganizers();
-  }, [loadPending, loadOrganizers]);
+  }, [loadOrganizers]);
+
+  const pendingQueueCount = queueCounts?.organizers;
+  useEffect(() => {
+    void loadPending();
+  }, [pendingQueueCount, loadPending]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !applications) return;
@@ -1517,36 +1543,12 @@ function OrganizersTab({
     });
   };
 
-  const pendingCount = applications ? applications.length : 0;
+  const pendingCount = queueCounts?.organizers ?? applications?.length ?? 0;
 
   return (
     <div className="mt-8 space-y-6">
       {/* Sub tabs */}
-      <div className="flex items-center gap-2 border-b pb-3">
-        <button
-          type="button"
-          onClick={() => setSubTab('pending')}
-          className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
-            subTab === 'pending'
-              ? 'bg-primary text-primary-foreground shadow-sm'
-              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
-        >
-          <Building2 className="h-4 w-4" />
-          Pending Applications
-          {pendingCount > 0 && (
-            <span
-              className={`rounded-full px-2 py-0.2 text-xs font-bold ${
-                subTab === 'pending'
-                  ? 'bg-primary-foreground/20 text-primary-foreground'
-                  : 'bg-primary/10 text-primary'
-              }`}
-            >
-              {pendingCount}
-            </span>
-          )}
-        </button>
-
+      <div className="ep-admin-queue-tabs flex items-center gap-2 border-b pb-3">
         <button
           type="button"
           onClick={() => setSubTab('all')}
@@ -1558,6 +1560,20 @@ function OrganizersTab({
         >
           <BadgeCheck className="h-4 w-4" />
           Registered Organizers
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubTab('pending')}
+          className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition-colors ${
+            subTab === 'pending'
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          }`}
+        >
+          <Building2 className="h-4 w-4" />
+          Pending Applications
+          <PendingBadge count={pendingCount} label="pending organizer applications" />
         </button>
       </div>
 
@@ -2637,7 +2653,7 @@ function SystemControlsTab() {
   }
 
   return (
-    <div className="ep-system-controls space-y-6 pt-4 max-w-4xl">
+    <div className="ep-system-controls w-full min-w-0 space-y-6 pt-4">
       <div>
         <p className="text-sm text-muted-foreground mt-1">
           Manage website availability, booking access and assistant maintenance.

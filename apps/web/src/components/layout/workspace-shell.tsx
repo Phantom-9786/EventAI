@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { attendee, organizer, admin } from './workspace-navigation';
 import { useAuth } from '@/components/auth/auth-provider';
 import { cn } from '@/lib/utils';
+import { AdminQueueBadge } from '@/components/admin/pending-counts';
 
 function WorkspaceShellContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -94,6 +95,7 @@ function WorkspaceShellContent({ children }: { children: React.ReactNode }) {
               >
                 <Icon size={19} className="icon" />
                 <span className="sidebar-label">{label}</span>
+                {isAdmin && <AdminQueueBadge section={new URLSearchParams(href.split('?')[1]).get('tab') ?? 'overview'} />}
               </Link>
             );
           })}

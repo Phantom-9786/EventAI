@@ -8,6 +8,7 @@ import { ArrowLeftRight, Bell, LayoutDashboard, LogOut, Menu, Settings, ShieldCh
 import { useAuth } from '@/components/auth/auth-provider';
 import { ThemeToggle } from './theme-toggle';
 import { admin, attendee, organizer } from './workspace-navigation';
+import { AdminQueueBadge } from '@/components/admin/pending-counts';
 
 function WorkspaceLinks({ close }: { close: () => void }) {
   const pathname = usePathname();
@@ -27,7 +28,7 @@ function WorkspaceLinks({ close }: { close: () => void }) {
           onClick={() => {
             window.dispatchEvent(new CustomEvent('eventpoint:workspace-navigation', { detail: href }));
             close();
-          }}><Icon className="icon" />{label}</Link>;
+          }}><Icon className="icon" />{label}{isAdmin && <AdminQueueBadge section={new URLSearchParams(query).get('tab') ?? 'overview'} />}</Link>;
       })}
     </nav>
   );
@@ -71,7 +72,7 @@ export function MobileNavigation({ dashboard, workspace, canOrganize, hasApplica
     <button ref={trigger} type="button" className="ep-mobile-menu-trigger"
       aria-label="Open navigation menu" aria-haspopup="dialog" aria-expanded={open}
       aria-controls="ep-mobile-menu" onClick={() => setOpen(true)}>
-      <Menu className="icon" /><span>Menu</span>
+      <Menu className="icon" /><span>Menu</span>{user?.role === 'ADMIN' && <AdminQueueBadge />}
     </button>
     <dialog ref={dialog} id="ep-mobile-menu" className="ep-mobile-menu"
       aria-labelledby="ep-mobile-menu-title" onClose={close}
@@ -102,7 +103,7 @@ export function MobileNavigation({ dashboard, workspace, canOrganize, hasApplica
             <Link href={workspace ? '/overview' : '/dashboard'} onClick={close}><ArrowLeftRight className="icon" />
               {workspace ? 'Attendee view' : canOrganize ? 'Organizer' : hasApplication ? 'Organizer application' : 'Become an organizer'}
             </Link>
-            {user.role === 'ADMIN' && pathname !== '/admin' && <Link href="/admin" onClick={close}><ShieldCheck className="icon" />Admin workspace</Link>}
+            {user.role === 'ADMIN' && pathname !== '/admin' && <Link href="/admin" onClick={close}><ShieldCheck className="icon" />Admin workspace<AdminQueueBadge /></Link>}
             {workspace && <Link href={dashboard} onClick={close}><LayoutDashboard className="icon" />My Dashboard</Link>}
           </nav>
         </> : <>

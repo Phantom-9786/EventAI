@@ -15,6 +15,14 @@ export class ExpressAdminController {
     private readonly authService?: AuthService,
   ) {}
 
+  pendingCounts = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      res.status(200).json(await this.adminService.pendingCounts());
+    } catch (err) {
+      next(err);
+    }
+  };
+
   stats = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const result = await this.adminService.platformStats();

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
+import { AdminQueueBadge } from './pending-counts';
 import {
   listAdminTeam,
   inviteAdminMember,
@@ -549,7 +550,7 @@ export function TeamAccessSection() {
                   : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              Pending ({pendingInvitations.length})
+              Pending <AdminQueueBadge section="team" />
             </button>
             <button
               type="button"

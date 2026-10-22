@@ -10,6 +10,7 @@ import { NotificationBell } from '@/components/notifications/notification-bell';
 import { getOrganizerProfile, type OrganizerProfile } from '@/lib/organizer';
 import { BrandIcon } from '@/components/layout/brand-logo';
 import { MobileNavigation } from './mobile-navigation';
+import { AdminQueueBadge } from '@/components/admin/pending-counts';
 export function Header() {
   const { user, loading, signOut } = useAuth();
   const pathname = usePathname(),
@@ -143,6 +144,7 @@ export function Header() {
                 >
                   <ShieldCheck className="icon" />
                   <span>Admin</span>
+                  <AdminQueueBadge />
                 </Link>
               )}
             </>

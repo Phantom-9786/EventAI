@@ -4,6 +4,7 @@ import { MaintenanceGuard } from '@/components/layout/maintenance-guard';
 import { Header } from '@/components/layout/header';
 import { Footer } from '@/components/layout/footer';
 import { WorkspaceShell } from '@/components/layout/workspace-shell';
+import { AdminPendingProvider } from '@/components/admin/pending-counts';
 import './globals.css';
 import './approved-preview.css';
 import './ui-scale.css';
@@ -47,11 +48,13 @@ export default function RootLayout({
       </head>
       <body className="ep-app flex min-h-screen flex-col">
         <AuthProvider>
-          <MaintenanceGuard>
-            <Header />
-            <main className="flex-1"><WorkspaceShell>{children}</WorkspaceShell></main>
-            <Footer />
-          </MaintenanceGuard>
+          <AdminPendingProvider>
+            <MaintenanceGuard>
+              <Header />
+              <main className="flex-1"><WorkspaceShell>{children}</WorkspaceShell></main>
+              <Footer />
+            </MaintenanceGuard>
+          </AdminPendingProvider>
         </AuthProvider>
       </body>
     </html>

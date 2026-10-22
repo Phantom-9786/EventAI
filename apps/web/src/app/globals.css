@@ -162,6 +162,14 @@
 
 
 /* Approved EventPoint workspace foundation. */
+.ep-app .ep-pending-badge{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#c13b50;color:#fff;font-family:inherit;font-size:11px;font-weight:700;line-height:1;letter-spacing:0;vertical-align:middle;box-shadow:0 0 0 2px hsl(var(--card))}
+.ep-app .workspace-nav-link{position:relative}
+.ep-app .workspace-nav-link>.ep-pending-badge{margin-left:auto}
+.ep-app .workspace-nav-link>.sidebar-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.ep-app .sidebar-collapsed .workspace-nav-link>.ep-pending-badge{position:absolute;top:3px;right:3px;min-width:17px;height:17px;font-size:10px;padding:0 4px}
+.ep-app .ep-mobile-menu-links .ep-pending-badge{margin-left:auto}
+.ep-app .ep-admin-queue-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:16px}
+.ep-app .ep-admin-queue-tabs .btn{min-height:38px;white-space:normal;text-align:left}
 .dark{--background:0 0% 6.3%;--card:0 0% 9.8%;--popover:0 0% 9.8%;--secondary:0 0% 14%;--muted:0 0% 14%;--muted-foreground:0 0% 69%;--border:0 0% 20%;--input:0 0% 20%;--accent:0 0% 14%;--pin-cutout:#191919}
 .eventpoint-workspace{display:grid;grid-template-columns:235px minmax(0,1fr);gap:24px;max-width:1560px;margin:28px auto;padding:0 24px;align-items:start;transition:grid-template-columns .25s ease}
 .eventpoint-sidebar{position:sticky;top:88px;border:1px solid hsl(var(--border));background:hsl(var(--card));border-radius:16px;padding:12px;overflow:hidden;box-shadow:0 4px 18px -14px #0003}
