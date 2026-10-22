@@ -437,7 +437,7 @@ export class AdminService {
       AND: [
         search ? { title: { contains: search, mode: 'insensitive' as const } } : {},
         status ? { status } : {},
-        pending ? { id: { in: pending.map((event) => event.id) } } : {},
+        ...(pending ? [{ id: { in: pending.map((event) => event.id) } }] : []),
       ],
     };
 
