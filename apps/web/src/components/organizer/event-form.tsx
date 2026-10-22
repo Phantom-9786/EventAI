@@ -157,7 +157,7 @@ function TicketInlineForm({
 
   const inputClass = 'mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm';
   return (
-    <form onSubmit={submit} className="space-y-3 rounded-lg border bg-muted/20 p-4">
+    <form onSubmit={submit} className="ep-surface-inset space-y-3 rounded-lg border bg-muted/20 p-4">
       {error && <p role="alert" className="text-xs font-medium text-destructive">{error}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-xs font-medium">
@@ -894,7 +894,7 @@ export function EventForm({
           </div>
 
           {/* Quick inline venue creation / reuse */}
-          <div className="rounded-lg border bg-muted/20 p-4">
+          <div className="ep-surface-inset rounded-lg border bg-muted/20 p-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold">Need a different venue?</span>
               <Button

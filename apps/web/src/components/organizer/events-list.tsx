@@ -115,7 +115,7 @@ export function OrganizerEventsList() {
         </div>
       ) : (
         <>
-          <div className="mt-6 divide-y rounded-lg border">
+          <div className="ep-surface ep-surface-list mt-6 divide-y rounded-lg border">
             {filteredEvents.map((event) => {
               const modStatus = event.moderation?.status ?? 'DRAFT';
               return (

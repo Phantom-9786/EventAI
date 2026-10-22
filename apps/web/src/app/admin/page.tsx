@@ -840,7 +840,7 @@ function EventPreviewModal({
                     No ticket tiers configured.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border">
+                  <div className="ep-surface overflow-x-auto rounded-lg border">
                     <table className="w-full text-xs">
                       <thead className="border-b bg-muted/30 text-left uppercase text-muted-foreground">
                         <tr>
@@ -895,7 +895,7 @@ function EventPreviewModal({
                   </h3>
                   <div className="space-y-3">
                     {detail.faqs!.map((faq) => (
-                      <div key={faq.id} className="rounded-lg border p-3">
+                      <div key={faq.id} className="ep-surface-inset rounded-lg border p-3">
                         <h4 className="font-medium">{faq.question}</h4>
                         <p className="mt-1 text-muted-foreground">{faq.answer}</p>
                       </div>
@@ -907,7 +907,7 @@ function EventPreviewModal({
               {(detail.policies || detail.cancellationPolicy) && (
                 <div className="grid gap-3 sm:grid-cols-2 text-xs">
                   {detail.policies && (
-                    <div className="rounded-lg border p-3 space-y-1">
+                    <div className="ep-surface-inset rounded-lg border p-3 space-y-1">
                       <p className="font-semibold text-foreground">Event Policies</p>
                       <p className="text-muted-foreground whitespace-pre-wrap">
                         {detail.policies}
@@ -915,7 +915,7 @@ function EventPreviewModal({
                     </div>
                   )}
                   {detail.cancellationPolicy && (
-                    <div className="rounded-lg border p-3 space-y-1">
+                    <div className="ep-surface-inset rounded-lg border p-3 space-y-1">
                       <p className="font-semibold text-foreground">
                         Cancellation & Refund Policy
                       </p>

@@ -87,7 +87,7 @@ function TicketTypeForm({
 
   const inputClass = 'mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm';
   return (
-    <form onSubmit={submit} className="space-y-4 rounded-md border p-4">
+    <form onSubmit={submit} className="ep-surface-inset space-y-4 rounded-md border p-4">
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-sm font-medium">Ticket name<input required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} className={inputClass} /></label>

@@ -79,7 +79,7 @@ export default async function VenueDetailPage({ params }: VenueDetailPageProps) 
           {venue.seatSections.length > 0 && (
             <section className="mt-10">
               <h2 className="text-lg font-semibold">Seating sections</h2>
-              <div className="mt-3 divide-y rounded-lg border">
+        <div className="ep-surface mt-3 divide-y rounded-lg border">
                 {venue.seatSections.map((section) => (
                   <div
                     key={section.id}

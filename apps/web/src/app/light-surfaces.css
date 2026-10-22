@@ -1,6 +1,8 @@
 /* Light-mode surface hierarchy, shared by the public pages and workspaces. */
 html:not(.dark) {
   --background: 220 33% 96.5%;
+  --card: 0 0% 100%;
+  --popover: 0 0% 100%;
   --border: 220 22% 87%;
   --input: 220 22% 87%;
   --muted-foreground: 222 15% 40%;
@@ -11,6 +13,8 @@ html:not(.dark) .ep-app {
   --ep-card: #fff;
   --ep-border: #d7dde8;
   --ep-muted: #596176;
+  --ep-inset: #f7f8fc;
+  --ep-field: #fbfcfe;
   --ep-surface-shadow: 0 2px 4px rgb(23 34 61 / 3%), 0 8px 24px -8px rgb(23 34 61 / 10%);
   --ep-shadow: 0 4px 8px rgb(23 34 61 / 4%), 0 16px 32px -12px rgb(23 34 61 / 16%);
 }
@@ -25,9 +29,105 @@ html:not(.dark) .ep-app :is(
   .state-card,
   .info-box,
   .ep-ai-event-card,
-  .bg-card.border
+  .bg-card.border,
+  .ep-surface,
+  .ep-ticket-event-group,
+  .ep-conversation,
+  .empty
 ) {
   box-shadow: var(--ep-surface-shadow);
+}
+
+/* Explicit surfaces for lists and sections that previously inherited the canvas. */
+html:not(.dark) .ep-app .ep-surface {
+  background: var(--ep-card);
+  border-color: var(--ep-border);
+}
+
+/* Long-form event and venue information has the same boundary as other cards. */
+html:not(.dark) .ep-app :is(.detail-section, .ep-venue-info) {
+  padding: 22px;
+  border: 1px solid var(--ep-border);
+  border-radius: 15px;
+  background: var(--ep-card);
+  box-shadow: var(--ep-surface-shadow);
+}
+
+/* An inner section is quieter than its enclosing white panel. */
+html:not(.dark) .ep-app .ep-surface-inset,
+html:not(.dark) .ep-app :is(.panel, .detail-section, .bg-card, .ep-surface)
+  :is(.ep-surface-inset, .bg-card.border),
+html:not(.dark) .ep-app .detail-section .info-box,
+html:not(.dark) .ep-app .ep-calendar-plan,
+html:not(.dark) .ep-app .ep-category-create {
+  background: var(--ep-inset);
+  border-color: var(--ep-border);
+  box-shadow: none;
+}
+
+html:not(.dark) .ep-app .detail-section details {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--ep-border);
+  border-radius: 10px;
+  background: var(--ep-inset);
+}
+
+/* Keep quantity controls and selection feedback distinct within ticket panels. */
+html:not(.dark) .ep-app .ticket-panel .tier:not(.on) {
+  background: var(--ep-inset);
+  border-color: var(--ep-border);
+}
+
+html:not(.dark) .ep-app .ticket-panel .tier.on {
+  background: var(--ep-soft);
+  border-color: var(--ep-primary);
+}
+
+/* Shared account, authentication, organizer and admin form fields. */
+html:not(.dark) .ep-app :is(input, textarea, select).border,
+html:not(.dark) .ep-app .ep-organization-form :is(input, textarea),
+html:not(.dark) .ep-app .ep-category-create :is(input:not([type="color"]):not([type="file"]), textarea),
+html:not(.dark) .ep-app .ep-category-text-fields :is(input, textarea) {
+  background-color: var(--ep-field);
+}
+
+html:not(.dark) .ep-app :is(input, textarea, select).border:focus,
+html:not(.dark) .ep-app .ep-organization-form :is(input, textarea):focus,
+html:not(.dark) .ep-app .ep-category-text-fields :is(input, textarea):focus {
+  background-color: var(--ep-card);
+  border-color: var(--ep-primary);
+}
+
+html:not(.dark) .ep-app :is(input, textarea, select):disabled {
+  background-color: var(--ep-inset);
+}
+
+/* Headers and hover feedback make dense records easier to follow. */
+html:not(.dark) .ep-app :is(.panel, .bg-card, .ep-surface) thead {
+  background: var(--ep-inset);
+}
+
+@media (hover: hover) {
+  html:not(.dark) .ep-app .ep-surface tbody tr:hover,
+  html:not(.dark) .ep-app .ep-surface-list > article:hover {
+    background: var(--ep-inset);
+  }
+}
+
+/* Give the AI's white recommendation cards a neutral canvas behind them. */
+html:not(.dark) .ep-app .ep-chat-body {
+  background: var(--ep-inset);
+}
+
+html:not(.dark) .ep-app .ep-conversation-full .ep-ai-ideas {
+  background: var(--ep-inset);
+}
+
+@media (max-width: 700px) {
+  html:not(.dark) .ep-app :is(.detail-section, .ep-venue-info) {
+    padding: 16px;
+  }
 }
 
 /* Grouped controls have a quieter elevation than content cards. */
