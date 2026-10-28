@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "EventAI Node",
+  "display": "EventPoint Node",
   "extends": "./base.json",
   "compilerOptions": {
     "module": "CommonJS",

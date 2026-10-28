@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════
-# EventAI Web — Next.js (standalone output)
+# EventPoint Web — Next.js (standalone output)
 # Build context: repository root
 #   docker build -f docker/web.Dockerfile .
 # ═══════════════════════════════════════════════════

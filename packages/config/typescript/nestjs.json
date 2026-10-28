@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "EventAI NestJS",
+  "display": "EventPoint NestJS",
   "extends": "./base.json",
   "compilerOptions": {
     "module": "CommonJS",

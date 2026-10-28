@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════
-# EventAI API — Express + TypeScript
+# EventPoint API — Express + TypeScript
 # Build context: repository root
 #   docker build -f docker/api.Dockerfile .
 # ═══════════════════════════════════════════════════
@@ -56,6 +56,6 @@ USER eventai
 EXPOSE 4000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "fetch('http://localhost:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://localhost:4000/api/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 CMD ["node", "apps/api/dist/main.js"]

@@ -7,29 +7,29 @@ import { NotificationsService, parseEmailSender } from './notifications.service'
 
 describe('parseEmailSender', () => {
   it('parses "Name <addr>" format', () => {
-    expect(parseEmailSender('EventAI <noreply@eventai.dev>')).toEqual({
-      name: 'EventAI',
+    expect(parseEmailSender('EventPoint <noreply@eventai.dev>')).toEqual({
+      name: 'EventPoint',
       email: 'noreply@eventai.dev',
     });
   });
 
   it('parses a bare address with the fallback name', () => {
     expect(parseEmailSender('noreply@eventai.dev')).toEqual({
-      name: 'EventAI',
+      name: 'EventPoint',
       email: 'noreply@eventai.dev',
     });
   });
 
   it('falls back to the default name when the display name is empty', () => {
     expect(parseEmailSender('<noreply@eventai.dev>')).toEqual({
-      name: 'EventAI',
+      name: 'EventPoint',
       email: 'noreply@eventai.dev',
     });
   });
 
   it('tolerates surrounding whitespace', () => {
-    expect(parseEmailSender('  EventAI  < noreply@eventai.dev >  ')).toEqual({
-      name: 'EventAI',
+    expect(parseEmailSender('  EventPoint  < noreply@eventai.dev >  ')).toEqual({
+      name: 'EventPoint',
       email: 'noreply@eventai.dev',
     });
   });
@@ -73,7 +73,7 @@ describe('NotificationsService (Brevo)', () => {
       expect(lastHeaders()['Content-Type']).toBe('application/json');
 
       const body = lastBody();
-      expect(body.sender).toEqual({ name: 'EventAI', email: 'noreply@eventai.dev' });
+      expect(body.sender).toEqual({ name: 'EventPoint', email: 'noreply@eventai.dev' });
       expect(body.to).toEqual([{ email: 'user@example.com' }]);
       expect(body.subject).toBe('Hello');
       expect(body.htmlContent).toBe('<p>Hi</p>');
@@ -282,7 +282,7 @@ describe('NotificationsService (Brevo)', () => {
       });
 
       const body = lastBody();
-      expect(body.subject).toBe('Reset your EventAI password');
+      expect(body.subject).toBe('Reset your EventPoint password');
       expect(body.htmlContent).toContain('http://localhost:3000/reset-password?token=raw-reset-token');
     });
 
@@ -296,7 +296,7 @@ describe('NotificationsService (Brevo)', () => {
       });
 
       const body = lastBody();
-      expect(body.subject).toBe('Verify your EventAI email');
+      expect(body.subject).toBe('Verify your EventPoint email');
       expect(body.htmlContent).toContain('http://localhost:3000/verify-email?token=raw-verify-token');
     });
   });

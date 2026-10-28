@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import express, { type Express, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import type { SignOptions } from 'jsonwebtoken';
 import cors from 'cors';
 import { JwtService } from '../modules/auth/jwt.service';
 import { ConfigService } from '../common/config/config.service';
@@ -125,8 +126,9 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     options.env?.JWT_SECRET ??
     process.env.JWT_SECRET ??
     'fallback-secret-at-least-32-chars-long';
-  const jwtExpiry =
-    options.jwtExpiry ?? options.env?.JWT_EXPIRY ?? process.env.JWT_EXPIRY ?? '7d';
+  const jwtExpiry = (
+    options.jwtExpiry ?? options.env?.JWT_EXPIRY ?? process.env.JWT_EXPIRY ?? '7d'
+  ) as SignOptions['expiresIn'];
 
   const jwtService = new JwtService({
     secret: jwtSecret,
@@ -251,12 +253,17 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
   app.get('/', (_req: Request, res: Response) => {
     res.json({
       status: 'ok',
-      service: 'EventAI API',
+      service: 'EventPoint API',
       version: '1.0.0',
       docs: '/api/docs',
       health: '/api/health',
       frontend: frontendUrl,
     });
+  });
+
+  // Liveness is deliberately before maintenance/auth: no database, Redis or provider calls.
+  app.get(['/api/health/live', '/health/live'], (_req: Request, res: Response) => {
+    res.set('Cache-Control', 'no-store').json({ status: 'ok', service: 'eventpoint-api' });
   });
 
   // Global Website Maintenance Middleware
@@ -410,7 +417,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
 
     res.status(healthy ? 200 : 503).json({
       status: healthy ? 'ok' : 'error',
-      service: 'eventai-api',
+      service: 'eventpoint-api',
       timestamp: new Date().toISOString(),
       dependencies: {
         database,

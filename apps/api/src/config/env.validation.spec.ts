@@ -64,7 +64,7 @@ describe('validateEnv', () => {
       RAZORPAY_KEY_SECRET: 'valid-payment-secret-value',
       RAZORPAY_WEBHOOK_SECRET: 'valid-webhook-secret-value',
       BREVO_API_KEY: 'xkeysib-valid-key-material-1234567890',
-      EMAIL_FROM: 'EventAI <notifications@eventai.test>',
+      EMAIL_FROM: 'EventPoint <notifications@eventai.test>',
     }).NODE_ENV).toBe('production');
   });
 
@@ -116,7 +116,7 @@ describe('validateEnv', () => {
       RAZORPAY_KEY_SECRET: 'valid-payment-secret-value',
       RAZORPAY_WEBHOOK_SECRET: 'valid-webhook-secret-value',
       BREVO_API_KEY: 'xkeysib-valid-key-material-1234567890',
-      EMAIL_FROM: 'EventAI <notifications@eventai.test>',
+      EMAIL_FROM: 'EventPoint <notifications@eventai.test>',
       CLOUDINARY_CLOUD_NAME: 'your-cloud-name',
       CLOUDINARY_API_KEY: '123456789012345',
       CLOUDINARY_API_SECRET: 'xxxxxxxxxxxxxxxxxxxxxxxx',

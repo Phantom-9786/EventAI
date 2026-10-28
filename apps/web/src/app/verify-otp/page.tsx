@@ -155,7 +155,7 @@ function VerifyOtpForm() {
         </div>
         <h2 className="text-xl font-bold tracking-tight">Email verified!</h2>
         <p className="text-sm text-muted-foreground max-w-sm">
-          Your email address has been successfully verified. You can now sign in to your EventAI account.
+          Your email address has been successfully verified. You can now sign in to your EventPoint account.
         </p>
         <Button
           type="button"

@@ -1,6 +1,6 @@
-# EventAI — Phase 4: Production Deployment Plan & Launch Runbook
+# EventPoint — Phase 4: Production Deployment Plan & Launch Runbook
 
-This document defines the production deployment plan, configuration matrix, database release procedures, payment launch checklist, and rollback runbooks for the EventAI platform.
+This document defines the production deployment plan, configuration matrix, database release procedures, payment launch checklist, and rollback runbooks for the EventPoint platform.
 
 ---
 
@@ -106,7 +106,7 @@ This matrix details all repository environment variables required across runtime
 | `RAZORPAY_KEY_SECRET` | API | Razorpay secret for order creation & signature check | Required (Test Mode) | Required (Live Mode) | Secrets Manager | Runtime | High-entropy string from Razorpay Dashboard. Never exposed to browser. |
 | `RAZORPAY_WEBHOOK_SECRET` | API | Secret for authenticating incoming webhooks | Required | Required | Secrets Manager | Runtime | Shared secret configured in Razorpay Webhook settings. Used for HMAC-SHA256 signature verification. |
 | `BREVO_API_KEY` | API | Brevo API key for transactional emails | Optional (Test Key) | Required (Live Key) | Secrets Manager | Runtime | Starts with `xkeysib-`. In production, startup fails if placeholder or missing. |
-| `EMAIL_FROM` | API | Sender identity for transactional emails | Required | Required | Platform Env | Runtime | Must be a valid email format matching verified domain, e.g., `EventAI <noreply@eventai.example.com>`. |
+| `EMAIL_FROM` | API | Sender identity for transactional emails | Required | Required | Platform Env | Runtime | Must be a valid email format matching verified domain, e.g., `EventPoint <noreply@eventai.example.com>`. |
 | `GROQ_API_KEY` / `GROQ_API_KEYS` | API | Groq API key(s) for AI chat assistant | Optional | Optional | Secrets Manager | Runtime | Valid Groq API key(s). If missing, `/api/ai/chat` gracefully returns 503 while rest of platform functions. |
 | `GROQ_MODEL`, `GROQ_SIMPLE_MODEL`, etc. | API | AI model tier overrides | Optional | Optional | Platform Env | Runtime | Must match regex `^[a-z0-9][a-z0-9._/-]{1,127}$`. |
 | `AI_RATE_LIMIT_*`, `AI_MAX_CONCURRENT_*` | API | Concurrency & rate bounds for AI | Optional | Optional | Platform Env | Runtime | Positive integers within validated ranges. Defaults: User=10/min, Global=120/min, Timeout=30000ms. |
@@ -319,7 +319,7 @@ graph LR
    - `JWT_SECRET=...`
    - `UPLOAD_DIR=/app/uploads`
    - `RAZORPAY_KEY_ID=...`, `RAZORPAY_KEY_SECRET=...`, `RAZORPAY_WEBHOOK_SECRET=...`
-   - `BREVO_API_KEY=...`, `EMAIL_FROM=EventAI <noreply@eventai.example.com>`
+   - `BREVO_API_KEY=...`, `EMAIL_FROM=EventPoint <noreply@eventai.example.com>`
    - `SENTRY_DSN=...`, `SENTRY_ENVIRONMENT=production`
 3. Launch container with volume mount `/app/uploads`.
 4. Verify API healthcheck:

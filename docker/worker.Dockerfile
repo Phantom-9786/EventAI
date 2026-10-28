@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════
-# EventAI Worker — BullMQ background processor
+# EventPoint Worker — BullMQ background processor
 # Build context: repository root
 #   docker build -f docker/worker.Dockerfile .
 # ═══════════════════════════════════════════════════

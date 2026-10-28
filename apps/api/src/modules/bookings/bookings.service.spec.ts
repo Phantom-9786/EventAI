@@ -362,6 +362,68 @@ describe('BookingsService', () => {
   });
 
   describe('handleStaleBookingsCron & seat hold expiration', () => {
+    afterEach(() => jest.restoreAllMocks());
+
+    it('avoids empty minute queries but reconciles again after 30 minutes', async () => {
+      let now = Date.now();
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+      await service.handleStaleBookingsCron();
+      now += 29 * 60_000;
+      await service.handleStaleBookingsCron();
+      expect(prisma.booking.findMany).toHaveBeenCalledTimes(1);
+      now += 60_000;
+      await service.handleStaleBookingsCron();
+      expect(prisma.booking.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('waits for the next known hold instead of polling it every minute', async () => {
+      let now = Date.now();
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+      const expiresAt = new Date(now + 10 * 60_000);
+      prisma.booking.findMany.mockResolvedValue([{ id: 'bk-future', expiresAt }]);
+      await service.handleStaleBookingsCron();
+      now += 9 * 60_000;
+      await service.handleStaleBookingsCron();
+      expect(prisma.booking.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.booking.findFirst).not.toHaveBeenCalled();
+      now += 60_001;
+      await service.handleStaleBookingsCron();
+      expect(prisma.booking.findMany).toHaveBeenCalledTimes(2);
+      expect(prisma.booking.findFirst).toHaveBeenCalled();
+    });
+
+    it('schedules a newly committed hold during the idle recovery window', async () => {
+      let now = Date.now();
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+      await service.handleStaleBookingsCron();
+      const held = { ...booking, expiresAt: new Date(now + 10 * 60_000) };
+      prisma.booking.findUnique.mockResolvedValue(null);
+      prisma.event.findFirst.mockResolvedValue(event);
+      prisma.ticketType.findMany.mockResolvedValue([ticketType]);
+      prisma.ticketType.updateMany.mockResolvedValue({ count: 1 });
+      prisma.booking.create.mockResolvedValue(held);
+      prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
+      await service.create('user-1', validInput);
+      now += 10 * 60_000;
+      await service.handleStaleBookingsCron();
+      expect(prisma.booking.findMany).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not postpone a hold committed while recovery is in flight', async () => {
+      let now = Date.now();
+      jest.spyOn(Date, 'now').mockImplementation(() => now);
+      let resolveSweep!: (rows: []) => void;
+      prisma.booking.findMany.mockImplementationOnce(() => new Promise((resolve) => { resolveSweep = resolve; }));
+      const sweep = service.handleStaleBookingsCron();
+      prisma.booking.findUnique.mockResolvedValue({ ...booking, expiresAt: new Date(now + 60_000) });
+      await service.create('user-1', validInput);
+      resolveSweep([]);
+      await sweep;
+      now += 60_000;
+      await service.handleStaleBookingsCron();
+      expect(prisma.booking.findMany).toHaveBeenCalledTimes(2);
+    });
+
     it('expires stale bookings past TTL and releases ticket stock', async () => {
       const staleBooking = {
         id: 'bk-stale-1',
@@ -370,7 +432,7 @@ describe('BookingsService', () => {
         items: [{ ticketTypeId: 'tt-1', quantity: 3, seatId: null }],
       };
 
-      prisma.booking.findMany.mockResolvedValue([{ id: 'bk-stale-1' }]);
+      prisma.booking.findMany.mockResolvedValue([{ id: 'bk-stale-1', expiresAt: new Date(Date.now() - 60_000) }]);
       prisma.booking.findFirst.mockResolvedValue(staleBooking);
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
       prisma.booking.updateMany.mockResolvedValue({ count: 1 });
@@ -401,7 +463,7 @@ describe('BookingsService', () => {
         items: [{ ticketTypeId: 'tt-1', quantity: 1, seatId: 'seat-42' }],
       };
 
-      prisma.booking.findMany.mockResolvedValue([{ id: 'bk-stale-seat' }]);
+      prisma.booking.findMany.mockResolvedValue([{ id: 'bk-stale-seat', expiresAt: new Date(Date.now() - 60_000) }]);
       prisma.booking.findFirst.mockResolvedValue(staleBookingWithSeat);
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
       prisma.booking.updateMany.mockResolvedValue({ count: 1 });
@@ -429,7 +491,7 @@ describe('BookingsService', () => {
         items: [{ ticketTypeId: 'tt-1', quantity: 2, seatId: null }],
       };
 
-      prisma.booking.findMany.mockResolvedValue([{ id: 'bk-concurrent' }]);
+      prisma.booking.findMany.mockResolvedValue([{ id: 'bk-concurrent', expiresAt: new Date(Date.now() - 60_000) }]);
       prisma.booking.findFirst.mockResolvedValue(staleBooking);
       prisma.$transaction.mockImplementation(async (fn) => fn(prisma));
       // Compare-and-set returns count 0 (already transitioned by another worker/request)
@@ -443,8 +505,8 @@ describe('BookingsService', () => {
 
     it('isolates per-booking errors so failure of one does not break the batch', async () => {
       prisma.booking.findMany.mockResolvedValue([
-        { id: 'bk-error' },
-        { id: 'bk-success' },
+        { id: 'bk-error', expiresAt: new Date(Date.now() - 60_000) },
+        { id: 'bk-success', expiresAt: new Date(Date.now() - 60_000) },
       ]);
 
       prisma.booking.findFirst

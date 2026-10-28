@@ -56,7 +56,7 @@ describe('Express Admin Module & Authorization Security', () => {
 
   function createToken(
     user: { id: string; email: string; role: UserRole },
-    expiresIn = '1h',
+    expiresIn: jwt.SignOptions['expiresIn'] = '1h',
   ): string {
     return jwt.sign(
       { sub: user.id, email: user.email, role: user.role },
@@ -121,6 +121,7 @@ describe('Express Admin Module & Authorization Security', () => {
         JWT_SECRET,
         FRONTEND_URL: 'http://localhost:3000',
         NODE_ENV: 'test',
+        REDIS_URL: '',
       },
     });
 

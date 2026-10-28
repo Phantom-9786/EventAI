@@ -53,6 +53,14 @@ describe('Express Foundation App', () => {
   });
 
   describe('Root and Status Endpoints', () => {
+    it('answers liveness probes without querying database or Redis', async () => {
+      const res = await fetch(`${baseUrl}/api/health/live`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ status: 'ok', service: 'eventpoint-api' });
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(mockPrisma.$queryRaw).not.toHaveBeenCalled();
+      expect(mockCache.ping).not.toHaveBeenCalled();
+    });
     it('returns the friendly root status payload on GET /', async () => {
       const res = await fetch(`${baseUrl}/`);
       expect(res.status).toBe(200);
@@ -60,7 +68,7 @@ describe('Express Foundation App', () => {
       const body = (await res.json()) as Record<string, unknown>;
       expect(body).toEqual({
         status: 'ok',
-        service: 'EventAI API',
+        service: 'EventPoint API',
         version: '1.0.0',
         docs: '/api/docs',
         health: '/api/health',
@@ -79,7 +87,7 @@ describe('Express Foundation App', () => {
 
       const body = (await res.json()) as Record<string, unknown>;
       expect(body.status).toBe('ok');
-      expect(body.service).toBe('eventai-api');
+      expect(body.service).toBe('eventpoint-api');
       expect(body.dependencies).toEqual({
         database: 'up',
         redis: 'up',

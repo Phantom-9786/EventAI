@@ -177,7 +177,7 @@ export function BookingWidget({
         amount: order.amount,
         currency: order.currency,
         order_id: order.orderId,
-        name: 'EventAI',
+        name: 'EventPoint',
         description: eventTitle,
         prefill: { email: user.email },
         theme: { color: '#4f46e5' },

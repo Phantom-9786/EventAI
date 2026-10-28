@@ -73,7 +73,7 @@ const GROQ_TRANSIENT_RETRIES = 1;
 const GROQ_TRANSIENT_BACKOFF_MS = 500;
 
 /**
- * EventAI assistant backed by Groq via the OpenAI-compatible
+ * EventPoint assistant backed by Groq via the OpenAI-compatible
  * chat-completions API. Only category labels and compact event references are
  * sent upfront; live event facts and passages are retrieved on demand.
  *
@@ -381,7 +381,7 @@ export class AiService {
       venue: e.venue,
       organizer: {
         id: e.organizer.id,
-        organizationName: e.organizer.organizationName ?? 'EventAI',
+        organizationName: e.organizer.organizationName ?? 'EventPoint',
       },
     }));
   }

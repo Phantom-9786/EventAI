@@ -1,4 +1,4 @@
-# EventAI — Session Handoff & Reboot Guide
+# EventPoint — Session Handoff & Reboot Guide
 
 **Date:** October 13, 2026  
 **Project Path:** `E:\Project - Copy`  
@@ -104,7 +104,7 @@ If containers are stopped, start them **without resetting volumes or data**:
 docker start eventai-postgres eventai-redis
 ```
 
-### Step 2: Start EventAI Dev Servers
+### Step 2: Start EventPoint Dev Servers
 From the repository root (`E:\Project - Copy`):
 ```powershell
 npm run dev

@@ -1,4 +1,4 @@
-# EventAI — Discover. Book. Experience.
+# EventPoint — Discover. Book. Experience.
 
 AI-powered Event Discovery and Ticket Booking Platform built as a modular monolith with Turborepo.
 

@@ -1,6 +1,6 @@
 # Architecture
 
-EventAI is a modular monolith served by a Turborepo monorepo.
+EventPoint is a modular monolith served by a Turborepo monorepo.
 
 ```
 Browser ──► Next.js 14 web (apps/web, :3000)

@@ -10,7 +10,7 @@ const DEMO_CUSTOMER = { email: 'customer@eventai.test', password: 'DemoPass123' 
 
 test('landing page renders', async ({ page }) => {
   await page.goto('/');
-  await expect(page).toHaveTitle(/EventAI/i);
+  await expect(page).toHaveTitle(/EventPoint/i);
 });
 
 test('event discovery lists seeded events', async ({ page }) => {

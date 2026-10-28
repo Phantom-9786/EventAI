@@ -132,7 +132,7 @@ export default function SignInPage() {
         </div>
         <GoogleButton redirectTo={returnPath} />
         <p className="text-center text-sm text-muted-foreground">
-          New to EventAI?{' '}
+          New to EventPoint?{' '}
           <Link href={`/signup?returnUrl=${encodeURIComponent(returnPath)}`} className="font-medium text-primary hover:underline">
             Create an account
           </Link>

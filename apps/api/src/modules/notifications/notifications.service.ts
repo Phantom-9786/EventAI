@@ -35,7 +35,7 @@ function escapeHtml(value: string): string {
  * Parse an RFC-style sender value ("Name <addr@host>" or "addr@host")
  * into Brevo's { name, email } sender object.
  */
-export function parseEmailSender(raw: string, fallbackName = 'EventAI'): BrevoSender {
+export function parseEmailSender(raw: string, fallbackName = 'EventPoint'): BrevoSender {
   const match = raw.match(/^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/);
   if (match) {
     return {
@@ -226,7 +226,7 @@ export class NotificationsService {
   async sendEmail(input: SendEmailInput, retries = 2, backoffMs = 100): Promise<boolean> {
     const apiKey = process.env.BREVO_API_KEY;
     const sender = parseEmailSender(
-      process.env.EMAIL_FROM ?? 'EventAI <noreply@eventai.dev>',
+      process.env.EMAIL_FROM ?? 'EventPoint <noreply@eventai.dev>',
     );
     if (!apiKey || apiKey.startsWith('xkeysib-xxxx')) {
       this.logger.log('Email skipped because the email provider is not configured');
@@ -308,7 +308,7 @@ export class NotificationsService {
         </ul>
         <p>Your tickets (QR codes are available in the app under My Tickets):</p>
         <ul>${tickets}</ul>
-        <p>See you there! — EventAI</p>
+        <p>See you there! — EventPoint</p>
       `,
     });
   }
@@ -320,13 +320,13 @@ export class NotificationsService {
   }): Promise<boolean> {
     return this.sendEmail({
       to: input.to,
-      subject: 'Your EventAI verification code',
+      subject: 'Your EventPoint verification code',
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #18181b;">
-          <h2 style="font-size: 20px; font-weight: 700; color: #09090b; margin-bottom: 12px;">Verify your EventAI email</h2>
+          <h2 style="font-size: 20px; font-weight: 700; color: #09090b; margin-bottom: 12px;">Verify your EventPoint email</h2>
           <p style="font-size: 15px; line-height: 1.5; color: #3f3f46; margin: 0 0 16px;">Hi ${input.holderName},</p>
           <p style="font-size: 15px; line-height: 1.5; color: #3f3f46; margin: 0 0 20px;">
-            Thank you for creating an account with EventAI. Use the 6-digit verification code below to verify your email address:
+            Thank you for creating an account with EventPoint. Use the 6-digit verification code below to verify your email address:
           </p>
           <div style="background-color: #f4f4f5; border-radius: 8px; padding: 20px; text-align: center; margin: 24px 0;">
             <span style="font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 32px; font-weight: 700; letter-spacing: 8px; color: #09090b;">
@@ -339,7 +339,7 @@ export class NotificationsService {
           <p style="font-size: 14px; line-height: 1.5; color: #71717a; margin: 0 0 24px;">
             If you did not request this verification code, please ignore this email.
           </p>
-          <p style="font-size: 14px; color: #a1a1aa; margin: 0;">— The EventAI Team</p>
+          <p style="font-size: 14px; color: #a1a1aa; margin: 0;">— The EventPoint Team</p>
         </div>
       `,
     });
@@ -354,13 +354,13 @@ export class NotificationsService {
     const verifyUrl = `${input.frontendUrl.replace(/\/$/, '')}/verify-email?token=${input.verificationToken}`;
     return this.sendEmail({
       to: input.to,
-      subject: 'Verify your EventAI email',
+      subject: 'Verify your EventPoint email',
       html: `
         <p>Hi ${input.holderName},</p>
-        <p>Welcome to EventAI! Please confirm your email address. This link is valid for 24 hours:</p>
+        <p>Welcome to EventPoint! Please confirm your email address. This link is valid for 24 hours:</p>
         <p><a href="${verifyUrl}">Verify my email</a></p>
         <p>If you didn't create an account, you can safely ignore this email.</p>
-        <p>— EventAI</p>
+        <p>— EventPoint</p>
       `,
     });
   }
@@ -374,13 +374,13 @@ export class NotificationsService {
     const resetUrl = `${input.frontendUrl.replace(/\/$/, '')}/reset-password?token=${input.resetToken}`;
     return this.sendEmail({
       to: input.to,
-      subject: 'Reset your EventAI password',
+      subject: 'Reset your EventPoint password',
       html: `
         <p>Hi ${input.holderName},</p>
-        <p>We received a request to reset your EventAI password. This link is valid for 1 hour:</p>
+        <p>We received a request to reset your EventPoint password. This link is valid for 1 hour:</p>
         <p><a href="${resetUrl}">Reset your password</a></p>
         <p>If you didn't request this, you can safely ignore this email — your password will not change.</p>
-        <p>— EventAI</p>
+        <p>— EventPoint</p>
       `,
     });
   }
@@ -439,7 +439,7 @@ export class NotificationsService {
           <li><strong>Booking:</strong> ${input.bookingId}</li>
           ${input.reason ? `<li><strong>Reason:</strong> ${input.reason}</li>` : ''}
         </ul>
-        <p>No payment was taken for this booking. — EventAI</p>
+        <p>No payment was taken for this booking. — EventPoint</p>
       `,
     });
   }
@@ -471,7 +471,7 @@ export class NotificationsService {
         <p>The organizer has cancelled <strong>${eventTitle}</strong>. Your booking and tickets are no longer valid.</p>
         <p><strong>Booking:</strong> ${bookingId}</p>
         ${paymentMessage}
-        <p>— EventAI</p>
+        <p>— EventPoint</p>
       `,
     });
   }
@@ -498,7 +498,7 @@ export class NotificationsService {
           <li><strong>Refund reference:</strong> ${input.refundId}</li>
           ${input.reason ? `<li><strong>Reason:</strong> ${input.reason}</li>` : ''}
         </ul>
-        <p>Refunds typically appear on your statement within 5–7 business days. — EventAI</p>
+        <p>Refunds typically appear on your statement within 5–7 business days. — EventPoint</p>
       `,
     });
   }

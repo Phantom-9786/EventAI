@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-// API client for the EventAI Express backend.
+// API client for the EventPoint Express backend.
 // All prices are integers in paise (INR).
 // ═══════════════════════════════════════════════════
 

@@ -13,6 +13,8 @@ import { PaymentsService } from '../payments/payments.service';
 
 /** Reuses the seat-hold TTL: how long a PENDING booking keeps stock reserved. */
 const HOLD_TTL_SECONDS = Number(process.env.SEAT_HOLD_TTL_SECONDS ?? 600);
+// Recover holds created by another process without keeping an idle database awake.
+const EXPIRY_RECONCILE_MS = 30 * 60_000;
 
 const BOOKING_DETAIL_INCLUDE = {
   event: {
@@ -84,6 +86,7 @@ export class BookingsService {
       if (existing.userId !== userId) {
         throw new ForbiddenException('Idempotency key already in use');
       }
+      this.scheduleBookingExpiry(existing);
       return existing;
     }
 
@@ -139,7 +142,7 @@ export class BookingsService {
     const expiresAt = new Date(now + HOLD_TTL_SECONDS * 1000);
 
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const created = await this.prisma.$transaction(async (tx) => {
         // Deterministic sorting of ticket types avoids lock-ordering deadlocks
         // across concurrent multi-ticket bookings.
         const sortedQuantities = [...quantities.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -183,6 +186,8 @@ export class BookingsService {
           include: BOOKING_DETAIL_INCLUDE,
         });
       }, { maxWait: 5_000, timeout: 15_000 });
+      this.scheduleBookingExpiry(created);
+      return created;
     } catch (error) {
       // Prisma unique-violation: a concurrent request won the idempotency race
       if (
@@ -196,6 +201,7 @@ export class BookingsService {
           include: BOOKING_DETAIL_INCLUDE,
         });
         if (winner && winner.userId === userId) {
+          this.scheduleBookingExpiry(winner);
           return winner;
         }
         throw new ForbiddenException('Idempotency key already in use');
@@ -334,34 +340,57 @@ export class BookingsService {
   }
 
   private isSweepRunning = false;
+  private nextExpirySweepAt = 0;
+  private expiryScheduleVersion = 0;
 
-  /** Minute cron: expires stale bookings across all users and releases stock. */
+  private scheduleBookingExpiry(booking: { status: string; expiresAt: Date | null }): void {
+    if (!['PENDING', 'PAYMENT_PENDING'].includes(booking.status) || !booking.expiresAt) return;
+    this.expiryScheduleVersion++;
+    this.nextExpirySweepAt = Math.min(this.nextExpirySweepAt, booking.expiresAt.getTime());
+  }
+
+  /** Minute timer; only touches Postgres when a hold is due or recovery is due. */
   async handleStaleBookingsCron(): Promise<{ expiredCount: number }> {
+    if (Date.now() < this.nextExpirySweepAt) return { expiredCount: 0 };
     if (this.isSweepRunning) {
       this.logger.debug('Stale bookings sweep already in progress; skipping overlapping tick');
       return { expiredCount: 0 };
     }
     this.isSweepRunning = true;
+    const scheduleVersion = this.expiryScheduleVersion;
+    const now = Date.now();
     let expiredCount = 0;
     try {
-      const stale = await this.prisma.booking.findMany({
+      const pending = await this.prisma.booking.findMany({
         where: {
           status: { in: ['PENDING', 'PAYMENT_PENDING'] },
-          expiresAt: { lt: new Date() },
+          expiresAt: { not: null },
         },
-        select: { id: true },
+        select: { id: true, expiresAt: true },
+        orderBy: { expiresAt: 'asc' },
         take: 200,
       });
+      const stale = pending.filter((booking) => booking.expiresAt!.getTime() <= now);
+      let retryNeeded = stale.length === 200;
       for (const { id } of stale) {
         try {
           const expired = await this.expireBookingIfStale(id);
           if (expired) expiredCount++;
         } catch (err) {
+          retryNeeded = true;
           this.logger.warn(
             `Failed to expire booking ${id}: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
+      const nextHold = pending.find((booking) => booking.expiresAt!.getTime() > now);
+      const nextSweepAt = retryNeeded
+        ? now + 60_000
+        : Math.min(now + EXPIRY_RECONCILE_MS, nextHold?.expiresAt?.getTime() ?? Infinity);
+      // Do not overwrite an earlier hold committed while the query was in flight.
+      this.nextExpirySweepAt = scheduleVersion === this.expiryScheduleVersion
+        ? nextSweepAt
+        : Math.min(this.nextExpirySweepAt, nextSweepAt);
       if (expiredCount > 0) {
         this.logger.log(`Stale bookings sweep expired ${expiredCount} booking(s) and released inventory`);
       }

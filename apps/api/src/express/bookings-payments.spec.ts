@@ -131,6 +131,7 @@ describe('Express Bookings, Payments, Webhooks and Refunds Modules', () => {
         JWT_SECRET,
         FRONTEND_URL: 'http://localhost:3000',
         NODE_ENV: 'test',
+        REDIS_URL: '',
       },
     });
 

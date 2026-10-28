@@ -98,7 +98,7 @@ async function bootstrap() {
 
   // 7. Start HTTP server
   const server = app.listen(port, () => {
-    logger.log(`🚀 EventAI Express API running on http://localhost:${port}`);
+    logger.log(`🚀 EventPoint Express API running on http://localhost:${port}`);
     logger.log(`🩺 Health check at http://localhost:${port}/api/health`);
     logger.log(`📁 Uploads mounted from ${uploadDir} at /uploads`);
   });
@@ -108,6 +108,7 @@ async function bootstrap() {
   scheduler.registerJob({
     name: 'stale-bookings-expiration',
     intervalMs: 60_000,
+    runOnStart: true,
     handler: async () => {
       await bookingsService.handleStaleBookingsCron();
     },

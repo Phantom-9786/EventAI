@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════
-// EventAI Worker — BullMQ background job processor
+// EventPoint Worker — BullMQ background job processor
 // Skeleton: Redis connection + queue registry +
 // graceful shutdown. Job processors land in Phase 3/4.
 // ═══════════════════════════════════════════════════
@@ -82,6 +82,6 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));
 
 // ── Entry point ────────────────────────────────────
-console.log('[worker] EventAI worker starting...');
+console.log('[worker] EventPoint worker starting...');
 console.log('[worker] No processors registered yet (Phase 3/4). Idling.');
 startWorkers();
