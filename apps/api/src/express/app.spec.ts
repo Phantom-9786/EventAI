@@ -53,8 +53,8 @@ describe('Express Foundation App', () => {
   });
 
   describe('Root and Status Endpoints', () => {
-    it('answers liveness probes without querying database or Redis', async () => {
-      const res = await fetch(`${baseUrl}/api/health/live`);
+    it.each(['/health', '/api/health/live', '/health/live'])('answers %s without querying database or Redis', async (path) => {
+      const res = await fetch(`${baseUrl}${path}`);
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ status: 'ok', service: 'eventpoint-api' });
       expect(res.headers.get('cache-control')).toBe('no-store');

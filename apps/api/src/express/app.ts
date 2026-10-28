@@ -262,7 +262,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
   });
 
   // Liveness is deliberately before maintenance/auth: no database, Redis or provider calls.
-  app.get(['/api/health/live', '/health/live'], (_req: Request, res: Response) => {
+  app.get(['/health', '/api/health/live', '/health/live'], (_req: Request, res: Response) => {
     res.set('Cache-Control', 'no-store').json({ status: 'ok', service: 'eventpoint-api' });
   });
 
@@ -459,7 +459,6 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
   app.use('/api', apiRouter);
 
   // Aliases for convenience without /api prefix
-  app.get('/health', healthHandler);
   if (nodeEnv !== 'production') {
     app.post('/test/raw-body', rawBodyHandler);
   }
