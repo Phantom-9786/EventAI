@@ -705,6 +705,24 @@ describe('Structured discovery filters', () => {
     expect(grounded.messages.at(-1).content).toContain('startDateLabel');
   });
 
+  it.each([
+    ['We have one music event in Delhi.', false],
+    ['I found 2 matching events.', false],
+    ['We found four music events.', true],
+    ['One standout option is the acoustic evening.', true],
+  ])('checks generated discovery counts against live results: %s', async (reply, accepted) => {
+    process.env.GROQ_API_KEY = KEY_A;
+    const events = Array.from({ length: 4 }, (_, i) => ({ ...CATALOG_ROW, id: `evt-${i}`, slug: `music-${i}` }));
+    const database = { searchEvents: jest.fn().mockResolvedValue({ events, total: 4, retrievalMode: 'hybrid' }) };
+    const service = new AiService(makePrismaMock() as never, { get: jest.fn().mockResolvedValue(null), set: jest.fn(), providerCooldownMs: jest.fn().mockResolvedValue(0) } as never, database as never);
+    jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ intent: 'search', reply: 'Searching.', search: { category: 'music' }, slugs: [] }) } }] }))
+      .mockResolvedValueOnce(groqResponse(200, { choices: [{ message: { content: JSON.stringify({ intent: 'answer', reply, search: null, slugs: [] }) } }] }));
+    const result = await service.chat([{ role: 'user', content: 'Find music events' }]);
+    expect(result.events).toHaveLength(4);
+    expect(result.reply).toBe(accepted ? reply : 'Here are the events matching your preferences. Open a card to explore.');
+  });
+
   it.each([null, { category: 'music', semanticQuery: 'relaxed evening' }])('handles a new conversational category request even with search=%j', async search => {
     process.env.GROQ_API_KEY = KEY_A;
     const database = { searchEvents: jest.fn().mockResolvedValue({ events: [CATALOG_ROW], total: 1 }) };

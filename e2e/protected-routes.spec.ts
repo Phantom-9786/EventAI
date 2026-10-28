@@ -221,7 +221,7 @@ test('direct /admin navigation restores an admin session and renders the admin i
       .getByRole('navigation', { name: 'Admin workspace' })
       .getByRole('link', { name: 'Bookings & payments' }),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Create', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create category', exact: true })).toBeVisible();
   expect(requests).toEqual(
     expect.arrayContaining([
       '/api/auth/refresh',

@@ -34,7 +34,8 @@ const eventManageFixture = {
   images: [],
   category: { id: 'category-music', name: 'Music', slug: 'music' },
   venue: { id: 'venue-demo', name: 'Demo Hall', address: '1 Main Street', city: 'Mumbai', state: 'MH' },
-  ticketTypes: [],
+  ticketTypes: [{ id: 'tier-existing', name: 'General', price: 49900, currency: 'INR', totalQuantity: 100, availableQuantity: 100, maxPerBooking: 5, isActive: true }],
+  moderation: { status: 'APPROVED', rejectionReason: null },
 };
 
 const refundRequestFixture = (bookingId: string, title: string) => ({
@@ -58,6 +59,10 @@ const refundRequestFixture = (bookingId: string, title: string) => ({
 });
 
 async function useAuthFixture(page: import('@playwright/test').Page, user = customer) {
+  await page.route('**/api/events/upload-config', route => route.fulfill({ json: {
+    configured: true, uploadsEnabled: true, maxFileSizeBytes: 5 * 1024 * 1024,
+    allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp'], providers: ['fixture'],
+  } }));
   await page.addInitScript(() => {
     window.localStorage.setItem('eventai_access_token', 'e2e-access-token');
   });
@@ -118,6 +123,10 @@ test('account profile and theme preferences save through the authenticated API',
 test('organizer event wizard retries categories and submits event media', async ({
   page,
 }) => {
+  await page.route('**/api/events/upload-config', route => route.fulfill({ json: {
+    configured: true, uploadsEnabled: true, maxFileSizeBytes: 5 * 1024 * 1024,
+    allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp'], providers: ['fixture'],
+  } }));
   let categoryRequests = 0;
   const submittedEvents: Array<{
     title: string;
@@ -297,7 +306,8 @@ test('login opens My Account and theme choice persists across reloads', async ({
   await page.getByLabel('Password').fill('test-password');
   await page.getByRole('button', { name: 'Sign In' }).click();
   await expect(page).toHaveURL(/\/events$/);
-  await page.getByRole('link', { name: 'My Account' }).click();
+  await page.getByRole('button', { name: 'Account menu' }).click();
+  await page.getByRole('link', { name: 'Personal profile & settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'My Account' })).toBeVisible();
   await expect(page.getByLabel('Location')).toHaveValue('Mumbai');
 
@@ -374,10 +384,12 @@ test('My Tickets shows booking and ticket state and creates only an approval req
   page.on('dialog', (dialog) => dialog.accept());
 
   await page.goto('/tickets');
-  await expect(page.getByRole('heading', { name: 'My Tickets' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Mumbai Music Night' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your digital tickets.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Mumbai Music Night', level: 2 })).toBeVisible();
   await expect(page.getByText('TKT-E2E-1')).toBeVisible();
-  await expect(page.getByRole('img', { name: 'Ticket QR code' })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'QR code for ticket TKT-E2E-1', exact: true })).toBeVisible();
+  await page.goto('/bookings');
+  await expect(page.getByRole('heading', { name: 'My bookings', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Request refund' }).click();
   await expect(page.getByRole('status')).toContainText('sent to the event organizer');
   await expect(page.getByText(/Refund request awaiting organizer approval/)).toBeVisible();
@@ -444,12 +456,12 @@ test('organizer can edit, publish, and cancel an event without calling payment p
   await page.getByRole('button', { name: 'Next step' }).click();
   await page.getByRole('button', { name: 'Save draft changes' }).click();
   await expect(page.getByRole('status')).toContainText('Draft saved.');
-  await page.getByRole('button', { name: 'Publish event', exact: true }).click();
-  await expect(page.getByText('Event published.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish event now', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Event published successfully!');
   await page.getByRole('button', { name: 'Cancel event' }).click();
   await expect(page.getByText(/queued for organizer refund approval/)).toBeVisible();
   expect(status).toBe('CANCELLED');
-  expect(requests).toEqual(['edit', 'publish', 'cancel']);
+  expect(requests).toEqual(['edit', 'edit', 'publish', 'cancel']);
   expect(providerRequests).toBe(0);
 });
 

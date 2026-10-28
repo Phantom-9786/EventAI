@@ -28,7 +28,8 @@ test('Google callback validates the bearer token and updates application auth st
   await page.goto('/auth/callback#access_token=google-access-token&redirect=%2Fevents');
 
   await expect(page).toHaveURL(/\/events$/);
-  await expect(page.getByText('Hi, Google User')).toBeVisible();
+  await page.getByRole('button', { name: 'Account menu' }).click();
+  await expect(page.locator('#account-popover').getByText('Google User', { exact: true })).toBeVisible();
   expect(meAuthorization).toBe('Bearer google-access-token');
   expect(refreshCalls).toBe(0);
   await expect(page).not.toHaveURL(/access_token/);

@@ -38,6 +38,10 @@ const eventManageFixture = {
 };
 
 async function useAuthFixture(page: import('@playwright/test').Page, user = customer) {
+  await page.route('**/api/events/upload-config', route => route.fulfill({ json: {
+    configured: true, uploadsEnabled: true, maxFileSizeBytes: 5 * 1024 * 1024,
+    allowedMimeTypes: ['image/png', 'image/jpeg', 'image/webp'], providers: ['fixture'],
+  } }));
   await page.addInitScript(() => {
     window.localStorage.setItem('eventai_access_token', 'e2e-access-token');
   });
@@ -309,7 +313,7 @@ test.describe('Verification: 6-Step Event Creation Wizard', () => {
     await expect(page.getByText('Symphony Gala 2026')).toBeVisible();
     await expect(page.getByText('Royal Opera Hall')).toBeVisible();
     await expect(page.getByText(/Tickets \(1 tier\)/)).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Publish event now' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Submit for admin approval' })).toBeVisible();
   });
 });
 
@@ -369,7 +373,7 @@ test.describe('Verification: In-App Notifications', () => {
 
     // Click bell to open notifications tray
     await bellButton.click();
-    await expect(page.getByText('Notifications')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Clear notifications', exact: true })).toBeVisible();
     await expect(page.getByText('2 new')).toBeVisible();
     await expect(page.getByText('Booking confirmed!')).toBeVisible();
     await expect(page.getByText('Refund approved')).toBeVisible();
@@ -380,7 +384,7 @@ test.describe('Verification: In-App Notifications', () => {
 
     // Mark all read
     await page.getByRole('button', { name: 'Mark all read' }).click();
-    await expect(bellButton.locator('span')).toHaveCount(0); // Badge cleared
+    await expect(bellButton.getByText(/^\d+\+?$/)).toHaveCount(0); // Numeric unread badge cleared
   });
 });
 
@@ -555,12 +559,11 @@ test.describe('Verification: Admin Metric Cards Navigation & Event Moderation Pr
         status: 200,
         json: {
           users: 150,
-          organizers: 12,
-          verifiedOrganizers: 8,
-          publishedEvents: 25,
-          draftEvents: 5,
-          totalBookings: 320,
-          totalRevenue: 45000000,
+          organizers: { total: 12, verified: 8 },
+          events: { total: 30, PUBLISHED: 25, DRAFT: 5, CANCELLED: 0, COMPLETED: 0, SOLDOUT: 0 },
+          bookings: { CONFIRMED: 320 },
+          revenue: { gross: 45000000, refunded: 0, net: 45000000 },
+          tickets: { VALID: 320, USED: 0, CANCELLED: 0, EXPIRED: 0, issued: 320, checkedIn: 0 },
         },
       }),
     );
@@ -649,10 +652,11 @@ test.describe('Verification: Admin Metric Cards Navigation & Event Moderation Pr
       }),
     );
 
+    await page.route('**/api/categories', route => route.fulfill({ json: { categories: [] } }));
     await page.goto('/admin');
 
     // 1. Verify metric cards load and clicking switches to target tab
-    const usersCard = page.getByRole('button', { name: /Active Users/i });
+    const usersCard = page.getByRole('link', { name: /Total users/i });
     await expect(usersCard).toBeVisible();
     await usersCard.click();
 
@@ -660,7 +664,8 @@ test.describe('Verification: Admin Metric Cards Navigation & Event Moderation Pr
     await expect(page.getByText('attendee@example.com')).toBeVisible();
 
     // Click Events stat card
-    const eventsCard = page.getByRole('button', { name: /Published Events/i });
+    await page.getByRole('navigation', { name: 'Admin workspace' }).getByRole('link', { name: 'Admin Dashboard', exact: true }).click();
+    const eventsCard = page.getByRole('link', { name: /Published Events/i });
     await expect(eventsCard).toBeVisible();
     await eventsCard.click();
 

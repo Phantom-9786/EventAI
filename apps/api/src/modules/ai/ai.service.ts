@@ -639,6 +639,16 @@ export class AiService {
           }
         }
         if (pendingResult) {
+          // An explicit result-count claim must agree with server-owned discovery facts.
+          if (structuredTurn?.intent === 'answer' && pendingResult.events.length) {
+            const claim = structuredTurn.reply.match(/\b(?:we (?:have|found)|i (?:have|found)|there (?:is|are))\s+(?:(?:only|just|exactly)\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:[\w&-]+\s+){0,3}?(?:events?|matches|options?)\b/i);
+            const words = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+            const count = claim && (/^\d+$/.test(claim[1]) ? Number(claim[1]) : words.indexOf(claim[1].toLowerCase()));
+            if (count !== null && count !== pendingResult.events.length && count !== pendingResult.total) {
+              this.logger.warn('Discarding generated discovery wording with an incorrect result count');
+              return pendingResult;
+            }
+          }
           return structuredTurn?.intent === 'answer'
             ? { ...pendingResult, reply: structuredTurn.reply }
             : pendingResult;

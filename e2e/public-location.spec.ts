@@ -12,7 +12,7 @@ test('venue and event details show location and safe directions links', async ({
 
   await page.goto('/events/fixture-live-event');
   await expect(page.getByRole('heading', { name: 'Fixture Live Event' })).toBeVisible();
-  await expect(page.getByText(/Fixture Arts Hall/)).toBeVisible();
+  await expect(page.getByText('Fixture Arts Hall', { exact: true })).toBeVisible();
   const directions = page.getByRole('link', { name: 'Get directions' });
   await expect(directions).toHaveAttribute(
     'href',
