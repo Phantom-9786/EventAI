@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ArrowLeftRight, Bell, ShieldCheck, Ticket } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';

@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { ArrowRight, BadgeCheck, MapPin, Navigation, Users } from 'lucide-react';

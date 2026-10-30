@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { Wrench, ArrowLeft, ShieldAlert } from 'lucide-react';
 import { EventForm } from '@/components/organizer/event-form';
 import { OrganizerGate } from '@/components/organizer/organizer-gate';

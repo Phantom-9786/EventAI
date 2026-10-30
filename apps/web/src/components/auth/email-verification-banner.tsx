@@ -5,7 +5,7 @@ import { MailWarning } from 'lucide-react';
 import { resendEmailVerification } from '@/lib/auth';
 import { useAuth } from '@/components/auth/auth-provider';
 
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 
 // Shown under the header for signed-in users whose email is not yet
 // verified (Google-linked accounts are always verified server-side).

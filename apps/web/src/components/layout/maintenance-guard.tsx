@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { AlertTriangle, ShieldAlert, Wrench, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { getPublicSystemControls, type SystemControlsSettings } from '@/lib/admin';

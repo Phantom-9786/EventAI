@@ -11,7 +11,7 @@ npm run db:seed            # category and organizer demo data; does not create a
 npm run dev                # API :4000 + web :3000
 ```
 
-Health: `GET http://localhost:4000/api/health` → `{ status, dependencies: { database, redis } }`.
+Liveness: `GET http://localhost:4000/api/health` → `{ status, service }` (no database queries). Readiness: `GET http://localhost:4000/api/health/ready` → `{ status, dependencies: { database, redis } }`.
 
 ## Environment
 
@@ -125,5 +125,5 @@ If Razorpay's refund response is ambiguous, the API keeps `REFUND_PENDING` and d
 3. If no ADMIN exists, create and verify the intended account, then follow the one-time provisioning procedure above; do not change a role ad hoc.
 4. Build and run the API and web images behind TLS; restrict CORS to the exact HTTPS frontend origin. AI limits use Redis shared storage; configure and verify a shared throttler store before scaling non-AI endpoints horizontally.
 5. Configure the Razorpay dashboard webhook at `POST /api/payments/webhook` with the matching webhook secret and at least `payment.captured`, `payment.failed`, `refund.created`, `refund.processed`, and `refund.failed` events. Confirm signatures are not logged.
-6. Smoke-test in staging: `/api/health` dependencies, register/sign in, booking, payment verification, ticket QR, cancellation/refund, organizer/admin authorization, and ADMIN-only pending-refund reconciliation using mocked or Razorpay test-mode outcomes.
+6. Smoke-test in staging: `/api/health/ready` dependencies, register/sign in, booking, payment verification, ticket QR, cancellation/refund, organizer/admin authorization, and ADMIN-only pending-refund reconciliation using mocked or Razorpay test-mode outcomes.
 7. Do not rely on `apps/worker` for production jobs: it currently registers no processors and idles. Deploy it only after required processors and health monitoring exist; verify current application behavior does not depend on jobs being consumed.

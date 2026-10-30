@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import type { ReactNode, MouseEventHandler } from 'react';
 import { ArrowRight, CalendarDays } from 'lucide-react';
 export const previewPhoto =

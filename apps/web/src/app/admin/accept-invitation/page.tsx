@@ -2,7 +2,7 @@
 
 import React, { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import {
   Shield,
   ShieldCheck,

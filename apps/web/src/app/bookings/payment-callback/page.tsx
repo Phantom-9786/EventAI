@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useSearchParams } from 'next/navigation';
 import { CalendarDays, Loader2, Ticket } from 'lucide-react';
 import { BookingApiError, verifyPayment, type BookingView } from '@/lib/booking';

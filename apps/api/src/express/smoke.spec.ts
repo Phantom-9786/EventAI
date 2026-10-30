@@ -279,7 +279,7 @@ describe('Express End-to-End Live Smoke Test Suite', () => {
   });
 
   it('1. Health check & PostgreSQL/Redis connectivity', async () => {
-    const healthRes = await fetch(`${baseUrl}/api/health`);
+    const healthRes = await fetch(`${baseUrl}/api/health/ready`);
     expect(healthRes.status).toBe(200);
     const healthJson = (await healthRes.json()) as any;
     expect(healthJson.status).toBe('ok');

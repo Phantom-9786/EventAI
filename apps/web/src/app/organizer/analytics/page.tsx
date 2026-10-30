@@ -1,7 +1,7 @@
 'use client';
 import { RefreshButton } from '@/components/ui/refresh-button';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { OrganizerGate } from '@/components/organizer/organizer-gate';
 import { getOrganizerStats, type OrganizerStats } from '@/lib/organizer';
 import { formatPrice } from '@/lib/api';

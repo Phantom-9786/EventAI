@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { EventImage } from './event-image';
 import { useState } from 'react';
 import { ArrowRight, CalendarDays, Ticket, Users, Briefcase } from 'lucide-react';

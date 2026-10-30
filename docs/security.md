@@ -20,7 +20,7 @@
 | Env | fail-fast validation on boot; runtime mode, production URLs, HTTPS origin, signing-secret length, payment placeholders, and Sentry trace sample rate are validated; unsafe `X-Request-Id` values are replaced |
 | Sentry privacy | API and web `beforeSend` scrubbers remove credentials, payment provider fields/signatures, ticket codes/QR data, contact fields, and URL query strings |
 | Logging privacy | verification tokens are never logged; email recipients, ticket codes, query parameters, and raw provider error text are omitted from operational logs |
-| Readiness | `/api/health` returns 503 when PostgreSQL is unavailable so the API container healthcheck cannot report a database-disconnected process ready |
+| Readiness | `/api/health/ready` returns 503 when PostgreSQL is unavailable. Container/uptime liveness uses database-free `/api/health/live` or `/api/health`; those indicate process health rather than database readiness. |
 
 ## CSRF posture
 

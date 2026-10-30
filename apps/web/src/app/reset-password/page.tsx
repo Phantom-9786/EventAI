@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { API_URL } from '@/lib/api';

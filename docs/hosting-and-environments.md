@@ -15,9 +15,9 @@ Renaming did not copy/delete data, change endpoint hostnames or reset quotas. Bo
 
 ## Liveness versus readiness
 
-- `/api/health/live` (also `/health/live` and the legacy monitor URL `/health`) returns the API process status. It performs no PostgreSQL, Redis, authentication, maintenance-settings or external-provider calls. It is registered before maintenance middleware and is not cached. `/health` previously included dependency checks; clients needing that information must use `/api/health`.
-- `/api/health` is a readiness/dependency diagnostic. It queries PostgreSQL and Redis. Do not use it for frequent keep-alive traffic if the database should sleep.
-- The API Docker HEALTHCHECK uses the liveness endpoint. Render logs on 28 October showed regular inbound `/health` requests roughly every five minutes. Keeping that legacy route as liveness means the existing monitor no longer triggers database or maintenance-settings queries. The monitor provider/account itself has not been identified.
+- `/api/health` and `/api/health/live` (also `/health/live` and `/health`) return API process status. They perform no PostgreSQL, Redis, authentication, maintenance-settings or external-provider calls. They are registered before maintenance middleware and are not cached. The existing monitor uses `/api/health`; it must remain database-free.
+- `/api/health/ready` is the explicit readiness/dependency diagnostic. It queries PostgreSQL and Redis and returns 503 if PostgreSQL is unavailable. Do not use it for frequent keep-alive traffic if the database should sleep. Before 30 October 2026 this diagnostic lived at `/api/health`.
+- The API Docker HEALTHCHECK uses the liveness endpoint. Older request logs printed trimmed router paths, making `/api/health` appear as `/health`. Corrected logging on 30 October revealed the monitor was still hitting the database-backed `/api/health` roughly every five minutes. That exact URL is now liveness too. The monitor provider/account itself has not been identified.
 
 A lightweight HTTP request can reach the API without waking PostgreSQL. It does not remove the hosting platform's free-tier restart/spin-down behavior or guarantee zero cold starts. Render's free service can spin down after 15 minutes without inbound traffic; keeping the API process active still consumes Render instance hours. Booking reconciliation can wake PostgreSQL independently.
 

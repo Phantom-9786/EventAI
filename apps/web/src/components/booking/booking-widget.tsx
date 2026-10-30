@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ArrowRight, CheckCircle2, Ticket } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { useAuth } from '@/components/auth/auth-provider';

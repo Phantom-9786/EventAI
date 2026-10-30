@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import type { Metadata } from 'next';
 import { MapPin, Search, Users } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';

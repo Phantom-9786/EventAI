@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useAuth } from '@/components/auth/auth-provider';
 import { getOrganizerProfile, type OrganizerProfile } from '@/lib/organizer';
 import { authFetch } from '@/lib/auth';

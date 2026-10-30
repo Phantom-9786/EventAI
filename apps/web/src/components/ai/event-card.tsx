@@ -1,5 +1,5 @@
 'use client';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { EventImage } from '@/components/approved/event-image';
 import { formatPrice, type EventSummary } from '@/lib/api';
 export function AiEventCard({ event }: { event: EventSummary }) {

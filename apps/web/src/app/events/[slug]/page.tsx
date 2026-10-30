@@ -1,5 +1,5 @@
 import {EventSectionNav} from '@/components/events/event-section-nav';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { cache, Suspense } from 'react';

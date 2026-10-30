@@ -1,7 +1,7 @@
 'use client';
 import { RefreshButton } from '@/components/ui/refresh-button';
 import { useEffect, useState, useCallback } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useAuth } from '@/components/auth/auth-provider';
 import { listAllBookings, type BookingListEntry } from '@/lib/booking';
 import { DigitalTicketPass } from '@/components/tickets/digital-ticket-pass';

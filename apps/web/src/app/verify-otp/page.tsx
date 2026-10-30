@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2, KeyRound, Loader2, MailWarning, RefreshCw } from 'lucide-react';
 import { ApiError, resendOtp, verifyOtp } from '@/lib/auth';

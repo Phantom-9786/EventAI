@@ -1,7 +1,7 @@
 'use client';
 import { lockPageScroll } from '@/lib/scroll-lock';
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useAuth } from '@/components/auth/auth-provider';
 import ReactMarkdown from 'react-markdown';
 import {

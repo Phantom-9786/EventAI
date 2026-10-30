@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { SmartDiscovery } from '@/components/home/smart-search';
 import {
   ArrowRight,

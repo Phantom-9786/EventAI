@@ -12,7 +12,7 @@
 // ═══════════════════════════════════════════════════
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useRouter } from 'next/navigation';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { fetchCurrentUser, setAccessToken } from '@/lib/auth';

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { CalendarDays, Loader2 } from 'lucide-react';
 import { API_URL } from '@/lib/api';
 import { Button } from '@/components/ui/button';

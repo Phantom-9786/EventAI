@@ -11,6 +11,7 @@ export interface MaintenanceMiddlewareOptions {
 const EXEMPT_PATHS = [
   '/health',
   '/api/health',
+  '/api/health/ready',
   '/system-controls',
   '/api/system-controls',
   '/payments/webhook',

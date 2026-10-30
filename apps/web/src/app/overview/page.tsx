@@ -2,7 +2,7 @@
 import { RefreshButton } from '@/components/ui/refresh-button';
 
 import { Suspense, useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { useSearchParams } from 'next/navigation';
 import { SavedEvents } from '@/components/approved/saved-events';
 import { CalendarDays, Heart, Ticket, ArrowRight, Bell } from 'lucide-react';

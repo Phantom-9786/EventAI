@@ -2,7 +2,7 @@
 import { lockPageScroll } from '@/lib/scroll-lock';
 
 import { Suspense, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeftRight, Bell, LayoutDashboard, LogOut, Menu, Settings, ShieldCheck, Ticket, X } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';

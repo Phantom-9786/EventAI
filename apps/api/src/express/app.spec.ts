@@ -11,10 +11,14 @@ describe('Express Foundation App', () => {
 
   const mockPrisma = {
     $queryRaw: jest.fn(),
+    $queryRawUnsafe: jest.fn().mockResolvedValue([]),
+    $executeRawUnsafe: jest.fn().mockResolvedValue(0),
   } as unknown as PrismaClient;
 
   const mockCache = {
     ping: jest.fn(),
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue(undefined),
   } as unknown as CacheService;
 
   const nullLogger = {
@@ -53,13 +57,16 @@ describe('Express Foundation App', () => {
   });
 
   describe('Root and Status Endpoints', () => {
-    it.each(['/health', '/api/health/live', '/health/live'])('answers %s without querying database or Redis', async (path) => {
+    it.each(['/health', '/api/health', '/api/health/live', '/health/live'])('answers %s without querying database or Redis', async (path) => {
       const res = await fetch(`${baseUrl}${path}`);
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ status: 'ok', service: 'eventpoint-api' });
       expect(res.headers.get('cache-control')).toBe('no-store');
       expect(mockPrisma.$queryRaw).not.toHaveBeenCalled();
+      expect(mockPrisma.$queryRawUnsafe).not.toHaveBeenCalled();
+      expect(mockPrisma.$executeRawUnsafe).not.toHaveBeenCalled();
       expect(mockCache.ping).not.toHaveBeenCalled();
+      expect(mockCache.get).not.toHaveBeenCalled();
     });
     it('returns the friendly root status payload on GET /', async () => {
       const res = await fetch(`${baseUrl}/`);
@@ -77,12 +84,12 @@ describe('Express Foundation App', () => {
     });
   });
 
-  describe('Health Endpoint (GET /api/health)', () => {
+  describe('Readiness Endpoint (GET /api/health/ready)', () => {
     it('returns HTTP 200 when database and redis are healthy', async () => {
       (mockPrisma.$queryRaw as jest.Mock).mockResolvedValueOnce([{ '?column?': 1 }]);
       (mockCache.ping as jest.Mock).mockResolvedValueOnce('up');
 
-      const res = await fetch(`${baseUrl}/api/health`);
+      const res = await fetch(`${baseUrl}/api/health/ready`);
       expect(res.status).toBe(200);
 
       const body = (await res.json()) as Record<string, unknown>;
@@ -99,7 +106,7 @@ describe('Express Foundation App', () => {
       (mockPrisma.$queryRaw as jest.Mock).mockRejectedValueOnce(new Error('DB Connection Refused'));
       (mockCache.ping as jest.Mock).mockResolvedValueOnce('up');
 
-      const res = await fetch(`${baseUrl}/api/health`);
+      const res = await fetch(`${baseUrl}/api/health/ready`);
       expect(res.status).toBe(503);
 
       const body = (await res.json()) as Record<string, unknown>;
@@ -114,7 +121,7 @@ describe('Express Foundation App', () => {
       (mockPrisma.$queryRaw as jest.Mock).mockResolvedValueOnce([{ '?column?': 1 }]);
       (mockCache.ping as jest.Mock).mockResolvedValueOnce('down');
 
-      const res = await fetch(`${baseUrl}/api/health`);
+      const res = await fetch(`${baseUrl}/api/health/ready`);
       expect(res.status).toBe(200);
 
       const body = (await res.json()) as Record<string, unknown>;

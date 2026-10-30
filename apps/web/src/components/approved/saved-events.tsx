@@ -1,7 +1,7 @@
 'use client';
 import { RefreshButton } from '@/components/ui/refresh-button';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/ui/app-link';
 import { ArrowLeft, Heart } from 'lucide-react';
 import { useFavorites } from '@/lib/favorites';
 import { API_URL, type EventDetail, type EventSummary } from '@/lib/api';
