@@ -191,6 +191,9 @@ describe('Express End-to-End Live Smoke Test Suite', () => {
 
   const mockCache = {
     ping: jest.fn().mockResolvedValue('PONG'),
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue(undefined),
+    invalidatePrefix: jest.fn().mockResolvedValue(undefined),
     consumeAiRequest: jest.fn().mockResolvedValue({ allowed: true }),
     releaseAiRequest: jest.fn().mockResolvedValue(undefined),
     providerCooldownMs: jest.fn().mockResolvedValue(0),

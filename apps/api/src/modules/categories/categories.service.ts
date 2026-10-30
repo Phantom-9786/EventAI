@@ -45,6 +45,7 @@ export class CategoriesService {
 
   private async invalidateList() {
     await this.cache.invalidatePrefix('categories:');
+    await this.cache.invalidatePrefix('events:browse:');
   }
 
   private slugify(name: string): string {
@@ -61,7 +62,7 @@ export class CategoriesService {
     );
     if (cached) return cached;
     const categories = await this.listActiveUncached();
-    await this.cache.set(CategoriesService.LIST_CACHE_KEY, categories, 300);
+    await this.cache.set(CategoriesService.LIST_CACHE_KEY, categories, 30 * 60);
     return categories;
   }
 

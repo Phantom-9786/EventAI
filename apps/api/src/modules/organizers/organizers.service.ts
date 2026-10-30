@@ -11,6 +11,7 @@ import type {
   UpdateVenueInput,
 } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { CacheService } from '../../common/cache/cache.service';
 
 /** 0-based index to spreadsheet-style letters: 0→A, 25→Z, 26→AA, 27→AB... */
 export function excelColumnLabel(index: number): string {
@@ -32,7 +33,13 @@ export function excelColumnLabel(index: number): string {
 export class OrganizersService {
   private readonly logger = new Logger(OrganizersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly cache?: CacheService) {}
+
+  private async invalidatePublicMetadata(): Promise<void> {
+    await this.cache?.invalidatePrefix('events:browse:');
+    await this.cache?.invalidatePrefix('event:detail:');
+    await this.cache?.invalidatePrefix('events:similar:');
+  }
 
   async updateOwnProfile(
     userId: string,
@@ -48,7 +55,7 @@ export class OrganizersService {
       select: { id: true },
     });
     if (!profile) throw new NotFoundException('Organizer profile not found');
-    return this.prisma.organizer.update({
+    const updated = await this.prisma.organizer.update({
       where: { id: profile.id },
       data: {
         ...(input.organizationName !== undefined && {
@@ -59,6 +66,8 @@ export class OrganizersService {
         ...(input.phone !== undefined && { phone: input.phone }),
       },
     });
+    await this.invalidatePublicMetadata();
+    return updated;
   }
 
   async becomeOrganizer(
@@ -237,7 +246,7 @@ export class OrganizersService {
 
   async updateVenue(organizerId: string, venueId: string, input: UpdateVenueInput) {
     const id = await this.requireOwnedVenue(organizerId, venueId);
-    return this.prisma.venue.update({
+    const updated = await this.prisma.venue.update({
       where: { id },
       data: {
         ...(input.name !== undefined && { name: input.name }),
@@ -253,6 +262,8 @@ export class OrganizersService {
         ...(input.amenities !== undefined && { amenities: input.amenities }),
       },
     });
+    await this.invalidatePublicMetadata();
+    return updated;
   }
 
   async deleteVenue(organizerId: string, venueId: string) {

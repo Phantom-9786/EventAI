@@ -184,7 +184,7 @@ export function createExpressApp(options: AppFactoryOptions = {}): Express {
     options.paymentsService ??
     new PaymentsService(prisma as never, notificationsService as never);
   const organizersService =
-    options.organizersService ?? new OrganizersService(prisma as never);
+    options.organizersService ?? new OrganizersService(prisma as never, cache);
   const mediaService =
     options.mediaService ?? new EventMediaService(prisma as never);
   const semanticRetrieval = new SemanticRetrievalService(prisma as never);

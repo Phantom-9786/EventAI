@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '../../common/exceptions';
 import { Prisma } from '@prisma/client';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { aiEventFilterSchema } from '@eventai/validation';
 import type { CreateEventInput, EventSearchInput, UpdateEventInput } from '@eventai/validation';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -119,6 +119,8 @@ export class EventsService {
     await this.cache.invalidatePrefix('event:detail:');
     await this.cache.invalidatePrefix('events:similar:');
     await this.cache.invalidatePrefix('categories:spotlights:');
+    await this.cache.invalidatePrefix('categories:active:');
+    await this.cache.invalidatePrefix('events:browse:');
   }
 
   async createEvent(organizerId: string, input: CreateEventInput) {
@@ -455,6 +457,19 @@ export class EventsService {
    * through Prisma with relations and price ranges.
    */
   async searchEvents(input: EventSearchInput) {
+    // Only stable public metadata. AI/stock-sensitive retrieval and paid-sales
+    // ordering stay live; all event/ticket writes invalidate this namespace.
+    if (input.aiFilters || input.sortBy === 'popularity') return this.searchEventsUncached(input);
+    const normalized = Object.fromEntries(Object.entries(input).sort(([a], [b]) => a.localeCompare(b)));
+    const key = 'events:browse:v1:' + createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+    const cached = await this.cache.get<Awaited<ReturnType<EventsService['searchEventsUncached']>>>(key);
+    if (cached) return cached;
+    const result = await this.searchEventsUncached(input);
+    await this.cache.set(key, result, 30 * 60);
+    return result;
+  }
+
+  private async searchEventsUncached(input: EventSearchInput) {
     const aiSearch = Boolean(input.aiFilters);
     let semanticQuery: string | undefined;
     let partySize: number | undefined;

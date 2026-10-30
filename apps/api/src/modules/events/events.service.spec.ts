@@ -286,6 +286,31 @@ describe('EventsService', () => {
   });
 
   describe('searchEvents', () => {
+    it('reuses public discovery metadata until a write invalidates it', async () => {
+      const stored = new Map<string, unknown>();
+      cacheMock.get.mockImplementation(async (key: string) => stored.get(key) ?? null);
+      cacheMock.set.mockImplementation(async (key: string, value: unknown) => { stored.set(key, value); });
+      cacheMock.invalidatePrefix.mockImplementation(async (prefix: string) => {
+        for (const key of stored.keys()) if (key.startsWith(prefix)) stored.delete(key);
+      });
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: 0 }])
+        .mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: 0 }]);
+      await service.searchEvents({ page: 1, limit: 20 });
+      await service.searchEvents({ limit: 20, page: 1 });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(cacheMock.set).toHaveBeenCalledWith(expect.stringContaining('events:browse:'), expect.any(Object), 1800);
+      await service.invalidateEventCache();
+      await service.searchEvents({ page: 1, limit: 20 });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([{ sortBy: 'popularity' as const }, { aiFilters: '{}' }])('keeps sales ranking and AI/stock retrieval live: %j', async (filter) => {
+      prisma.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: 0 }]);
+      await service.searchEvents({ ...filter, page: 1, limit: 20 });
+      expect(cacheMock.get).not.toHaveBeenCalled();
+      expect(cacheMock.set).not.toHaveBeenCalled();
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
     it('runs the FTS raw query and hydrates in rank order', async () => {
       prisma.$queryRaw
         .mockResolvedValueOnce([{ id: 'event-b' }, { id: 'event-a' }])

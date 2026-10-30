@@ -3,6 +3,22 @@ import { Test } from '../../common/testing';
 import { PrismaService } from '../../prisma/prisma.service';
 import { excelColumnLabel, OrganizersService } from './organizers.service';
 
+describe('Public metadata invalidation', () => {
+  it.each(['profile', 'venue'])('invalidates cached event summaries after a %s edit', async (kind) => {
+    const database = {
+      organizer: { findUnique: jest.fn().mockResolvedValue({ id: 'org-1' }), update: jest.fn().mockResolvedValue({ organizationName: 'Updated' }) },
+      venue: { findFirst: jest.fn().mockResolvedValue({ id: 'venue-1' }), update: jest.fn().mockResolvedValue({ name: 'Updated' }) },
+    };
+    const cache = { invalidatePrefix: jest.fn().mockResolvedValue(undefined) };
+    const service = new OrganizersService(database as never, cache as never);
+    if (kind === 'profile') await service.updateOwnProfile('user-1', { organizationName: 'Updated' });
+    else await service.updateVenue('org-1', 'venue-1', { name: 'Updated' });
+    expect(cache.invalidatePrefix).toHaveBeenCalledWith('events:browse:');
+    expect(cache.invalidatePrefix).toHaveBeenCalledWith('event:detail:');
+    expect(cache.invalidatePrefix).toHaveBeenCalledWith('events:similar:');
+  });
+});
+
 describe('OrganizersService venue operations', () => {
   let service: OrganizersService;
   let prisma: {
