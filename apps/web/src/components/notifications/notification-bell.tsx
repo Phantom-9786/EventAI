@@ -16,6 +16,7 @@ import {
 import { useAuth } from '@/components/auth/auth-provider';
 import { Modal } from '@/components/ui/modal';
 import { cn } from '@/lib/utils';
+import { pollWhileActive } from '@/lib/active-poll';
 
 function timeAgo(dateString: string): string {
   const date = new Date(dateString);
@@ -62,10 +63,7 @@ export function NotificationBell({ inline = false }: { inline?: boolean } = {}) 
 
   useEffect(() => {
     void fetchItems();
-    const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') void fetchItems();
-    }, 30_000);
-    return () => clearInterval(interval);
+    return pollWhileActive(() => void fetchItems(), 30_000);
   }, [fetchItems]);
 
   useEffect(() => {

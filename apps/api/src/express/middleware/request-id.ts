@@ -15,11 +15,13 @@ export function createRequestIdMiddleware(logger: StructuredLogger): RequestHand
     res.setHeader('X-Request-Id', requestId);
 
     const start = Date.now();
+    // Capture before routers trim req.url; omit query strings (tokens/search text).
+    const requestPath = req.originalUrl.split('?')[0];
     res.on('finish', () => {
       const durationMs = Date.now() - start;
-      logger.logWithMeta('log', `${req.method} ${req.path}`, {
+      logger.logWithMeta('log', `${req.method} ${requestPath}`, {
         method: req.method,
-        url: req.path,
+        url: requestPath,
         statusCode: res.statusCode,
         durationMs,
         requestId,

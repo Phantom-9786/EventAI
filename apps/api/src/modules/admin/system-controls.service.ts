@@ -28,12 +28,14 @@ export const DEFAULT_SYSTEM_CONTROLS: SystemControls = {
 
 const REDIS_KEY = 'eventai:system_controls';
 const SETTING_DB_KEY = 'system_controls';
+export const SYSTEM_CONTROLS_CACHE_SECONDS = 30 * 60;
 
 @Injectable()
 export class SystemControlsService {
   private readonly logger = new Logger(SystemControlsService.name);
   private tableEnsured = false;
   private inMemoryCache: { settings: SystemControls; expiresAt: number } | null = null;
+  private databaseSnapshot: { settings: SystemControls; expiresAt: number } | null = null;
   private readonly testerCache = new Map<string, { isTester: boolean; expiresAt: number }>();
 
   constructor(
@@ -86,11 +88,19 @@ export class SystemControlsService {
         const cached = await this.cache.get<SystemControls>(REDIS_KEY);
         if (cached && typeof cached.websiteMaintenance === 'boolean') {
           this.inMemoryCache = { settings: cached, expiresAt: now + 3000 };
+          this.databaseSnapshot = { settings: cached, expiresAt: now + SYSTEM_CONTROLS_CACHE_SECONDS * 1000 };
           return cached;
         }
       } catch (err) {
         this.logger.debug('Redis cache read failed for system controls: ' + String(err));
       }
+    }
+
+    // Redis may be unavailable or evicted. This single-server snapshot avoids
+    // turning every browser poll into a database wake-up; writes replace it immediately.
+    if (this.databaseSnapshot && this.databaseSnapshot.expiresAt > now) {
+      this.inMemoryCache = { settings: this.databaseSnapshot.settings, expiresAt: now + 3000 };
+      return this.databaseSnapshot.settings;
     }
 
     // 2. Try PostgreSQL
@@ -130,10 +140,16 @@ export class SystemControlsService {
 
         // Populate caches
         this.inMemoryCache = { settings: resolved, expiresAt: now + 3000 };
+        this.databaseSnapshot = { settings: resolved, expiresAt: now + SYSTEM_CONTROLS_CACHE_SECONDS * 1000 };
         if (this.cache) {
-          void this.cache.set(REDIS_KEY, resolved, 60).catch(() => {});
+          void this.cache.set(REDIS_KEY, resolved, SYSTEM_CONTROLS_CACHE_SECONDS).catch(() => {});
         }
         return resolved;
+      }
+      // An empty settings table is a successful read too, not a cache miss.
+      this.databaseSnapshot = { settings: { ...DEFAULT_SYSTEM_CONTROLS }, expiresAt: now + SYSTEM_CONTROLS_CACHE_SECONDS * 1000 };
+      if (this.cache) {
+        void this.cache.set(REDIS_KEY, this.databaseSnapshot.settings, SYSTEM_CONTROLS_CACHE_SECONDS).catch(() => {});
       }
     } catch (err) {
       this.logger.error('Failed to query system_settings from database, using safe defaults: ' + (err instanceof Error ? err.message : String(err)));
@@ -201,10 +217,11 @@ export class SystemControlsService {
 
     // 2. Propagate to Redis & invalidate local memory
     this.inMemoryCache = { settings: next, expiresAt: Date.now() + 3000 };
+    this.databaseSnapshot = { settings: next, expiresAt: Date.now() + SYSTEM_CONTROLS_CACHE_SECONDS * 1000 };
     this.testerCache.clear();
     if (this.cache) {
       try {
-        await this.cache.set(REDIS_KEY, next, 60);
+        await this.cache.set(REDIS_KEY, next, SYSTEM_CONTROLS_CACHE_SECONDS);
       } catch (err) {
         this.logger.warn('Failed to update Redis system_controls cache: ' + String(err));
       }

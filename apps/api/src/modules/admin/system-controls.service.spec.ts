@@ -59,7 +59,7 @@ describe('SystemControlsService', () => {
     expect(settings.websiteMaintenance).toBe(true);
     expect(settings.websiteMaintenanceMessage).toBe('Upgrading servers');
     expect(settings.eventCreationMaintenance).toBe(true);
-    expect(mockCache.set).toHaveBeenCalledWith('eventai:system_controls', expect.objectContaining({ websiteMaintenance: true }), 60);
+    expect(mockCache.set).toHaveBeenCalledWith('eventai:system_controls', expect.objectContaining({ websiteMaintenance: true }), 1800);
   });
 
   it('updates settings, writes to database, propagates to Redis, and writes an AuditLog', async () => {
@@ -80,7 +80,7 @@ describe('SystemControlsService', () => {
       'system_controls',
       expect.any(String),
     );
-    expect(mockCache.set).toHaveBeenCalledWith('eventai:system_controls', expect.objectContaining({ websiteMaintenance: true }), 60);
+    expect(mockCache.set).toHaveBeenCalledWith('eventai:system_controls', expect.objectContaining({ websiteMaintenance: true }), 1800);
     expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         userId: 'admin-1',
@@ -96,6 +96,37 @@ describe('SystemControlsService', () => {
     const settings = await service.getSettings();
     expect(settings).toEqual(DEFAULT_SYSTEM_CONTROLS);
     expect(settings.websiteMaintenance).toBe(false);
+  });
+
+  it('does not wake PostgreSQL on repeated minute polls when Redis is unavailable', async () => {
+    jest.useFakeTimers();
+    try {
+      mockPrisma.$queryRawUnsafe.mockResolvedValue([{ value: DEFAULT_SYSTEM_CONTROLS }]);
+      await service.getSettings();
+      for (let minute = 0; minute < 29; minute++) {
+        jest.advanceTimersByTime(60_000);
+        await service.getSettings();
+      }
+      expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+      jest.advanceTimersByTime(60_000);
+      await service.getSettings();
+      expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalledTimes(2);
+    } finally { jest.useRealTimers(); }
+  });
+
+  it('caches an empty settings table and applies admin changes immediately', async () => {
+    jest.useFakeTimers();
+    try {
+      await service.getSettings();
+      jest.advanceTimersByTime(5 * 60_000);
+      await service.getSettings();
+      expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+      await service.updateSettings('admin-1', { websiteMaintenance: true });
+      expect((await service.getSettings()).websiteMaintenance).toBe(true);
+      jest.advanceTimersByTime(4000);
+      expect((await service.getSettings()).websiteMaintenance).toBe(true);
+      expect(mockPrisma.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+    } finally { jest.useRealTimers(); }
   });
 
   describe('isAuthorizedMaintenanceTester', () => {

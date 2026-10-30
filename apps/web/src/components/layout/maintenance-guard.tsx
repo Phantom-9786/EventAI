@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { AlertTriangle, ShieldAlert, Wrench, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { getPublicSystemControls, type SystemControlsSettings } from '@/lib/admin';
+import { pollWhileActive } from '@/lib/active-poll';
 
 interface SystemControlsContextValue {
   controls: SystemControlsSettings | null;
@@ -48,13 +49,7 @@ export function MaintenanceGuard({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void loadControls();
-    // Poll every 15 seconds to detect live maintenance toggles across clients
-    const timer = setInterval(() => {
-      if (document.visibilityState === 'visible') void loadControls();
-    }, 15000);
-    const onVisible = () => { if (document.visibilityState === 'visible') void loadControls(); };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
+    return pollWhileActive(() => void loadControls(), 15_000);
   }, [loadControls]);
 
   const isAdmin = user?.role === 'ADMIN';

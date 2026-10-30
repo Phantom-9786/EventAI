@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { useAuth } from '@/components/auth/auth-provider';
 import { authFetch } from '@/lib/auth';
+import { pollWhileActive } from '@/lib/active-poll';
 
 type Counts = { organizers: number; events: number; emails: number; invitations: number };
 const Context = createContext<{ counts: Counts | null; reload: () => void }>({ counts: null, reload: () => {} });
@@ -27,16 +28,11 @@ export function AdminPendingProvider({ children }: { children: React.ReactNode }
   }, [enabled, user?.id, revision]);
   useEffect(() => {
     if (!enabled) return;
-    const refreshVisible = () => { if (document.visibilityState === 'visible') reload(); };
-    const interval = window.setInterval(refreshVisible, 60_000);
-    window.addEventListener('focus', refreshVisible);
+    const stopPolling = pollWhileActive(reload, 60_000);
     window.addEventListener('eventpoint:admin-queues-changed', reload);
-    document.addEventListener('visibilitychange', refreshVisible);
     return () => {
-      window.clearInterval(interval);
-      window.removeEventListener('focus', refreshVisible);
+      stopPolling();
       window.removeEventListener('eventpoint:admin-queues-changed', reload);
-      document.removeEventListener('visibilitychange', refreshVisible);
     };
   }, [enabled, reload]);
   return <Context.Provider value={{ counts: enabled ? counts : null, reload }}>{children}</Context.Provider>;
