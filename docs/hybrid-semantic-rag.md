@@ -22,10 +22,6 @@ The API warms the encoder asynchronously. A cold model download or index taking 
 ## Deployment
 Apply 20261020010000_semantic_event_embeddings with the normal Prisma migrate deploy release step. SEMANTIC_RAG_ENABLED defaults to enabled; set false to disable semantic inference. SEMANTIC_MODEL_CACHE_DIR optionally selects a writable model cache. The API Dockerfile uses Debian/glibc for native ONNX compatibility and a writable cache owned by its non-root user. Render native Node supports this runtime. The Docker image was updated but not built in this task.
 
-## Requested live fixtures
-Ten published Phase 3 Preview listings were copied/adapted from the original local catalog under the existing verified organizer attached to tarunkumarsahu2551@gmail.com. Five categories have two previews each: Music, Technology, Arts & Theatre, Food & Drink, Health & Wellness. Existing users/events/bookings were preserved. These are explicitly marked testing previews. Existing image URLs were reused; no Cloudinary uploads or fabricated paid bookings. The private backup and created-ID manifest remain outside Git.
-The repeatable provisioning script defaults to read-only preview: node scripts/publish-phase3-preview-events.cjs. Only --apply writes; it validates the named account and target, takes a backup, writes an atomic set of missing fixtures and leaves existing matching slugs untouched.
-
 ## Verification
 - Real local encoder produced finite normalized 384-dimensional vectors.
 - Local index: 40 future published events embedded.
